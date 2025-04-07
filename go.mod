@@ -1,6 +1,6 @@
 module github.com/alexandru-savinov/BalancedNewsGo
 
-go 1.20
+go 1.23
 
 
 require (
