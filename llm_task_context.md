@@ -91,8 +91,56 @@ The entire backend, LLM subsystem, RSS pipeline, and API are now implemented and
 
 Go module and dependencies are properly configured.
 
+---
+
+## Next Phase: Testing, Optimization, Deployment
+
+### Chunk 3.1: Write unit tests for DB, LLM, RSS packages
+### Chunk 3.2: Write integration tests for API endpoints
+---
+
+### Progress Update:
+- **Chunk 3.1:** Unit tests for DB package (`internal/db/db_test.go`) created, covering article and LLM score insert/fetch.
+
+Next: unit tests for LLM package.
+### Chunk 3.3: Optimize performance (caching, concurrency)
+### Chunk 3.4: Prepare deployment scripts/configs
+---
+
+## UI Implementation Progress (as of 2025-04-07)
+
+- Basic UI with htmx is functional.
+- Supports filtering by source and leaning.
+- Pagination controls implemented.
+- Refresh button triggers RSS feed update.
+- Article detail view loads dynamically.
+- Integration tests for API and UI endpoints pass.
+- Backend political analysis calls fail if LLM microservices are offline (expected).
+
 Next steps:
-- Write unit and integration tests.
-- Optimize performance.
-- Prepare deployment scripts.
-- Add monitoring and logging.
+- Add reanalyze buttons.
+- Improve styling.
+- Deploy LLM microservices for full functionality.
+---
+
+## Upcoming Phase: Simple UI with htmx
+
+### Phase 1: Basic UI Setup
+- Chunk 1.1: Set up static file serving in Gin
+- Chunk 1.2: Create base HTML template with htmx included
+- Chunk 1.3: Implement homepage listing articles using htmx GET
+
+### Phase 2: Article Details and Filtering
+- Chunk 2.1: Add article detail view with htmx
+- Chunk 2.2: Add filters (source, leaning) with htmx requests
+- Chunk 2.3: Add pagination with htmx
+
+### Phase 3: Interactivity and Enhancements
+- Chunk 3.1: Add refresh button triggering `/api/refresh` via htmx POST
+- Chunk 3.2: Add reanalyze button per article triggering `/api/llm/reanalyze/:id`
+- Chunk 3.3: Style with minimal CSS for usability
+
+Will proceed chunk by chunk and update this log accordingly.
+### Chunk 3.5: Add monitoring and logging enhancements
+
+Will proceed chunk by chunk and update this log accordingly.

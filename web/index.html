@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>NewsBalancer</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <h1>NewsBalancer</h1>
+
+    <button hx-post="/api/refresh" hx-trigger="click" hx-swap="none">Refresh Feeds</button>
+
+    <div>
+        <label>Source:
+            <input type="text" id="sourceFilter" name="source" hx-get="/articles" hx-target="#articles" hx-trigger="change, keyup changed delay:500ms" hx-include="#sourceFilter,#leaningFilter,#offsetInput">
+        </label>
+        <label>Leaning:
+            <select id="leaningFilter" name="leaning" hx-get="/articles" hx-target="#articles" hx-trigger="change" hx-include="#sourceFilter,#leaningFilter,#offsetInput">
+                <option value="">All</option>
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+            </select>
+        </label>
+    </div>
+
+    <div>
+        <button hx-get="/articles" hx-target="#articles" hx-include="#sourceFilter,#leaningFilter,#offsetInput" hx-vals='{"offset":0}'>First Page</button>
+        <button hx-get="/articles" hx-target="#articles" hx-include="#sourceFilter,#leaningFilter,#offsetInput" hx-vals='{"offset":20}'>Next Page</button>
+        <input type="hidden" id="offsetInput" name="offset" value="0" />
+    </div>
+
+    <div id="articles" hx-get="/articles" hx-trigger="load" hx-target="#articles" hx-swap="innerHTML">
+        Loading articles...
+    </div>
+</body>
+</html>

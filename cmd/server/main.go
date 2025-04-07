@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -38,6 +40,9 @@ func main() {
 	// Initialize Gin
 	router := gin.Default()
 
+	// Serve static files from ./web
+	router.Static("/static", "./web")
+
 	// Health check
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
@@ -45,6 +50,58 @@ func main() {
 
 	// Register API routes
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient)
+
+	// htmx endpoint for articles list with filters
+	router.GET("/articles", func(c *gin.Context) {
+		source := c.Query("source")
+		leaning := c.Query("leaning")
+
+		limit := 20
+		offset := 0
+		if o := c.Query("offset"); o != "" {
+			fmt.Sscanf(o, "%d", &offset)
+		}
+		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
+		if err != nil {
+			c.String(500, "Error fetching articles")
+			return
+		}
+		html := ""
+		for _, a := range articles {
+			html += `<div>
+				<h3>
+					<a href="/article/` + fmt.Sprintf("%d", a.ID) + `"
+					   hx-get="/article/` + fmt.Sprintf("%d", a.ID) + `"
+					   hx-target="#articles" hx-swap="innerHTML">` + a.Title + `</a>
+				</h3>
+				<p>` + a.Source + ` | ` + a.PubDate.Format("2006-01-02") + `</p>
+			</div>`
+		}
+		c.Header("Content-Type", "text/html")
+		c.String(200, html)
+	})
+
+	// htmx endpoint for article detail
+	router.GET("/article/:id", func(c *gin.Context) {
+		id := c.Param("id")
+		articleID, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			c.String(400, "Invalid article ID")
+			return
+		}
+		article, err := db.FetchArticleByID(dbConn, articleID)
+		if err != nil {
+			c.String(404, "Article not found")
+			return
+		}
+		scores, _ := db.FetchLLMScores(dbConn, articleID)
+		html := "<h2>" + article.Title + "</h2><p>" + article.Source + " | " + article.PubDate.Format("2006-01-02") + "</p><p>" + article.Content + "</p>"
+		for _, s := range scores {
+			html += "<p>" + s.Model + ": " + fmt.Sprintf("%.2f", s.Score) + "</p>"
+		}
+		c.Header("Content-Type", "text/html")
+		c.String(200, html)
+	})
 
 	// Start server
 	log.Println("Server running on :8080")
