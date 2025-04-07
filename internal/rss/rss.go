@@ -9,20 +9,23 @@ import (
 	"github.com/robfig/cron/v3"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 )
 
 type Collector struct {
-	DB       *sqlx.DB
-	FeedURLs []string
-	Cron     *cron.Cron
+	DB        *sqlx.DB
+	FeedURLs  []string
+	Cron      *cron.Cron
+	LLMClient *llm.LLMClient
 }
 
 // NewCollector creates a new RSS Collector with DB and feed URLs
-func NewCollector(dbConn *sqlx.DB, urls []string) *Collector {
+func NewCollector(dbConn *sqlx.DB, urls []string, llmClient *llm.LLMClient) *Collector {
 	return &Collector{
-		DB:       dbConn,
-		FeedURLs: urls,
-		Cron:     cron.New(),
+		DB:        dbConn,
+		FeedURLs:  urls,
+		Cron:      cron.New(),
+		LLMClient: llmClient,
 	}
 }
 
@@ -93,6 +96,14 @@ func (c *Collector) FetchAndStore() {
 				continue
 			}
 			log.Printf("[RSS] Inserted new article: %s", item.Link)
+
+			// Trigger political analysis
+			err = c.LLMClient.AnalyzeAndStore(article)
+			if err != nil {
+				log.Printf("[RSS] Failed to analyze article: %v", err)
+			} else {
+				log.Printf("[RSS] Political analysis completed for article: %s", item.Link)
+			}
 		}
 	}
 }

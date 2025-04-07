@@ -1,4 +1,4 @@
-# Politically Balanced News Aggregator - LLM Subsystem Task Context
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               # Politically Balanced News Aggregator - LLM Subsystem Task Context
 
 ## Task Scope
 - Implement LLM analysis subsystem in Go
@@ -23,9 +23,24 @@
   - Integration with existing DB layer (`internal/db/db.go`)
 
 - **DB Layer (`internal/db/db.go`):**
+
+- **RSS Pipeline (`internal/rss/rss.go`):**
+  - Fetches and deduplicates articles from feeds
+  - After inserting new articles, immediately calls LLM analysis service
+  - Stores political scores linked to articles
+  - Fully integrated with LLM subsystem
   - Defines `Article` and `LLMScore` structs
   - Has insert/query functions
   - Schema includes `articles` and `llm_scores` tables
+
+---
+
+## API Layer (`internal/api/api.go`):
+- `/api/articles` GET with filters and pagination
+- `/api/articles/:id` GET with article details and scores
+- `/api/refresh` POST to trigger RSS refresh
+- `/api/llm/reanalyze/:id` POST to re-run analysis
+- Fully integrated with DB, RSS, and LLM subsystems
 
 ---
 
@@ -72,4 +87,12 @@
 
 ## Summary
 
-The core LLM analysis logic is implemented but **cannot be compiled or run** until Go is properly set up and dependencies are installed. After fixing the environment, the subsystem should be ready for integration and testing.
+The entire backend, LLM subsystem, RSS pipeline, and API are now implemented and successfully compiled.
+
+Go module and dependencies are properly configured.
+
+Next steps:
+- Write unit and integration tests.
+- Optimize performance.
+- Prepare deployment scripts.
+- Add monitoring and logging.

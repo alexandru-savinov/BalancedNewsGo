@@ -18,17 +18,22 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	var llmClient *llm.LLMClient
+
+	// Initialize LLM client
+	llmClient = llm.NewLLMClient(dbConn)
+
 	// Initialize RSS collector
 	feedURLs := []string{
 		"https://rss.cnn.com/rss/edition.rss",
 		"https://feeds.bbci.co.uk/news/rss.xml",
 		"https://www.npr.org/rss/rss.php?id=1001",
 	}
-	rssCollector := rss.NewCollector(dbConn, feedURLs)
+	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
 	rssCollector.StartScheduler()
 
 	// Initialize LLM client
-	llmClient := llm.NewLLMClient(dbConn)
+	llmClient = llm.NewLLMClient(dbConn)
 
 	// Initialize Gin
 	router := gin.Default()
