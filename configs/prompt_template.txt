@@ -1,0 +1,22 @@
+You are an expert political bias detector.
+
+Given the following news article content, analyze it and classify the overall political bias as one of the following categories:
+- "left"
+- "center"
+- "right"
+
+Provide:
+- "category": the bias category ("left", "center", or "right")
+- "confidence": a number between 0 and 1 indicating your confidence in this classification
+- "explanation": a brief explanation (1-2 sentences) justifying your classification
+
+Respond ONLY in the following strict JSON format:
+
+{
+  "category": "...",
+  "confidence": ...,
+  "explanation": "..."
+}
+
+Here is the article content:
+{{ARTICLE_CONTENT}}

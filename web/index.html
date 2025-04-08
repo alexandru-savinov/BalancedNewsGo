@@ -4,17 +4,76 @@
     <meta charset="UTF-8" />
     <title>NewsBalancer</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        header, nav, main {
+            width: 100%;
+        }
+        #filters, #pagination {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: center;
+        }
+        #articles {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        article {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .metadata {
+            font-size: 0.9em;
+            color: #555;
+        }
+        .bias-label {
+            font-weight: bold;
+        }
+        .feedback-form {
+            margin-top: 0.5rem;
+            display: none;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .feedback-form[aria-hidden="false"] {
+            display: flex;
+        }
+        @media (max-width: 600px) {
+            #filters, #pagination {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+        .success-message {
+            color: green;
+            font-size: 0.9em;
+        }
+    </style>
 </head>
 <body>
-    <h1>NewsBalancer</h1>
+    <header>
+        <h1>NewsBalancer</h1>
+        <button hx-post="/api/refresh" hx-trigger="click" hx-swap="none">Refresh Feeds</button>
+    </header>
 
-    <button hx-post="/api/refresh" hx-trigger="click" hx-swap="none">Refresh Feeds</button>
-
-    <div>
-        <label>Source:
+    <nav id="filters" aria-label="Article filters">
+        <label for="sourceFilter">Source:
             <input type="text" id="sourceFilter" name="source" hx-get="/articles" hx-target="#articles" hx-trigger="change, keyup changed delay:500ms" hx-include="#sourceFilter,#leaningFilter,#offsetInput">
         </label>
-        <label>Leaning:
+        <label for="leaningFilter">Leaning:
             <select id="leaningFilter" name="leaning" hx-get="/articles" hx-target="#articles" hx-trigger="change" hx-include="#sourceFilter,#leaningFilter,#offsetInput">
                 <option value="">All</option>
                 <option value="left">Left</option>
@@ -22,16 +81,42 @@
                 <option value="right">Right</option>
             </select>
         </label>
-    </div>
+    </nav>
 
-    <div>
+    <div id="pagination">
         <button hx-get="/articles" hx-target="#articles" hx-include="#sourceFilter,#leaningFilter,#offsetInput" hx-vals='{"offset":0}'>First Page</button>
         <button hx-get="/articles" hx-target="#articles" hx-include="#sourceFilter,#leaningFilter,#offsetInput" hx-vals='{"offset":20}'>Next Page</button>
         <input type="hidden" id="offsetInput" name="offset" value="0" />
     </div>
 
-    <div id="articles" hx-get="/articles" hx-trigger="load" hx-target="#articles" hx-swap="innerHTML">
-        Loading articles...
-    </div>
+    <main id="articles" hx-get="/articles" hx-trigger="load" hx-target="#articles" hx-swap="innerHTML">
+        <!-- Example article template, will be replaced dynamically -->
+        <article aria-label="News article">
+            <header>
+                <h2>Article Title</h2>
+            </header>
+            <section class="summary">
+                <p>This is a brief summary of the article content...</p>
+            </section>
+            <section class="metadata">
+                <span class="bias-label" aria-label="Bias label">Center</span> |
+                <span class="confidence" aria-label="Confidence score">Confidence: 85%</span>
+            </section>
+            <section class="explanation">
+                <p>Explanation of bias classification goes here.</p>
+            </section>
+            <button hx-get="/feedback/form?article_id=123" hx-target="#feedback-123" hx-swap="outerHTML">Give Feedback</button>
+            <div id="feedback-123" class="feedback-form" aria-hidden="true">
+                <form hx-post="/feedback/submit" hx-target="#feedback-123" hx-swap="outerHTML">
+                    <label for="feedback-text-123">Your feedback:</label>
+                    <textarea id="feedback-text-123" name="feedback" rows="3"></textarea>
+                    <input type="hidden" name="article_id" value="123" />
+                    <button type="submit">Submit</button>
+                </form>
+            </div>
+            <div class="success-message" style="display:none;">Thank you for your feedback!</div>
+        </article>
+        <p>Loading articles...</p>
+    </main>
 </body>
 </html>

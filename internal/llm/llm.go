@@ -13,10 +13,57 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
+type BiasConfig struct {
+	Categories          []string            `json:"categories"`
+	ConfidenceThreshold float64             `json:"confidence_threshold"`
+	KeywordHeuristics   map[string][]string `json:"keyword_heuristics"`
+}
+
+type BiasResult struct {
+	Category    string  `json:"category"`
+	Confidence  float64 `json:"confidence"`
+	Explanation string  `json:"explanation"`
+}
+
+var (
+	PromptTemplate string
+	BiasCfg        BiasConfig
+)
+
+func LoadPromptTemplate(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func LoadBiasConfig(path string) (BiasConfig, error) {
+	var cfg BiasConfig
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cfg, err
+	}
+	err = json.Unmarshal(data, &cfg)
+	return cfg, err
+}
+
+func init() {
+	var err error
+	PromptTemplate, err = LoadPromptTemplate("configs/prompt_template.txt")
+	if err != nil {
+		log.Fatalf("Failed to load prompt template: %v", err)
+	}
+	BiasCfg, err = LoadBiasConfig("configs/bias_config.json")
+	if err != nil {
+		log.Fatalf("Failed to load bias config: %v", err)
+	}
+}
+
 // LLM API endpoints
 var (
 	LeftModelURL   = "http://localhost:8001/analyze"
-	CenterModelURL = "http://localhost:8002/analyze"
+	CenterModelURL = "https://api.openai.com/v1/chat/completions"
 	RightModelURL  = "http://localhost:8003/analyze"
 )
 
@@ -56,17 +103,170 @@ func hashContent(content string) string {
 	return content
 }
 
-type LLMClient struct {
+type LLMService interface {
+	Analyze(content string) (*db.LLMScore, error)
+}
+
+type MockLLMService struct{}
+
+func (m *MockLLMService) Analyze(content string) (*db.LLMScore, error) {
+	score := 0.5 // fixed or random score
+	metadata := `{"mock": true}`
+	return &db.LLMScore{
+		Model:    "mock",
+		Score:    score,
+		Metadata: metadata,
+	}, nil
+}
+
+type OpenAILLMService struct {
 	client *resty.Client
-	cache  *Cache
-	db     *sqlx.DB
+	model  string
+	apiKey string
+}
+
+func NewOpenAILLMService(client *resty.Client, model, apiKey string) *OpenAILLMService {
+	return &OpenAILLMService{
+		client: client,
+		model:  model,
+		apiKey: apiKey,
+	}
+}
+
+func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
+	prompt := strings.Replace(PromptTemplate, "{{ARTICLE_CONTENT}}", content, 1)
+
+	url := "https://api.openai.com/v1/chat/completions"
+
+	var resp *resty.Response
+	var err error
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		req := o.client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Authorization", "Bearer "+o.apiKey)
+
+		body := map[string]interface{}{
+			"model":       o.model,
+			"messages":    []map[string]string{{"role": "user", "content": prompt}},
+			"max_tokens":  300,
+			"temperature": 0.7,
+		}
+		req.SetBody(body)
+
+		resp, err = req.Post(url)
+
+		if err == nil && resp.IsSuccess() {
+			var openaiResp struct {
+				Choices []struct {
+					Message struct {
+						Content string `json:"content"`
+					} `json:"message"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal(resp.Body(), &openaiResp); err != nil {
+				return nil, err
+			}
+			if len(openaiResp.Choices) == 0 {
+				return nil, errors.New("no choices in OpenAI response")
+			}
+			contentResp := openaiResp.Choices[0].Message.Content
+
+			var biasResult BiasResult
+			if err := json.Unmarshal([]byte(contentResp), &biasResult); err != nil {
+				log.Printf("Failed to parse LLM JSON response: %v", err)
+				biasResult = BiasResult{}
+			}
+
+			// Validate category
+			validCategory := false
+			for _, cat := range BiasCfg.Categories {
+				if biasResult.Category == cat {
+					validCategory = true
+					break
+				}
+			}
+			if !validCategory {
+				biasResult.Category = "unknown"
+			}
+
+			// Validate confidence
+			if biasResult.Confidence < 0 || biasResult.Confidence > 1 {
+				biasResult.Confidence = 0
+			}
+
+			// Heuristic cross-check
+			heuristicCategory := "unknown"
+			contentLower := strings.ToLower(content)
+			for cat, keywords := range BiasCfg.KeywordHeuristics {
+				for _, kw := range keywords {
+					if strings.Contains(contentLower, strings.ToLower(kw)) {
+						heuristicCategory = cat
+						break
+					}
+				}
+				if heuristicCategory != "unknown" {
+					break
+				}
+			}
+
+			metadataMap := map[string]interface{}{
+				"raw_response":      contentResp,
+				"parsed_bias":       biasResult,
+				"heuristic_category": heuristicCategory,
+			}
+			metadataBytes, _ := json.Marshal(metadataMap)
+
+			return &db.LLMScore{
+				Model:    o.model,
+				Score:    biasResult.Confidence,
+				Metadata: string(metadataBytes),
+			}, nil
+		}
+
+		log.Printf("OpenAI API call failed (attempt %d): %v", attempt, err)
+		time.Sleep(time.Duration(attempt) * time.Second)
+	}
+
+	return nil, errors.New("OpenAI API call failed after retries")
+}
+
+type LLMClient struct {
+	client     *resty.Client
+	cache      *Cache
+	db         *sqlx.DB
+	llmService LLMService
 }
 
 func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
+	client := resty.New()
+	cache := NewCache()
+
+	provider := os.Getenv("LLM_PROVIDER")
+	var service LLMService
+
+	switch provider {
+	case "openai":
+		apiKey := os.Getenv("OPENAI_API_KEY")
+		if apiKey == "" {
+			log.Println("Warning: OPENAI_API_KEY not set, falling back to mock LLM service")
+			service = &MockLLMService{}
+			break
+		}
+		model := os.Getenv("OPENAI_MODEL")
+		if model == "" {
+			model = "gpt-3.5-turbo"
+		}
+		service = NewOpenAILLMService(client, model, apiKey)
+	default:
+		service = &MockLLMService{}
+	}
+
 	return &LLMClient{
-		client: resty.New(),
-		cache:  NewCache(),
-		db:     dbConn,
+		client:     client,
+		cache:      cache,
+		db:         dbConn,
+		llmService: service,
 	}
 }
 
@@ -75,30 +275,6 @@ type apiResponse struct {
 	Metadata map[string]interface{} `json:"metadata"`
 }
 
-func (c *LLMClient) callAPI(url string, content string) (*apiResponse, error) {
-	var resp *resty.Response
-	var err error
-
-	for attempt := 1; attempt <= 3; attempt++ {
-		resp, err = c.client.R().
-			SetHeader("Content-Type", "application/json").
-			SetBody(map[string]string{"text": content}).
-			Post(url)
-
-		if err == nil && resp.IsSuccess() {
-			var apiResp apiResponse
-			if err := json.Unmarshal(resp.Body(), &apiResp); err != nil {
-				return nil, err
-			}
-			return &apiResp, nil
-		}
-
-		log.Printf("API call to %s failed (attempt %d): %v", url, attempt, err)
-		time.Sleep(time.Duration(attempt) * time.Second)
-	}
-
-	return nil, errors.New("API call failed after retries")
-}
 
 func (c *LLMClient) analyzeContent(articleID int64, content string, model string, url string) (*db.LLMScore, error) {
 	contentHash := hashContent(content)
@@ -108,20 +284,14 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 		return cached, nil
 	}
 
-	apiResp, err := c.callAPI(url, content)
+	score, err := c.llmService.Analyze(content)
 	if err != nil {
 		return nil, err
 	}
 
-	metaBytes, _ := json.Marshal(apiResp.Metadata)
-
-	score := &db.LLMScore{
-		ArticleID: articleID,
-		Model:     model,
-		Score:     apiResp.Score,
-		Metadata:  string(metaBytes),
-		CreatedAt: time.Now(),
-	}
+	score.ArticleID = articleID
+	score.Model = model
+	score.CreatedAt = time.Now()
 
 	// Cache it
 	c.cache.Set(contentHash, model, score)

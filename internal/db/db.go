@@ -25,6 +25,13 @@ type LLMScore struct {
 	Metadata  string    `db:"metadata"`
 	CreatedAt time.Time `db:"created_at"`
 }
+type Feedback struct {
+	ID           int64     `db:"id"`
+	ArticleID    int64     `db:"article_id"`
+	UserID       string    `db:"user_id"`
+	FeedbackText string    `db:"feedback_text"`
+	CreatedAt    time.Time `db:"created_at"`
+}
 
 func InitDB(dbPath string) (*sqlx.DB, error) {
 	db, err := sqlx.Open("sqlite", dbPath)
@@ -52,6 +59,15 @@ CREATE TABLE IF NOT EXISTS llm_scores (
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	FOREIGN KEY(article_id) REFERENCES articles(id)
 );
+
+CREATE TABLE IF NOT EXISTS feedback (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	article_id INTEGER,
+	user_id TEXT,
+	feedback_text TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY(article_id) REFERENCES articles(id)
+);
 `
 	_, err = db.Exec(schema)
 	if err != nil {
@@ -64,6 +80,15 @@ CREATE TABLE IF NOT EXISTS llm_scores (
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 	res, err := db.NamedExec(`INSERT INTO articles (source, pub_date, url, title, content) 
 	VALUES (:source, :pub_date, :url, :title, :content)`, article)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func InsertFeedback(db *sqlx.DB, feedback *Feedback) (int64, error) {
+	res, err := db.NamedExec(`INSERT INTO feedback (article_id, user_id, feedback_text)
+		VALUES (:article_id, :user_id, :feedback_text)`, feedback)
 	if err != nil {
 		return 0, err
 	}
