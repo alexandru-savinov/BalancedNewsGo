@@ -5,6 +5,8 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/joho/godotenv"
+
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/api"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
@@ -13,6 +15,11 @@ import (
 )
 
 func main() {
+	// Load environment variables from .env file if present
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found or error loading .env file (this is okay if env vars are set elsewhere)")
+	}
 	// Initialize database
 	dbConn, err := db.InitDB("news.db")
 	if err != nil {

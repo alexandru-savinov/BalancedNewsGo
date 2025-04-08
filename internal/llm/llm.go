@@ -3,6 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -178,6 +179,8 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 		}
 		req.SetBody(body)
 
+		log.Printf("[OpenAI] Sending real API request to %s with model %s", url, o.model)
+
 		resp, err = req.Post(url)
 
 		if err == nil && resp.IsSuccess() {
@@ -223,15 +226,29 @@ func parseOpenAIResponse(body []byte) (string, error) {
 		} `json:"choices"`
 	}
 
-	if err := json.Unmarshal(body, &openaiResp); err != nil {
-		return "", err
+	if err := json.Unmarshal(body, &openaiResp); err == nil {
+		if len(openaiResp.Choices) == 0 {
+			return "", errors.New("no choices in OpenAI response")
+		}
+		return openaiResp.Choices[0].Message.Content, nil
 	}
 
-	if len(openaiResp.Choices) == 0 {
-		return "", errors.New("no choices in OpenAI response")
+	// If parsing as chat completion failed, try parsing as error response
+	var openaiErr struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Param   string `json:"param"`
+			Code    string `json:"code"`
+		} `json:"error"`
+	}
+	if err2 := json.Unmarshal(body, &openaiErr); err2 == nil && openaiErr.Error.Message != "" {
+		return "", fmt.Errorf("OpenAI API error: %s (type: %s, code: %s)", openaiErr.Error.Message, openaiErr.Error.Type, openaiErr.Error.Code)
 	}
 
-	return openaiResp.Choices[0].Message.Content, nil
+	// Log raw response for debugging
+	log.Printf("Failed to parse OpenAI response as chat completion or error.\nRaw response:\n%s", string(body))
+	return "", errors.New("invalid OpenAI API response format")
 }
 
 func parseBiasResult(contentResp string) BiasResult {

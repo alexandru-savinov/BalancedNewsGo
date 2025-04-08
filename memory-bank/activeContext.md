@@ -89,3 +89,25 @@
 - **Bias detection logic requires refinement**; current heuristics sometimes yield inconsistent or incorrect results.
 - **Some logic tests in `internal/llm` continue to fail** due to variability in bias detection outputs.
 - Further improvements needed to stabilize and validate bias analysis.
+
+### OpenAI API Integration Anomaly (April 8, 2025)
+
+- Real OpenAI API calls are confirmed via logs.
+- However, responses fail to parse as JSON, causing repeated errors:
+  
+  `Failed to parse LLM JSON response: invalid character 'X' looking for beginning of value`
+  
+- This suggests unexpected API response format or a bug in parsing logic.
+- Needs urgent investigation and fix.
+
+### Improved Article Ranking & OpenAI Fallback (April 8, 2025)
+
+- **Multi-factor ranking** combines:
+  - **Bias balance score** (favoring diverse perspectives)
+  - **Recency score** (favoring newer articles)
+- **Fallback strategy:**
+  - If OpenAI bias scores are **missing or invalid**, use **recency score only** or apply a **penalty**.
+  - Flag such articles for **reprocessing or review**.
+  - Avoid top-ranking unreliable articles.
+- **Future extensions:** incorporate user feedback, source credibility, personalization.
+- **Goal:** Deliver a well-organized, balanced, and reliable article feed despite LLM issues.

@@ -144,3 +144,33 @@ func TestCallAPIPersistence(t *testing.T) {
 		t.Errorf("Expected 1 llm_score record, got %d", count)
 	}
 }
+
+func TestParseBiasResult(t *testing.T) {
+	contentResp := `{"bias":"left","confidence":0.85}`
+	result := parseBiasResult(contentResp)
+
+	if result.Category == "" {
+		t.Errorf("Expected bias category to be parsed, got empty string")
+	}
+	if result.Confidence == 0 {
+		t.Errorf("Expected confidence to be parsed, got 0")
+	}
+}
+
+func TestHeuristicCategory(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"This is a left-leaning statement", "left"},
+		{"This is a right-leaning statement", "right"},
+		{"This is a neutral statement", "neutral"},
+	}
+
+	for _, tt := range tests {
+		got := heuristicCategory(tt.input)
+		if got != tt.expected {
+			t.Errorf("heuristicCategory(%q) = %q; want %q", tt.input, got, tt.expected)
+		}
+	}
+}
