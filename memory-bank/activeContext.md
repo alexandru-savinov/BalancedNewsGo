@@ -41,6 +41,12 @@
 - Backend components integrated and functional end-to-end
 - Frontend enhanced with summaries, bias info, and feedback forms
 
+## Debugging and Diagnostics
+
+- Introduced **verbose logging** across backend modules to facilitate troubleshooting.
+- Fixed a **nil pointer dereference bug** in the LLM integration module, improving stability.
+- Improved configuration fallback logic to use environment variables when config files are unavailable.
+
 ## Next Steps and Improvements
 
 ### Quality Control Loops
@@ -77,3 +83,9 @@
 ### Documentation
 - Update README, API docs, and developer setup instructions
 - Document prompt templates and configuration options
+
+## Known Issues
+
+- **Bias detection logic requires refinement**; current heuristics sometimes yield inconsistent or incorrect results.
+- **Some logic tests in `internal/llm` continue to fail** due to variability in bias detection outputs.
+- Further improvements needed to stabilize and validate bias analysis.

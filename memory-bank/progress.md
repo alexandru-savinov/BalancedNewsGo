@@ -11,6 +11,10 @@
 - Backend audit completed, confirming modular design and identifying improvement areas
 - RSS fetching, database storage, LLM summarization, and REST API all functional
 - Minimal frontend operational with dynamic content loading
+- Enabled **golangci-lint** with stricter rules and added `.golangci.yml` configuration.
+- Fixed style issues and lint errors across the codebase.
+- Added verbose logging and fixed a nil pointer bug in the LLM module.
+- Resolved missing test data file errors, allowing tests to run more reliably.
 
 ## Current Focus
 - Testing and validation of new features
@@ -31,3 +35,11 @@
 - Frontend usability and design improvements needed
 - Multi-perspective extraction currently basic
 - Bias detection logic can be further enhanced
+
+## Test Suite Status
+
+- **Resolved:** Previous errors caused by missing test data files have been fixed.
+- **Remaining issues:** Several **logic tests in `internal/llm` still fail**.
+  - These failures are primarily due to **inconsistent or incorrect bias detection outputs**.
+  - The bias detection heuristics sometimes produce variable results, leading to test flakiness.
+  - Further refinement of the bias detection logic and more deterministic test cases are needed to resolve these failures.

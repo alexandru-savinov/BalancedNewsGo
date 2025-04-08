@@ -24,3 +24,10 @@
 - SQLite driver for Go
 - LLM API clients (OpenAI, etc.)
 - htmx JavaScript library
+
+## Development Tools and Configuration
+
+- Adopted **golangci-lint** with stricter linting rules to enforce code quality and consistency.
+- Added a `.golangci.yml` configuration file to customize linting behavior.
+- Improved configuration loading: the system now **falls back to environment variables** if configuration files are missing or incomplete, enhancing robustness.
+- Enhanced diagnostics by adding **verbose logging** throughout backend components, aiding debugging and monitoring.

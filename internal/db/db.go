@@ -83,6 +83,7 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return res.LastInsertId()
 }
 
@@ -92,12 +93,14 @@ func InsertFeedback(db *sqlx.DB, feedback *Feedback) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return res.LastInsertId()
 }
 
 func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
 	var count int
 	err := db.Get(&count, "SELECT COUNT(1) FROM articles WHERE url = ?", url)
+
 	return count > 0, err
 }
 
@@ -107,38 +110,44 @@ func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	return res.LastInsertId()
 }
 
-// FetchArticles with optional filters and pagination
+// FetchArticles with optional filters and pagination.
 func FetchArticles(db *sqlx.DB, source, leaning string, limit, offset int) ([]Article, error) {
 	query := "SELECT * FROM articles WHERE 1=1"
 	args := []interface{}{}
 
 	if source != "" {
 		query += " AND source = ?"
+
 		args = append(args, source)
 	}
 
 	// For MVP, leaning filter is ignored or can be implemented via join with llm_scores
 	query += " ORDER BY pub_date DESC LIMIT ? OFFSET ?"
+
 	args = append(args, limit, offset)
 
 	var articles []Article
 	err := db.Select(&articles, query, args...)
+
 	return articles, err
 }
 
-// FetchArticleByID returns a single article by ID
+// FetchArticleByID returns a single article by ID.
 func FetchArticleByID(db *sqlx.DB, id int64) (Article, error) {
 	var article Article
 	err := db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
+
 	return article, err
 }
 
-// FetchLLMScores returns all LLM scores for an article
+// FetchLLMScores returns all LLM scores for an article.
 func FetchLLMScores(db *sqlx.DB, articleID int64) ([]LLMScore, error) {
 	var scores []LLMScore
 	err := db.Select(&scores, "SELECT * FROM llm_scores WHERE article_id = ?", articleID)
+
 	return scores, err
 }

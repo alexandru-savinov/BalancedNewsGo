@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/go-resty/resty/v2"
 	"github.com/jmoiron/sqlx"
-
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
 type BiasConfig struct {
@@ -35,39 +36,59 @@ func LoadPromptTemplate(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return string(data), nil
 }
 
 func LoadBiasConfig(path string) (BiasConfig, error) {
 	var cfg BiasConfig
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return cfg, err
 	}
+
 	err = json.Unmarshal(data, &cfg)
+
 	return cfg, err
 }
 
 func init() {
 	var err error
-	PromptTemplate, err = LoadPromptTemplate("configs/prompt_template.txt")
-	if err != nil {
-		log.Fatalf("Failed to load prompt template: %v", err)
+
+	cwd, _ := os.Getwd()
+	log.Printf("Current working directory: %s", cwd)
+
+	promptPath := os.Getenv("PROMPT_TEMPLATE_PATH")
+	if promptPath != "" {
+		log.Printf("Using prompt template path from environment: %s", promptPath)
+		PromptTemplate, err = LoadPromptTemplate(promptPath)
+		if err != nil {
+			log.Fatalf("Failed to load prompt template from environment path: %v", err)
+		}
+	} else {
+		PromptTemplate, err = LoadPromptTemplate("configs/prompt_template.txt")
+		if err != nil {
+			log.Printf("Error loading prompt template from configs/prompt_template.txt: %v", err)
+			log.Fatalf("Failed to load prompt template: %v", err)
+		}
 	}
+
 	BiasCfg, err = LoadBiasConfig("configs/bias_config.json")
 	if err != nil {
+		log.Printf("Error loading bias config from configs/bias_config.json: %v", err)
 		log.Fatalf("Failed to load bias config: %v", err)
 	}
 }
 
-// LLM API endpoints
+// LLM API endpoints.
 var (
 	LeftModelURL   = "http://localhost:8001/analyze"
 	CenterModelURL = "https://api.openai.com/v1/chat/completions"
 	RightModelURL  = "http://localhost:8003/analyze"
 )
 
-// Cache key: hash(content) + model
+// Cache key: hash(content) + model.
 type cacheKey struct {
 	ContentHash string
 	Model       string
@@ -88,6 +109,7 @@ func (c *Cache) Get(contentHash, model string) (*db.LLMScore, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	score, ok := c.store[cacheKey{contentHash, model}]
+
 	return score, ok
 }
 
@@ -97,7 +119,7 @@ func (c *Cache) Set(contentHash, model string, score *db.LLMScore) {
 	c.store[cacheKey{contentHash, model}] = score
 }
 
-// Hash function placeholder (can replace with real hash)
+// Hash function placeholder (can replace with real hash).
 func hashContent(content string) string {
 	// For simplicity, use content itself (not recommended for production)
 	return content
@@ -112,6 +134,7 @@ type MockLLMService struct{}
 func (m *MockLLMService) Analyze(content string) (*db.LLMScore, error) {
 	score := 0.5 // fixed or random score
 	metadata := `{"mock": true}`
+
 	return &db.LLMScore{
 		Model:    "mock",
 		Score:    score,
@@ -139,6 +162,7 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 	url := "https://api.openai.com/v1/chat/completions"
 
 	var resp *resty.Response
+
 	var err error
 
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -157,65 +181,24 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 		resp, err = req.Post(url)
 
 		if err == nil && resp.IsSuccess() {
-			var openaiResp struct {
-				Choices []struct {
-					Message struct {
-						Content string `json:"content"`
-					} `json:"message"`
-				} `json:"choices"`
-			}
-			if err := json.Unmarshal(resp.Body(), &openaiResp); err != nil {
+			contentResp, err := parseOpenAIResponse(resp.Body())
+			if err != nil {
 				return nil, err
 			}
-			if len(openaiResp.Choices) == 0 {
-				return nil, errors.New("no choices in OpenAI response")
-			}
-			contentResp := openaiResp.Choices[0].Message.Content
 
-			var biasResult BiasResult
-			if err := json.Unmarshal([]byte(contentResp), &biasResult); err != nil {
-				log.Printf("Failed to parse LLM JSON response: %v", err)
-				biasResult = BiasResult{}
-			}
+			biasResult := parseBiasResult(contentResp)
 
-			// Validate category
-			validCategory := false
-			for _, cat := range BiasCfg.Categories {
-				if biasResult.Category == cat {
-					validCategory = true
-					break
-				}
-			}
-			if !validCategory {
-				biasResult.Category = "unknown"
-			}
-
-			// Validate confidence
-			if biasResult.Confidence < 0 || biasResult.Confidence > 1 {
-				biasResult.Confidence = 0
-			}
-
-			// Heuristic cross-check
-			heuristicCategory := "unknown"
-			contentLower := strings.ToLower(content)
-			for cat, keywords := range BiasCfg.KeywordHeuristics {
-				for _, kw := range keywords {
-					if strings.Contains(contentLower, strings.ToLower(kw)) {
-						heuristicCategory = cat
-						break
-					}
-				}
-				if heuristicCategory != "unknown" {
-					break
-				}
-			}
+			heuristicCat := heuristicCategory(content)
 
 			metadataMap := map[string]interface{}{
-				"raw_response":      contentResp,
-				"parsed_bias":       biasResult,
-				"heuristic_category": heuristicCategory,
+				"raw_response":       contentResp,
+				"parsed_bias":        biasResult,
+				"heuristic_category": heuristicCat,
 			}
-			metadataBytes, _ := json.Marshal(metadataMap)
+			metadataBytes, err := json.Marshal(metadataMap)
+			if err != nil {
+				log.Printf("Failed to marshal metadata: %v", err)
+			}
 
 			return &db.LLMScore{
 				Model:    o.model,
@@ -231,6 +214,71 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 	return nil, errors.New("OpenAI API call failed after retries")
 }
 
+func parseOpenAIResponse(body []byte) (string, error) {
+	var openaiResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.Unmarshal(body, &openaiResp); err != nil {
+		return "", err
+	}
+
+	if len(openaiResp.Choices) == 0 {
+		return "", errors.New("no choices in OpenAI response")
+	}
+
+	return openaiResp.Choices[0].Message.Content, nil
+}
+
+func parseBiasResult(contentResp string) BiasResult {
+	var biasResult BiasResult
+	if err := json.Unmarshal([]byte(contentResp), &biasResult); err != nil {
+		log.Printf("Failed to parse LLM JSON response: %v", err)
+
+		biasResult = BiasResult{}
+	}
+
+	// Validate category
+	validCategory := false
+
+	for _, cat := range BiasCfg.Categories {
+		if biasResult.Category == cat {
+			validCategory = true
+
+			break
+		}
+	}
+
+	if !validCategory {
+		biasResult.Category = "unknown"
+	}
+
+	// Validate confidence
+	if biasResult.Confidence < 0 || biasResult.Confidence > 1 {
+		biasResult.Confidence = 0
+	}
+
+	return biasResult
+}
+
+func heuristicCategory(content string) string {
+	contentLower := strings.ToLower(content)
+
+	for cat, keywords := range BiasCfg.KeywordHeuristics {
+		for _, kw := range keywords {
+			if strings.Contains(contentLower, strings.ToLower(kw)) {
+				return cat
+			}
+		}
+	}
+
+	return "unknown"
+}
+
 type LLMClient struct {
 	client     *resty.Client
 	cache      *Cache
@@ -243,6 +291,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	cache := NewCache()
 
 	provider := os.Getenv("LLM_PROVIDER")
+
 	var service LLMService
 
 	switch provider {
@@ -250,13 +299,17 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 		apiKey := os.Getenv("OPENAI_API_KEY")
 		if apiKey == "" {
 			log.Println("Warning: OPENAI_API_KEY not set, falling back to mock LLM service")
+
 			service = &MockLLMService{}
+
 			break
 		}
+
 		model := os.Getenv("OPENAI_MODEL")
 		if model == "" {
 			model = "gpt-3.5-turbo"
 		}
+
 		service = NewOpenAILLMService(client, model, apiKey)
 	default:
 		service = &MockLLMService{}
@@ -270,13 +323,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	}
 }
 
-type apiResponse struct {
-	Score    float64                `json:"score"`
-	Metadata map[string]interface{} `json:"metadata"`
-}
-
-
-func (c *LLMClient) analyzeContent(articleID int64, content string, model string, url string) (*db.LLMScore, error) {
+func (c *LLMClient) analyzeContent(articleID int64, content string, model string, _ string) (*db.LLMScore, error) {
 	contentHash := hashContent(content)
 
 	// Check cache
@@ -335,6 +382,7 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 		score, err := c.analyzeContent(article.ID, article.Content, m.name, m.url)
 		if err != nil {
 			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.name, err)
+
 			continue
 		}
 
@@ -356,14 +404,21 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 	// Delete existing scores
 	_, err = tx.Exec("DELETE FROM llm_scores WHERE article_id = ?", articleID)
 	if err != nil {
-		tx.Rollback()
+		if rbErr := tx.Rollback(); rbErr != nil {
+			log.Printf("tx.Rollback() failed: %v", rbErr)
+		}
+
 		return err
 	}
 
 	var article db.Article
+
 	err = tx.Get(&article, "SELECT * FROM articles WHERE id = ?", articleID)
 	if err != nil {
-		tx.Rollback()
+		if rbErr := tx.Rollback(); rbErr != nil {
+			log.Printf("tx.Rollback() failed: %v", rbErr)
+		}
+
 		return err
 	}
 
@@ -380,6 +435,7 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		score, err := c.analyzeContent(article.ID, article.Content, m.name, m.url)
 		if err != nil {
 			log.Printf("Error reanalyzing article %d with model %s: %v", article.ID, m.name, err)
+
 			continue
 		}
 

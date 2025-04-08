@@ -10,15 +10,17 @@ import (
 
 func TestArticlesEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
 	router := setupRouter()
 
-	req, _ := http.NewRequest("GET", "/articles", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/articles", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("Expected status 200, got %d", w.Code)
 	}
+
 	if len(w.Body.String()) == 0 {
 		t.Errorf("Expected non-empty response body")
 	}
@@ -26,9 +28,10 @@ func TestArticlesEndpoint(t *testing.T) {
 
 func TestHealthzEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
 	router := setupRouter()
 
-	req, _ := http.NewRequest("GET", "/healthz", nil)
+	req, _ := http.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -45,5 +48,6 @@ func setupRouter() *gin.Engine {
 	router.GET("/articles", func(c *gin.Context) {
 		c.String(200, "<div>Test Article</div>")
 	})
+
 	return router
 }

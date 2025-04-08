@@ -1,0 +1,58 @@
+linters-settings:
+  gocyclo:
+    min-complexity: 20
+  funlen:
+    lines: 100
+    statements: 50
+  lll:
+    line-length: 140
+  revive:
+    ignore-generated-header: true
+  errcheck:
+    check-type-assertions: true
+
+linters:
+  enable:
+    - govet
+    - revive
+    - errcheck
+    - staticcheck
+    - gosimple
+    - unused
+    - ineffassign
+    - typecheck
+    - gocritic
+    - gofmt
+    - goimports
+    - misspell
+    - unparam
+    - goconst
+    - gocyclo
+    - funlen
+    - lll
+    - dupl
+    - nakedret
+    - prealloc
+    - dogsled
+    - unconvert
+    - whitespace
+    - nolintlint
+  disable:
+    - depguard
+    - forbidigo
+
+run:
+  timeout: 5m
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - funlen
+        - gocyclo
+    - linters:
+        - dupl
+      text: "duplicated"
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-use-default: false

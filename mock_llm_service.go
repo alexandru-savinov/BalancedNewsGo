@@ -18,8 +18,12 @@ func analyzeHandler(label string, score float64) http.HandlerFunc {
 			Score: score,
 			Label: label,
 		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		}
 	}
 }
 
@@ -27,10 +31,12 @@ func main() {
 	if len(os.Args) < 3 {
 		log.Fatal("Usage: mock_llm_service <label> <port>")
 	}
+
 	label := os.Args[1]
 	port := os.Args[2]
 
 	var score float64
+
 	switch label {
 	case "left":
 		score = -1.0
@@ -45,6 +51,7 @@ func main() {
 	http.HandleFunc("/analyze", analyzeHandler(label, score))
 
 	log.Printf("Starting mock LLM service for %s on port %s...", label, port)
+
 	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
 		log.Fatalf("Failed to start server: %v", err)

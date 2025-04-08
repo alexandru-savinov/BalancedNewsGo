@@ -11,17 +11,26 @@ import (
 const testDBFile = "test.db"
 
 func setupTestDB(t *testing.T) *sqlx.DB {
-	os.Remove(testDBFile)
+	if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
+		t.Logf("Warning: failed to remove test DB file: %v", err)
+	}
+
 	dbConn, err := InitDB(testDBFile)
 	if err != nil {
 		t.Fatalf("Failed to init test DB: %v", err)
 	}
+
 	return dbConn
 }
 
 func TestInsertAndFetchArticle(t *testing.T) {
 	dbConn := setupTestDB(t)
-	defer os.Remove(testDBFile)
+
+	defer func() {
+		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
+			t.Logf("Warning: failed to remove test DB file: %v", err)
+		}
+	}()
 
 	article := &Article{
 		Source:  "Test Source",
@@ -40,6 +49,7 @@ func TestInsertAndFetchArticle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchArticles failed: %v", err)
 	}
+
 	if len(articles) == 0 || articles[0].ID != id {
 		t.Errorf("Inserted article not found")
 	}
@@ -47,7 +57,12 @@ func TestInsertAndFetchArticle(t *testing.T) {
 
 func TestInsertAndFetchLLMScore(t *testing.T) {
 	dbConn := setupTestDB(t)
-	defer os.Remove(testDBFile)
+
+	defer func() {
+		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
+			t.Logf("Warning: failed to remove test DB file: %v", err)
+		}
+	}()
 
 	article := &Article{
 		Source:  "Test Source",
@@ -56,6 +71,7 @@ func TestInsertAndFetchLLMScore(t *testing.T) {
 		Title:   "Test Title 2",
 		Content: "Test Content 2",
 	}
+
 	articleID, err := InsertArticle(dbConn, article)
 	if err != nil {
 		t.Fatalf("InsertArticle failed: %v", err)
@@ -68,6 +84,7 @@ func TestInsertAndFetchLLMScore(t *testing.T) {
 		Metadata:  "{}",
 		CreatedAt: time.Now(),
 	}
+
 	_, err = InsertLLMScore(dbConn, score)
 	if err != nil {
 		t.Fatalf("InsertLLMScore failed: %v", err)
@@ -77,6 +94,7 @@ func TestInsertAndFetchLLMScore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchLLMScores failed: %v", err)
 	}
+
 	if len(scores) == 0 || scores[0].ArticleID != articleID {
 		t.Errorf("Inserted LLM score not found")
 	}
