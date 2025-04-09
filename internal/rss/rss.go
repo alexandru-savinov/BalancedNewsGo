@@ -94,7 +94,24 @@ func (c *Collector) FetchAndStore() {
 				PubDate: pubTime,
 				URL:     item.Link,
 				Title:   item.Title,
-				Content: item.Content,
+				Content: func() string {
+					if item.Content != "" {
+						return item.Content
+					}
+					// Check for <content:encoded>
+					if ext, ok := item.Extensions["content"]; ok {
+						if encoded, ok := ext["encoded"]; ok && len(encoded) > 0 {
+							if encoded[0].Value != "" {
+								return encoded[0].Value
+							}
+						}
+					}
+					// Fallback to description
+					if item.Description != "" {
+						return item.Description
+					}
+					return ""
+				}(),
 			}
 
 			_, err = db.InsertArticle(c.DB, article)
@@ -106,13 +123,7 @@ func (c *Collector) FetchAndStore() {
 
 			log.Printf("[RSS] Inserted new article: %s", item.Link)
 
-			// Trigger political analysis
-			err = c.LLMClient.AnalyzeAndStore(article)
-			if err != nil {
-				log.Printf("[RSS] Failed to analyze article: %v", err)
-			} else {
-				log.Printf("[RSS] Political analysis completed for article: %s", item.Link)
-			}
+			// Bias scoring decoupled; perform in separate batch phase
 		}
 	}
 }

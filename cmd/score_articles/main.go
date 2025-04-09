@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -11,6 +12,11 @@ import (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found or error loading .env file (this is okay if env vars are set elsewhere)")
+	}
+
 	dbPath := "news.db"
 	conn, err := db.InitDB(dbPath)
 	if err != nil {
@@ -19,7 +25,7 @@ func main() {
 
 	llmClient := llm.NewLLMClient(conn)
 
-	const batchSize = 10000
+	const batchSize = 10
 	offset := 0
 	totalArticles := 0
 	totalScores := 0

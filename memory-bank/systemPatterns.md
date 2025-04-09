@@ -1,3 +1,13 @@
+<!-- Metadata -->
+Last updated: April 9, 2025
+Author: Roo AI Assistant
+
+# Changelog
+- **2025-04-09:** Added metadata and changelog sections. Planned expansion with error handling, security, sequence flows.
+- **Earlier:** Initial documentation of architecture, data flow, design patterns.
+
+---
+
 # System Patterns
 
 ## Architecture Overview

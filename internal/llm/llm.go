@@ -207,7 +207,6 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 	url := "https://api.openai.com/v1/chat/completions"
 
 	var resp *resty.Response
-
 	var err error
 
 	for attempt := 1; attempt <= 3; attempt++ {
@@ -227,20 +226,34 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 
 		resp, err = req.Post(url)
 
+		if err != nil {
+			log.Printf("[OpenAI] API request error: %v", err)
+		} else {
+			log.Printf("[OpenAI] API response status: %d", resp.StatusCode())
+			log.Printf("[OpenAI] API response body: %.500s", resp.String())
+		}
+
 		if err == nil && resp.IsSuccess() {
 			contentResp, err := parseOpenAIResponse(resp.Body())
 			if err != nil {
+				log.Printf("[Analyze] Failed to parse OpenAI response: %v\nRaw response:\n%s", err, string(resp.Body()))
 				return nil, err
 			}
 
 			biasResult := parseBiasResult(contentResp)
-
 			heuristicCat := heuristicCategory(content)
+
+			// Determine uncertainty
+			uncertain := false
+			if biasResult.Category == "unknown" || biasResult.Confidence < 0.3 {
+				uncertain = true
+			}
 
 			metadataMap := map[string]interface{}{
 				"raw_response":       contentResp,
 				"parsed_bias":        biasResult,
 				"heuristic_category": heuristicCat,
+				"uncertain":          uncertain,
 			}
 			metadataBytes, err := json.Marshal(metadataMap)
 			if err != nil {
@@ -270,6 +283,22 @@ func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
 		attempts++
 
 		if err == nil && score != nil {
+			var meta struct {
+				ParsedBias struct {
+					Category   string  `json:"Category"`
+					Confidence float64 `json:"Confidence"`
+				} `json:"parsed_bias"`
+			}
+			if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
+				log.Printf("[RobustAnalyze] Excluding response due to metadata parse error: %v", err)
+				continue
+			}
+			cat := strings.ToLower(strings.TrimSpace(meta.ParsedBias.Category))
+			conf := meta.ParsedBias.Confidence
+			if cat == "" || cat == "unknown" || conf <= 0 {
+				log.Printf("[RobustAnalyze] Excluding response with category='%s' confidence=%.2f", cat, conf)
+				continue
+			}
 			validScores = append(validScores, score)
 		} else {
 			log.Printf("[RobustAnalyze] Attempt %d failed: %v", attempts, err)
@@ -341,21 +370,17 @@ func parseBiasResult(contentResp string) BiasResult {
 	var biasResult BiasResult
 	if err := json.Unmarshal([]byte(contentResp), &biasResult); err != nil {
 		log.Printf("Failed to parse LLM JSON response: %v", err)
-
 		biasResult = BiasResult{}
 	}
 
 	// Validate category
 	validCategory := false
-
 	for _, cat := range BiasCfg.Categories {
 		if biasResult.Category == cat {
 			validCategory = true
-
 			break
 		}
 	}
-
 	if !validCategory {
 		biasResult.Category = "unknown"
 	}
@@ -401,11 +426,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	case "openai":
 		apiKey := os.Getenv("OPENAI_API_KEY")
 		if apiKey == "" {
-			log.Println("Warning: OPENAI_API_KEY not set, falling back to mock LLM service")
-
-			service = &MockLLMService{}
-
-			break
+			log.Fatal("ERROR: OPENAI_API_KEY not set, cannot use OpenAI LLM provider")
 		}
 
 		model := os.Getenv("OPENAI_MODEL")
@@ -415,7 +436,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 
 		service = NewOpenAILLMService(client, model, apiKey)
 	default:
-		service = &MockLLMService{}
+		log.Fatal("ERROR: LLM_PROVIDER not set or unknown, cannot initialize LLM service")
 	}
 
 	return &LLMClient{

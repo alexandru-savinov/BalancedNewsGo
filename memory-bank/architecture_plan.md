@@ -1,3 +1,13 @@
+<!-- Metadata -->
+Last updated: April 9, 2025
+Author: Roo AI Assistant
+
+# Changelog
+- **2025-04-09:** Added comprehensive continuous bias scoring & ensemble redesign, metadata, and changelog.
+- **Earlier:** Initial architecture plan with phased implementation, risk assessment, and future enhancements.
+
+---
+
 # Architectural Review & Refined Project Plan for NewsBalancer
 
 ---
@@ -126,6 +136,115 @@
 
 ---
 
-## Summary
+## 8. Continuous Bias Scoring & Ensemble Architecture (2025 Redesign)
 
-This refined plan fully aligns with the project’s requirements and roadmap, emphasizing **robust, multi-perspective bias detection** as the foundation for a balanced, explainable ranking system. It incorporates risk mitigation, quality control, and extensibility to ensure a successful MVP and a clear path for future growth.
+### Overview
+
+This redesign transitions from discrete bias labels to a **continuous, fine-grained bias score** framework, integrated with a multi-model, multi-prompt ensemble, advanced prompt engineering, diverse sampling, comprehensive storage, and systematic outlier analysis.
+
+---
+
+### Continuous Bias Scoring
+
+- **Range:** -1.0 (strongly left) to 1.0 (strongly right), in 0.1 increments.
+- **Interpretation:**  
+  - Strongly Left: -1.0 to -0.6  
+  - Moderately Left: -0.5 to -0.2  
+  - Center: -0.1 to 0.1  
+  - Moderately Right: 0.2 to 0.5  
+  - Strongly Right: 0.6 to 1.0
+- **Example:**  
+  "The billionaire class exploits workers" → -0.8 (strongly left)  
+  "Government overreach burdens taxpayers" → 0.7 (strongly right)  
+  "Experts debate the policy's impact" → 0.0 (neutral)
+
+---
+
+### Prompt Engineering
+
+- Explicitly request a **numerical score** and **detailed explanation**.
+- Provide **few-shot examples** covering the full spectrum.
+- Use **multiple prompt variants** focusing on different cues.
+- Discourage neutral defaults unless truly balanced.
+
+---
+
+### Multi-Model, Multi-Prompt Ensemble
+
+- **Models:** GPT-3.5, GPT-4, Claude, fine-tuned classifiers.
+- **Prompts:** Varied phrasings, examples, focus areas.
+- **Outputs:** Bias score, explanation, confidence.
+- **Aggregation:** Mean, weighted mean, variance.
+- **Uncertainty:** High variance or low confidence flags ambiguity.
+
+---
+
+### Diversity-Enforcing Data Pipeline
+
+- **Sources:** Left, right, center, fringe, international.
+- **Topics:** Politics, economy, culture, social issues.
+- **Time:** Recent and historical.
+- **Deduplication:** Remove redundant content.
+- **Partisan cues:** Preserve or highlight.
+- **Balanced sampling:** Enforce representation.
+
+---
+
+### Processing Pipeline
+
+1. Fetch diverse, deduplicated articles.
+2. Generate multiple prompt variants.
+3. Query multiple models.
+4. Collect scores, explanations, confidences.
+5. Aggregate results, compute variance.
+6. Threshold scores into categories.
+7. Quantify uncertainty.
+8. Store all data.
+9. Detect and flag outliers.
+10. Visualize and report.
+
+---
+
+### Comprehensive Storage & Outlier Analysis
+
+- **Store:**  
+  - Article metadata and content  
+  - Prompts and models used  
+  - Raw LLM responses  
+  - Parsed scores, explanations, confidences  
+  - Aggregated results, variance  
+  - Processing timestamps, system config
+- **Detect outliers:**  
+  - Extreme scores deviating from ensemble mean  
+  - High disagreement across ensemble  
+  - Sudden temporal shifts  
+  - Source-specific anomalies
+- **Visualize:**  
+  - Scatter plots, heatmaps, time series  
+  - Highlight flagged cases
+- **Benefits:**  
+  - Transparency, bias diagnosis, quality control, continuous improvement
+
+---
+
+### Visualization & User Experience
+
+- Bias distribution histograms and density plots.
+- Temporal trends with anomaly markers.
+- Source/topic breakdowns.
+- Interactive dashboards with outlier highlights.
+
+---
+
+### Feedback Loop
+
+- Validate against labeled datasets.
+- Track precision, recall, bias-specific metrics.
+- Refine prompts, models, weights.
+- Use flagged outliers to guide improvements.
+
+---
+
+### Summary
+
+This integrated redesign enables **granular, nuanced, transparent, and trustworthy** political bias detection, supporting robust analytics, continuous validation, and iterative refinement.

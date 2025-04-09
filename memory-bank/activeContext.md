@@ -111,3 +111,21 @@
   - Avoid top-ranking unreliable articles.
 - **Future extensions:** incorporate user feedback, source credibility, personalization.
 - **Goal:** Deliver a well-organized, balanced, and reliable article feed despite LLM issues.
+
+### Bias Scoring Diagnosis (April 9, 2025)
+
+**Root Causes:**
+- OpenAI API responses often fail to parse correctly. When parsing fails, the system defaults to empty or "unknown" results with zero confidence, which are still counted as valid. This skews the averaging process and hides underlying issues.
+- `RobustAnalyze` includes any non-error response as valid, even if it contains default or low-confidence data. Averaging these inconsistent or placeholder scores leads to unreliable bias detection.
+
+**Additional Factors:**
+- Simplistic heuristics.
+- Lack of detailed logging.
+- No differentiation between genuinely valid and fallback results.
+
+**Recommendations:**
+- Add detailed logging of each OpenAI response, parse success/failure, and score used in `RobustAnalyze`.
+- Exclude empty, "unknown", or zero-confidence results from valid scores.
+- Log raw content strings on parse failures to identify malformed outputs.
+- Track metrics on failure modes to guide improvements.
+- Review and enforce OpenAI prompt formatting to ensure consistent, parseable JSON responses.
