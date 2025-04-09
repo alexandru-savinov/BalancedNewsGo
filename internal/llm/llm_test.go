@@ -2,10 +2,13 @@ package llm
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"testing"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
@@ -173,4 +176,66 @@ func TestHeuristicCategory(t *testing.T) {
 			t.Errorf("heuristicCategory(%q) = %q; want %q", tt.input, got, tt.expected)
 		}
 	}
+}
+
+type mockOpenAI struct {
+	callCount int
+	model     string
+}
+
+func (m *mockOpenAI) Analyze(content string) (*db.LLMScore, error) {
+	m.callCount++
+	switch m.callCount {
+	case 1, 3, 6:
+		return nil, fmt.Errorf("simulated error")
+	default:
+		return &db.LLMScore{
+			Score: float64(m.callCount),
+		}, nil
+	}
+}
+
+func (m *mockOpenAI) RobustAnalyze(content string) (*db.LLMScore, error) {
+	var validScores []*db.LLMScore
+	var attempts int
+
+	for attempts < 10 && len(validScores) < 5 {
+		score, err := m.Analyze(content)
+		attempts++
+		if err == nil && score != nil {
+			validScores = append(validScores, score)
+		}
+	}
+
+	if len(validScores) < 5 {
+		return nil, fmt.Errorf("only %d valid responses after %d attempts", len(validScores), attempts)
+	}
+
+	scores := make([]float64, 5)
+	for i, s := range validScores {
+		scores[i] = s.Score
+	}
+	sort.Float64s(scores)
+	avg := (scores[1] + scores[2] + scores[3]) / 3.0
+
+	return &db.LLMScore{
+		Model: m.model,
+		Score: avg,
+	}, nil
+}
+
+func TestRobustAnalyze(t *testing.T) {
+	mock := &mockOpenAI{model: "mock-model"}
+
+	score, err := mock.RobustAnalyze("test content")
+	if err != nil {
+		t.Fatalf("RobustAnalyze failed: %v", err)
+	}
+	if score == nil {
+		t.Fatal("RobustAnalyze returned nil score")
+	}
+	if score.Score <= 0 {
+		t.Errorf("Expected positive average score, got %v", score.Score)
+	}
+	t.Logf("RobustAnalyze average score: %v", score.Score)
 }

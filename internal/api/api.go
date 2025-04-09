@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -34,9 +35,17 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch articles"})
-
 			return
 		}
+
+		for i := range articles {
+			scores, _ := db.FetchLLMScores(dbConn, articles[i].ID)
+			articles[i].CompositeScore = llm.ComputeCompositeScore(scores)
+		}
+
+		sort.Slice(articles, func(i, j int) bool {
+			return articles[i].CompositeScore > articles[j].CompositeScore
+		})
 
 		c.JSON(http.StatusOK, articles)
 	}
@@ -61,7 +70,12 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		scores, _ := db.FetchLLMScores(dbConn, id)
-		c.JSON(http.StatusOK, gin.H{"article": article, "scores": scores})
+		composite := llm.ComputeCompositeScore(scores)
+		c.JSON(http.StatusOK, gin.H{
+			"article":         article,
+			"scores":          scores,
+			"composite_score": composite,
+		})
 	}
 }
 

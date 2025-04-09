@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,49 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/jmoiron/sqlx"
 )
+
+func ComputeCompositeScore(scores []db.LLMScore) float64 {
+	var left, center, right *float64
+
+	for _, s := range scores {
+		switch strings.ToLower(s.Model) {
+		case "left":
+			left = &s.Score
+		case "center":
+			center = &s.Score
+		case "right":
+			right = &s.Score
+		}
+	}
+
+	// Default to 0 if missing
+	l := 0.0
+	if left != nil {
+		l = *left
+	}
+	c := 0.0
+	if center != nil {
+		c = *center
+	}
+	r := 0.0
+	if right != nil {
+		r = *right
+	}
+
+	avg := (l + c + r) / 3.0
+
+	// Composite favors balance (closer to center = higher score)
+	composite := 1.0 - abs(avg)
+
+	return composite
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
 
 type BiasConfig struct {
 	Categories          []string            `json:"categories"`
@@ -217,6 +261,48 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 	return nil, errors.New("OpenAI API call failed after retries")
 }
 
+func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
+	var validScores []*db.LLMScore
+	var attempts int
+
+	for attempts < 10 && len(validScores) < 5 {
+		score, err := o.Analyze(content)
+		attempts++
+
+		if err == nil && score != nil {
+			validScores = append(validScores, score)
+		} else {
+			log.Printf("[RobustAnalyze] Attempt %d failed: %v", attempts, err)
+		}
+	}
+
+	if len(validScores) < 5 {
+		return nil, fmt.Errorf("RobustAnalyze: only %d valid responses after %d attempts", len(validScores), attempts)
+	}
+
+	// Extract scores
+	scores := make([]float64, 5)
+	for i, s := range validScores {
+		scores[i] = s.Score
+	}
+
+	// Sort scores
+	sort.Float64s(scores)
+
+	// Average middle 3
+	sum := scores[1] + scores[2] + scores[3]
+	avg := sum / 3.0
+
+	// Use metadata from middle score (median)
+	medianScore := validScores[2]
+
+	return &db.LLMScore{
+		Model:    o.model,
+		Score:    avg,
+		Metadata: medianScore.Metadata,
+	}, nil
+}
+
 func parseOpenAIResponse(body []byte) (string, error) {
 	var openaiResp struct {
 		Choices []struct {
@@ -348,7 +434,14 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 		return cached, nil
 	}
 
-	score, err := c.llmService.Analyze(content)
+	var score *db.LLMScore
+	var err error
+
+	if openaiSvc, ok := c.llmService.(*OpenAILLMService); ok {
+		score, err = openaiSvc.RobustAnalyze(content)
+	} else {
+		score, err = c.llmService.Analyze(content)
+	}
 	if err != nil {
 		return nil, err
 	}

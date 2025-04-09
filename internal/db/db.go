@@ -8,13 +8,14 @@ import (
 )
 
 type Article struct {
-	ID        int64     `db:"id"`
-	Source    string    `db:"source"`
-	PubDate   time.Time `db:"pub_date"`
-	URL       string    `db:"url"`
-	Title     string    `db:"title"`
-	Content   string    `db:"content"`
-	CreatedAt time.Time `db:"created_at"`
+	ID             int64     `db:"id"`
+	Source         string    `db:"source"`
+	PubDate        time.Time `db:"pub_date"`
+	URL            string    `db:"url"`
+	Title          string    `db:"title"`
+	Content        string    `db:"content"`
+	CreatedAt      time.Time `db:"created_at"`
+	CompositeScore float64   `db:"-"`
 }
 
 type LLMScore struct {
