@@ -20,9 +20,28 @@ func main() {
 	llmClient := llm.NewLLMClient(conn)
 
 	feedURLs := []string{
+		// Left-leaning
+		"https://www.huffpost.com/section/front-page/feed",
+		"https://www.theguardian.com/world/rss",
+		"http://www.msnbc.com/feeds/latest",
+
+		// Right-leaning
+		"http://feeds.foxnews.com/foxnews/latest",
+		"https://www.breitbart.com/feed/",
+		"https://www.washingtontimes.com/rss/headlines/news/",
+
+		// Centrist / Mainstream
 		"https://feeds.bbci.co.uk/news/rss.xml",
 		"https://www.npr.org/rss/rss.php?id=1001",
-		// Add more feeds as needed
+		"http://feeds.reuters.com/reuters/topNews",
+
+		// International
+		"https://www.aljazeera.com/xml/rss/all.xml",
+		"https://rss.dw.com/rdf/rss-en-all",
+
+		// Alternative / Niche
+		"https://reason.com/feed/",
+		"https://theintercept.com/feed/?lang=en",
 	}
 
 	collector := rss.NewCollector(conn, feedURLs, llmClient)

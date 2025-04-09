@@ -42,6 +42,37 @@
         .bias-label {
             font-weight: bold;
         }
+        .bias-slider-container {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .bias-slider {
+            width: 100%;
+            height: 10px;
+            background: linear-gradient(to right, blue, gray, red);
+            border-radius: 5px;
+            position: relative;
+        }
+        .bias-indicator {
+            position: absolute;
+            top: -3px;
+            width: 6px;
+            height: 16px;
+            background: black;
+            border-radius: 2px;
+        }
+        .advanced-section {
+            display: none;
+            font-size: 0.85em;
+            background: #f9f9f9;
+            padding: 0.5rem;
+            border-radius: 5px;
+            border: 1px dashed #ccc;
+        }
+        .advanced-section.visible {
+            display: block;
+        }
         .feedback-form {
             margin-top: 0.5rem;
             display: none;
@@ -50,6 +81,19 @@
         }
         .feedback-form[aria-hidden="false"] {
             display: flex;
+        }
+        .feedback-options {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .rating {
+            display: flex;
+            gap: 0.2rem;
+        }
+        .rating span {
+            cursor: pointer;
+            font-size: 1.2em;
         }
         @media (max-width: 600px) {
             #filters, #pagination {
@@ -100,12 +144,35 @@
             </section>
             <section class="metadata">
                 <span class="bias-label" aria-label="Bias label">Center</span> |
-                <span class="confidence" aria-label="Confidence score">Confidence: 85%</span> |
+                <span class="confidence" aria-label="Confidence score">Confidence: 85%</span> ±5% |
                 <span class="composite-score" aria-label="Composite ranking score">Rank: 0.92</span>
             </section>
+            <div class="bias-slider-container">
+                <div class="bias-slider">
+                    <div class="bias-indicator" style="left:50%;"></div>
+                </div>
+            </div>
             <section class="explanation">
                 <p>Explanation of bias classification goes here.</p>
             </section>
+            <button type="button" onclick="toggleAdvanced(this)">Toggle Advanced View</button>
+            <section class="advanced-section">
+                <p><strong>Ensemble Sub-model Outputs:</strong></p>
+                <ul>
+                    <li>Model A: 0.4</li>
+                    <li>Model B: 0.5</li>
+                    <li>Model C: 0.6</li>
+                </ul>
+                <p><strong>Aggregation Stats:</strong> Mean=0.5, StdDev=0.1</p>
+            </section>
+            <div class="feedback-options">
+                <button>Too Left</button>
+                <button>Too Right</button>
+                <button>Agree</button>
+            </div>
+            <div class="rating" aria-label="Rate this article">
+                <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+            </div>
             <button hx-get="/feedback/form?article_id=123" hx-target="#feedback-123" hx-swap="outerHTML">Give Feedback</button>
             <div id="feedback-123" class="feedback-form" aria-hidden="true">
                 <form hx-post="/feedback/submit" hx-target="#feedback-123" hx-swap="outerHTML">
@@ -119,5 +186,54 @@
         </article>
         <p>Loading articles...</p>
     </main>
+<script>
+function toggleAdvanced(button) {
+    const adv = button.nextElementSibling;
+    adv.classList.toggle('visible');
+}
+
+// Simple frontend tests
+window.addEventListener('load', () => {
+    console.log('Running frontend tests...');
+    const biasSlider = document.querySelector('.bias-slider');
+    const indicator = document.querySelector('.bias-indicator');
+    const advancedToggle = document.querySelector('button[onclick="toggleAdvanced(this)"]');
+    const advancedSection = document.querySelector('.advanced-section');
+    const feedbackButtons = document.querySelectorAll('.feedback-options button');
+    const ratingStars = document.querySelectorAll('.rating span');
+
+    if (!biasSlider || !indicator) {
+        console.error('Bias slider or indicator missing');
+    } else {
+        console.log('Bias slider present');
+    }
+
+    if (!advancedToggle || !advancedSection) {
+        console.error('Advanced view toggle or section missing');
+    } else {
+        console.log('Advanced view toggle present');
+        advancedToggle.click();
+        if (!advancedSection.classList.contains('visible')) {
+            console.error('Advanced view did not open on toggle');
+        } else {
+            console.log('Advanced view toggle works');
+        }
+    }
+
+    if (feedbackButtons.length < 3) {
+        console.error('Feedback buttons missing');
+    } else {
+        console.log('Feedback buttons present');
+    }
+
+    if (ratingStars.length !== 5) {
+        console.error('Rating stars missing');
+    } else {
+        console.log('Rating stars present');
+    }
+
+    console.log('Frontend tests completed');
+});
+</script>
 </body>
 </html>

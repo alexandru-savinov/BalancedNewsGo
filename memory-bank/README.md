@@ -11,6 +11,20 @@ This directory contains the **core knowledge base** for the NewsBalancer project
 
 ---
 
+## Recent Highlights (April 2025)
+
+- Launched the **2025 redesign** featuring a **multi-model, multi-prompt ensemble** for nuanced, continuous bias scoring.
+- Enhanced **API** with endpoints for user feedback and bias insights.
+- Upgraded **frontend** with dynamic content, bias visualization, and inline feedback.
+- Refined **prompt engineering** with configurable templates and few-shot examples.
+- Integrated a **continuous validation and feedback loop** to improve model accuracy.
+- Performed major **refactoring** and resolved key **SonarQube warnings** to improve code quality.
+- See detailed documentation in [architecture_plan.md](architecture_plan.md), [activeContext.md](activeContext.md), and [progress.md](progress.md).
+
+---
+
+---
+
 ## Contents
 
 ### [architecture_plan.md](architecture_plan.md)

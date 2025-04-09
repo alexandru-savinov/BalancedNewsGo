@@ -5,6 +5,7 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/api"
@@ -15,33 +16,8 @@ import (
 )
 
 func main() {
-	// Load environment variables from .env file if present
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("No .env file found or error loading .env file (this is okay if env vars are set elsewhere)")
-	}
-	// Initialize database
-	dbConn, err := db.InitDB("news.db")
-	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-
-	var llmClient *llm.LLMClient
-
-	// Initialize LLM client
-	llmClient = llm.NewLLMClient(dbConn)
-
-	// Initialize RSS collector
-	feedURLs := []string{
-		"https://rss.cnn.com/rss/edition.rss",
-		"https://feeds.bbci.co.uk/news/rss.xml",
-		"https://www.npr.org/rss/rss.php?id=1001",
-	}
-	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
-	rssCollector.StartScheduler()
-
-	// Initialize LLM client
-	llmClient = llm.NewLLMClient(dbConn)
+	// Initialize services
+	dbConn, llmClient, rssCollector := initServices()
 
 	// Initialize Gin
 	router := gin.Default()
@@ -58,7 +34,68 @@ func main() {
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient)
 
 	// htmx endpoint for articles list with filters
-	router.GET("/articles", func(c *gin.Context) {
+	router.GET("/articles", articlesHandler(dbConn))
+
+	// htmx endpoint for article detail
+	router.GET("/article/:id", articleDetailHandler(dbConn))
+
+	// Start server
+	log.Println("Server running on :8080")
+
+	if err := router.Run(":8080"); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+}
+
+func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
+	// Load environment variables from .env file if present
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found or error loading .env file (this is okay if env vars are set elsewhere)")
+	}
+
+	// Initialize database
+	dbConn, err := db.InitDB("news.db")
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	// Initialize LLM client
+	llmClient := llm.NewLLMClient(dbConn)
+
+	// Initialize RSS collector
+	feedURLs := []string{
+		// Left-leaning
+		"https://www.huffpost.com/section/front-page/feed",
+		"https://www.theguardian.com/world/rss",
+		"http://www.msnbc.com/feeds/latest",
+
+		// Right-leaning
+		"http://feeds.foxnews.com/foxnews/latest",
+		"https://www.breitbart.com/feed/",
+		"https://www.washingtontimes.com/rss/headlines/news/",
+
+		// Centrist / Mainstream
+		"https://feeds.bbci.co.uk/news/rss.xml",
+		"https://www.npr.org/rss/rss.php?id=1001",
+		"http://feeds.reuters.com/reuters/topNews",
+
+		// International
+		"https://www.aljazeera.com/xml/rss/all.xml",
+		"https://rss.dw.com/rdf/rss-en-all",
+
+		// Alternative / Niche
+		"https://reason.com/feed/",
+		"https://theintercept.com/feed/?lang=en",
+	}
+	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
+	rssCollector.StartScheduler()
+
+	return dbConn, llmClient, rssCollector
+}
+
+func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		source := c.Query("source")
 		leaning := c.Query("leaning")
 
@@ -74,7 +111,6 @@ func main() {
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		if err != nil {
 			c.String(500, "Error fetching articles")
-
 			return
 		}
 
@@ -92,23 +128,22 @@ func main() {
 
 		c.Header("Content-Type", "text/html")
 		c.String(200, html)
-	})
+	}
+}
 
-	// htmx endpoint for article detail
-	router.GET("/article/:id", func(c *gin.Context) {
+func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		id := c.Param("id")
 
 		articleID, err := strconv.ParseInt(id, 10, 64)
 		if err != nil {
 			c.String(400, "Invalid article ID")
-
 			return
 		}
 
 		article, err := db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
 			c.String(404, "Article not found")
-
 			return
 		}
 
@@ -122,12 +157,5 @@ func main() {
 
 		c.Header("Content-Type", "text/html")
 		c.String(200, html)
-	})
-
-	// Start server
-	log.Println("Server running on :8080")
-
-	if err := router.Run(":8080"); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
 	}
 }

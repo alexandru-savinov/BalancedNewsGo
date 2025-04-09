@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -102,6 +103,18 @@ func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
 	var count int
 	err := db.Get(&count, "SELECT COUNT(1) FROM articles WHERE url = ?", url)
 
+	return count > 0, err
+}
+
+func ArticleExistsBySimilarTitle(db *sqlx.DB, title string, days int) (bool, error) {
+	var count int
+	query := `
+		SELECT COUNT(1) FROM articles
+		WHERE pub_date >= datetime('now', ?)
+		  AND LOWER(title) LIKE '%' || LOWER(?) || '%'
+	`
+	interval := fmt.Sprintf("-%d days", days)
+	err := db.Get(&count, query, interval, title)
 	return count > 0, err
 }
 

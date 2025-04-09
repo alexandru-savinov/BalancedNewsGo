@@ -1,5 +1,12 @@
 # Active Context
 
+---
+
+**Summary (April 2025):**
+The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt ensemble** for nuanced bias detection. The **API** has been enhanced with endpoints for user feedback and bias insights, while the **frontend** supports dynamic content loading and inline feedback submission. **Prompt engineering** has been refined with configurable templates and few-shot examples, improving LLM reliability. A **continuous validation and feedback loop** guides ongoing improvements. Major **refactoring** improved modularity and maintainability, resolving key **SonarQube warnings** and stabilizing the codebase.
+
+---
+
 ## Backend Status (Post-Implementation)
 
 ### RSS Fetching

@@ -1,2 +1,2 @@
-# Dummy prompt template for tests
+# Dummy prompt template for API tests
 This is a placeholder prompt template.

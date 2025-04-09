@@ -204,67 +204,13 @@ func NewOpenAILLMService(client *resty.Client, model, apiKey string) *OpenAILLMS
 func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 	prompt := strings.Replace(PromptTemplate, "{{ARTICLE_CONTENT}}", content, 1)
 
-	url := "https://api.openai.com/v1/chat/completions"
-
 	var resp *resty.Response
 	var err error
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		req := o.client.R().
-			SetHeader("Content-Type", "application/json").
-			SetHeader("Authorization", "Bearer "+o.apiKey)
-
-		body := map[string]interface{}{
-			"model":       o.model,
-			"messages":    []map[string]string{{"role": "user", "content": prompt}},
-			"max_tokens":  300,
-			"temperature": 0.7,
-		}
-		req.SetBody(body)
-
-		log.Printf("[OpenAI] Sending real API request to %s with model %s", url, o.model)
-
-		resp, err = req.Post(url)
-
-		if err != nil {
-			log.Printf("[OpenAI] API request error: %v", err)
-		} else {
-			log.Printf("[OpenAI] API response status: %d", resp.StatusCode())
-			log.Printf("[OpenAI] API response body: %.500s", resp.String())
-		}
-
-		if err == nil && resp.IsSuccess() {
-			contentResp, err := parseOpenAIResponse(resp.Body())
-			if err != nil {
-				log.Printf("[Analyze] Failed to parse OpenAI response: %v\nRaw response:\n%s", err, string(resp.Body()))
-				return nil, err
-			}
-
-			biasResult := parseBiasResult(contentResp)
-			heuristicCat := heuristicCategory(content)
-
-			// Determine uncertainty
-			uncertain := false
-			if biasResult.Category == "unknown" || biasResult.Confidence < 0.3 {
-				uncertain = true
-			}
-
-			metadataMap := map[string]interface{}{
-				"raw_response":       contentResp,
-				"parsed_bias":        biasResult,
-				"heuristic_category": heuristicCat,
-				"uncertain":          uncertain,
-			}
-			metadataBytes, err := json.Marshal(metadataMap)
-			if err != nil {
-				log.Printf("Failed to marshal metadata: %v", err)
-			}
-
-			return &db.LLMScore{
-				Model:    o.model,
-				Score:    biasResult.Confidence,
-				Metadata: string(metadataBytes),
-			}, nil
+		resp, err = o.callOpenAI(prompt)
+		if err == nil && resp != nil && resp.IsSuccess() {
+			return o.processOpenAIResponse(resp, content)
 		}
 
 		log.Printf("OpenAI API call failed (attempt %d): %v", attempt, err)
@@ -272,6 +218,73 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 	}
 
 	return nil, errors.New("OpenAI API call failed after retries")
+}
+
+func (o *OpenAILLMService) callOpenAI(prompt string) (*resty.Response, error) {
+	url := "https://api.openai.com/v1/chat/completions"
+
+	req := o.client.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Authorization", "Bearer "+o.apiKey)
+
+	body := map[string]interface{}{
+		"model":       o.model,
+		"messages":    []map[string]string{{"role": "user", "content": prompt}},
+		"max_tokens":  300,
+		"temperature": 0.7,
+	}
+	req.SetBody(body)
+
+	log.Printf("[OpenAI] Sending real API request to %s with model %s", url, o.model)
+
+	resp, err := req.Post(url)
+
+	if err != nil {
+		log.Printf("[OpenAI] API request error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[OpenAI] API response status: %d", resp.StatusCode())
+	log.Printf("[OpenAI] API response body: %.500s", resp.String())
+
+	if !resp.IsSuccess() {
+		return resp, errors.New("API response not successful")
+	}
+
+	return resp, nil
+}
+
+func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content string) (*db.LLMScore, error) {
+	contentResp, err := parseOpenAIResponse(resp.Body())
+	if err != nil {
+		log.Printf("[Analyze] Failed to parse OpenAI response: %v\nRaw response:\n%s", err, string(resp.Body()))
+		return nil, err
+	}
+
+	biasResult := parseBiasResult(contentResp)
+	heuristicCat := heuristicCategory(content)
+
+	uncertain := false
+	if biasResult.Category == "unknown" || biasResult.Confidence < 0.3 {
+		uncertain = true
+	}
+
+	metadataMap := map[string]interface{}{
+		"raw_response":       contentResp,
+		"parsed_bias":        biasResult,
+		"heuristic_category": heuristicCat,
+		"uncertain":          uncertain,
+	}
+	metadataBytes, err := json.Marshal(metadataMap)
+	if err != nil {
+		log.Printf("Failed to marshal metadata: %v", err)
+	}
+
+	return &db.LLMScore{
+		Model:    o.model,
+		Score:    biasResult.Confidence,
+		Metadata: string(metadataBytes),
+	}, nil
 }
 
 func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
@@ -458,11 +471,7 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 	var score *db.LLMScore
 	var err error
 
-	if openaiSvc, ok := c.llmService.(*OpenAILLMService); ok {
-		score, err = openaiSvc.RobustAnalyze(content)
-	} else {
-		score, err = c.llmService.Analyze(content)
-	}
+	score, err = c.EnsembleAnalyze(content)
 	if err != nil {
 		return nil, err
 	}

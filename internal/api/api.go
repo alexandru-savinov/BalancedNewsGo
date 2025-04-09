@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"sort"
@@ -13,6 +14,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+const errInvalidArticleID = "Invalid article ID"
+
 func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient) {
 	router.GET("/api/articles", getArticlesHandler(dbConn))
 	router.GET("/api/articles/:id", getArticleByIDHandler(dbConn))
@@ -20,6 +23,7 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(llmClient))
 	router.GET("/api/articles/:id/summary", summaryHandler(dbConn))
 	router.GET("/api/articles/:id/bias", biasHandler(dbConn))
+	router.GET("/api/articles/:id/ensemble", ensembleDetailsHandler(dbConn))
 	router.POST("/api/feedback", feedbackHandler(dbConn))
 }
 
@@ -57,7 +61,7 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid article ID"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
 
 			return
 		}
@@ -92,7 +96,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid article ID"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
 
 			return
 		}
@@ -112,7 +116,7 @@ func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid article ID"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
 
 			return
 		}
@@ -136,36 +140,121 @@ func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+func parseArticleID(c *gin.Context) (int64, bool) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
+		return 0, false
+	}
+	return int64(id), true
+}
+
+func filterAndTransformScores(scores []db.LLMScore, min, max float64) []map[string]interface{} {
+	var results []map[string]interface{}
+	for _, score := range scores {
+		if score.Model != "ensemble" {
+			continue
+		}
+		var meta map[string]interface{}
+		if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
+			continue
+		}
+		agg, _ := meta["aggregation"].(map[string]interface{})
+		weightedMean, _ := agg["weighted_mean"].(float64)
+		if weightedMean < min || weightedMean > max {
+			continue
+		}
+		result := map[string]interface{}{
+			"score":      weightedMean,
+			"metadata":   meta,
+			"created_at": score.CreatedAt,
+		}
+		results = append(results, result)
+	}
+	return results
+}
+
+func sortResults(results []map[string]interface{}, order string) {
+	if order == "asc" {
+		sort.Slice(results, func(i, j int) bool {
+			return results[i]["score"].(float64) < results[j]["score"].(float64)
+		})
+	} else {
+		sort.Slice(results, func(i, j int) bool {
+			return results[i]["score"].(float64) > results[j]["score"].(float64)
+		})
+	}
+}
+
 func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param("id")
+		articleID, ok := parseArticleID(c)
+		if !ok {
+			return
+		}
 
+		minScore, _ := strconv.ParseFloat(c.DefaultQuery("min_score", "-2"), 64)
+		maxScore, _ := strconv.ParseFloat(c.DefaultQuery("max_score", "2"), 64)
+		sortOrder := c.DefaultQuery("sort", "desc")
+
+		scores, err := db.FetchLLMScores(dbConn, articleID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch bias data"})
+			return
+		}
+
+		ensembleResults := filterAndTransformScores(scores, minScore, maxScore)
+		sortResults(ensembleResults, sortOrder)
+
+		c.JSON(http.StatusOK, gin.H{
+			"results": ensembleResults,
+		})
+	}
+}
+
+func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid article ID"})
-
+			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
 			return
 		}
 
 		scores, err := db.FetchLLMScores(dbConn, int64(id))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch bias data"})
-
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch ensemble data"})
 			return
 		}
 
+		var details []map[string]interface{}
 		for _, score := range scores {
-			if score.Model == "bias-detector" {
-				c.JSON(http.StatusOK, gin.H{
-					"bias_score": score.Score,
-					"metadata":   score.Metadata,
-				})
-
-				return
+			if score.Model != "ensemble" {
+				continue
 			}
+			var meta map[string]interface{}
+			if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
+				continue
+			}
+			subResults, _ := meta["sub_results"].([]interface{})
+			aggregation, _ := meta["aggregation"].(map[string]interface{})
+			details = append(details, map[string]interface{}{
+				"score":       score.Score,
+				"sub_results": subResults,
+				"aggregation": aggregation,
+				"created_at":  score.CreatedAt,
+			})
 		}
 
-		c.JSON(http.StatusNotFound, gin.H{"error": "Bias data not found"})
+		if len(details) == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Ensemble data not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"ensembles": details,
+		})
 	}
 }
 

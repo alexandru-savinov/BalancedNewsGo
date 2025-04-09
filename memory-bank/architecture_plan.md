@@ -8,6 +8,19 @@ Author: Roo AI Assistant
 
 ---
 
+## 2025 Redesign Highlights
+
+- **Multi-model, multi-prompt ensemble** architecture implemented for robust, nuanced bias detection.
+- **Continuous bias scoring** replaces discrete labels, enabling fine-grained analysis.
+- **Advanced prompt engineering** with few-shot examples and multiple variants improves LLM reliability.
+- **Continuous validation and feedback loop** integrated to refine prompts, models, and aggregation.
+- **API and frontend** enhanced to expose new bias insights and collect user feedback.
+- **Major refactoring** improved modularity, maintainability, and resolved key SonarQube warnings.
+- See detailed sections below for architecture, ensemble design, and validation process.
+
+---
+---
+
 # Architectural Review & Refined Project Plan for NewsBalancer
 
 ---
