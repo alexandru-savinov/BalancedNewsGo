@@ -1,4 +1,3 @@
-/*
 package main
 
 import (
@@ -63,4 +62,3 @@ func main() {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
-*/

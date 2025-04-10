@@ -245,7 +245,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, gin.H{
 			"composite_score": composite,
-			"results":         detailedResults,
+			"results":         ensembleResults,
 		})
 	}
 }

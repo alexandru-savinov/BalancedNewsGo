@@ -35,6 +35,7 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 	if len(promptSnippet) > 80 {
 		promptSnippet = promptSnippet[:80] + "..."
 	}
+	log.Printf("Prompt snippet [%s]: %s", promptHash, promptSnippet)
 
 	var rawResp string
 	var err error
@@ -97,11 +98,11 @@ func (c *LLMClient) callOpenAIAPI(model, prompt string) (string, error) {
 }
 
 func (c *LLMClient) callClaudeAPI(prompt string) (string, error) {
-	return "", fmt.Errorf("Claude API integration not implemented")
+	return "", fmt.Errorf("claude API integration not implemented")
 }
 
 func (c *LLMClient) callFineTunedModelAPI(prompt string) (string, error) {
-	return "", fmt.Errorf("Fine-tuned model API integration not implemented")
+	return "", fmt.Errorf("fine-tuned model API integration not implemented")
 }
 
 // parseLLMResponse extracts score, explanation, confidence from raw response

@@ -130,7 +130,7 @@ func processLabels(database *sqlx.DB, client *llm.LLMClient, labels []db.Label) 
 
 // analyzeLabel calls the LLM client and prepares the score object
 func analyzeLabel(client *llm.LLMClient, label db.Label) (*db.LLMScore, error) {
-	scoreObj, err := client.EnsembleAnalyze(label.Data)
+	scoreObj, err := client.EnsembleAnalyze(label.ID, label.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -210,21 +210,30 @@ func computeMetrics(metrics *Metrics) {
 func computeConfusionCounts(confusionMatrix map[string]map[string]int) (tp, fp, fn float64) {
 	for trueLbl, preds := range confusionMatrix {
 		for predLbl, count := range preds {
-			if predLbl != LabelNeutral && trueLbl != LabelNeutral {
-				if predLbl == trueLbl {
-					tp += float64(count)
-				} else {
-					fp += float64(count)
-					fn += float64(count)
-				}
-			} else if predLbl != LabelNeutral && trueLbl == LabelNeutral {
-				fp += float64(count)
-			} else if predLbl == LabelNeutral && trueLbl != LabelNeutral {
-				fn += float64(count)
-			}
+			tpDelta, fpDelta, fnDelta := updateCounts(trueLbl, predLbl, count)
+			tp += tpDelta
+			fp += fpDelta
+			fn += fnDelta
 		}
 	}
 	return tp, fp, fn
+}
+
+func updateCounts(trueLbl, predLbl string, count int) (tp, fp, fn float64) {
+	switch {
+	case predLbl != LabelNeutral && trueLbl != LabelNeutral:
+		if predLbl == trueLbl {
+			tp += float64(count)
+		} else {
+			fp += float64(count)
+			fn += float64(count)
+		}
+	case predLbl != LabelNeutral && trueLbl == LabelNeutral:
+		fp += float64(count)
+	case predLbl == LabelNeutral && trueLbl != LabelNeutral:
+		fn += float64(count)
+	}
+	return
 }
 
 func saveAndPrintResults(metrics Metrics) {

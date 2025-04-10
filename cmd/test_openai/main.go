@@ -27,8 +27,8 @@ func main() {
 
 	for _, model := range models {
 		log.Printf("Testing model: %s", model)
-		service := llm.NewOpenAILLMService(client, model, apiKey)
-		_, err := service.AnalyzeWithPrompt("Say hello", "")
+		service := llm.NewOpenAILLMService(client, apiKey)
+		_, err := service.AnalyzeWithPrompt(model, "Say hello", "")
 		if err != nil {
 			log.Printf("Model %s test failed: %v", model, err)
 		} else {

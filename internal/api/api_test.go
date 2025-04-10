@@ -55,12 +55,21 @@ func TestBiasHandlerFilterSort(t *testing.T) {
 	router.ServeHTTP(resp, req)
 
 	assert.Equal(t, 200, resp.Code)
-	var body map[string][]map[string]interface{}
-	err := json.Unmarshal(resp.Body.Bytes(), &body)
+	var raw map[string]interface{}
+	err := json.Unmarshal(resp.Body.Bytes(), &raw)
 	assert.NoError(t, err)
-	results := body["results"]
-	assert.Len(t, results, 2)
-	assert.True(t, results[0]["score"].(float64) < results[1]["score"].(float64))
+
+	resultsRaw, ok := raw["results"]
+	assert.True(t, ok, "response missing 'results' key")
+
+	resultsSlice, ok := resultsRaw.([]interface{})
+	assert.True(t, ok, "'results' is not an array")
+
+	assert.Len(t, resultsSlice, 2)
+
+	score0 := resultsSlice[0].(map[string]interface{})["score"].(float64)
+	score1 := resultsSlice[1].(map[string]interface{})["score"].(float64)
+	assert.True(t, score0 < score1)
 }
 
 func TestEnsembleDetailsHandler(t *testing.T) {

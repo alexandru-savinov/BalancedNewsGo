@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -89,7 +90,7 @@ func main() {
 
 	// Root welcome endpoint
 	router.GET("/", func(c *gin.Context) {
-		c.String(200, "Balanced News API Server")
+		c.File("./web/index.html")
 	})
 
 	// Start server
@@ -250,6 +251,26 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		html := ""
 		for _, a := range articles {
+			// Fetch scores for this article
+			scores, err := db.FetchLLMScores(dbConn, a.ID)
+			var compositeScore float64
+			var avgConfidence float64
+			if err == nil && len(scores) > 0 {
+				var weightedSum, sumWeights float64
+				for _, s := range scores {
+					var meta struct {
+						Confidence float64 `json:"confidence"`
+					}
+					_ = json.Unmarshal([]byte(s.Metadata), &meta)
+					weightedSum += s.Score * meta.Confidence
+					sumWeights += meta.Confidence
+				}
+				if sumWeights > 0 {
+					compositeScore = weightedSum / sumWeights
+					avgConfidence = sumWeights / float64(len(scores))
+				}
+			}
+
 			html += `<div>
 				<h3>
 					<a href="/article/` + strconv.FormatInt(a.ID, 10) + `"
@@ -257,6 +278,7 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 					   hx-target="#articles" hx-swap="innerHTML">` + a.Title + `</a>
 				</h3>
 				<p>` + a.Source + ` | ` + a.PubDate.Format("2006-01-02") + `</p>
+				<p>Score: ` + fmt.Sprintf("%.2f", compositeScore) + ` | Confidence: ` + fmt.Sprintf("%.0f%%", avgConfidence*100) + `</p>
 			</div>`
 		}
 
