@@ -19,6 +19,10 @@ import (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("No .env file found or error loading .env file:", err)
+	}
 	// Initialize services
 	dbConn, llmClient, rssCollector := initServices()
 

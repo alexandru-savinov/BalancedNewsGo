@@ -38,6 +38,8 @@ Focus on building the fundamental political analysis capabilities:
 
 ### Phase 2: API and Frontend Integration (Days 11-20)
 Connect the political analysis to the user interface:
+- Improve API fallback: when no valid LLM scores are available, the API now returns `"composite_score": null` and includes `"status": "scoring_unavailable"` instead of zeros, to clearly indicate unavailable scoring data.
+- **Frontend now detects these cases and displays "Scoring unavailable" or "No data" instead of zeros, with UI elements adjusted accordingly.**
 - Extend API endpoints to support political filtering and sorting
 - Update templates to display political scores
 - Implement basic filtering controls

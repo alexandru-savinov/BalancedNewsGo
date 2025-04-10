@@ -1,6 +1,6 @@
 # Memory Bank Index & Guide
 
-_Last updated: April 9, 2025_  
+_Last updated: April 10, 2025_  
 _Author: Roo AI Assistant_
 
 ---
@@ -19,9 +19,14 @@ This directory contains the **core knowledge base** for the NewsBalancer project
 - Refined **prompt engineering** with configurable templates and few-shot examples.
 - Integrated a **continuous validation and feedback loop** to improve model accuracy.
 - Performed major **refactoring** and resolved key **SonarQube warnings** to improve code quality.
-- See detailed documentation in [architecture_plan.md](architecture_plan.md), [activeContext.md](activeContext.md), and [progress.md](progress.md).
+- See detailed documentation in [architecture_plan.md](architecture_plan.md), [activeContext.md](activeContext.md), [progress.md](progress.md), and [systemTech.md](systemTech.md).
 
 ---
+
+## Changelog
+
+- **2025-04-10:** Restructured memory-bank: merged system patterns and tech context, archived outdated plans, updated links and metadata.
+- **2025-04-09:** Previous updates including UI redesign, metadata additions, and planned expansions.
 
 ---
 
@@ -39,8 +44,8 @@ This directory contains the **core knowledge base** for the NewsBalancer project
   - Metadata and changelog
 
 ### [productContext.md](productContext.md)
-- **Purpose:** Defines user needs, problem statement, and value proposition.
-- **Planned expansions:**  
+- **Purpose:** Defines user needs, problem statement, value proposition, and project brief.
+- **Includes:**  
   - User personas and stories  
   - Market landscape and KPIs  
   - Competitive differentiation  
@@ -55,14 +60,15 @@ This directory contains the **core knowledge base** for the NewsBalancer project
   - Planned expansions: blockers, retrospectives  
   - Metadata and changelog
 
-### [systemPatterns.md](systemPatterns.md)
-- **Purpose:** Documents backend architecture, data flow, and design patterns.
+### [systemTech.md](systemTech.md)
+- **Purpose:** Unified documentation of backend architecture, data flow, design patterns, and technology context.
 - **Includes:**  
   - Module breakdown  
   - Data flow steps  
   - Key design patterns  
+  - Technology stack and constraints  
+  - Development tools and frontend approach  
   - Opportunities for improvement  
-  - Planned expansions: error handling, security, sequence flows  
   - Metadata and changelog
 
 ---
@@ -90,147 +96,13 @@ This index ensures **easy navigation, onboarding, and maintenance** of the proje
 
 ---
 
-# API Examples
+## See Also
 
-### Bias Scores Endpoint (`/api/bias`)
-
-**Example Request:**
-```http
-GET /api/bias?article_id=123&min_score=-1&max_score=1&sort=asc HTTP/1.1
-Host: localhost:8080
-```
-
-**Example Response:**
-```json
-{
-  "results": [
-    {
-      "model": "gpt-4",
-      "perspective": "Left",
-      "score": -0.8,
-      "explanation": "Language suggests a progressive viewpoint."
-    },
-    {
-      "model": "gpt-4",
-      "perspective": "Right",
-      "score": 0.7,
-      "explanation": "Highlights conservative talking points."
-    }
-  ]
-}
-```
-
-**Error Response:**
-```json
-{
-  "error": "Failed to fetch bias data"
-}
-```
-
----
-
-# User Journeys
-
-```mermaid
-flowchart TD
-    A[User visits NewsBalancer] --> B[Views balanced news feed]
-    B --> C[Filters articles by bias score]
-    C --> D[Reads article details]
-    D --> E[Submits feedback on bias]
-    E --> F[Feedback stored and used to refine models]
-```
-
----
-
-# Architecture & Workflows
-
-### System Architecture
-
-```mermaid
-flowchart LR
-    subgraph Backend
-        RSS[RSS Module]
-        DB[Database]
-        LLM[LLM Module]
-        API[API Module]
-    end
-    Frontend --> API
-    RSS --> DB
-    LLM --> DB
-    API --> DB
-```
-
-### Data Processing Workflow
-
-```mermaid
-flowchart LR
-    Fetch[Fetch RSS Feeds] --> StoreRaw[Store Raw Articles]
-    StoreRaw --> Analyze[Analyze with LLMs]
-    Analyze --> StoreAnalysis[Store Bias Scores]
-    StoreAnalysis --> API[Expose via API]
-    API --> Frontend[Display on Frontend]
-```
-
-### Bias Detection Sequence
-
-```mermaid
-sequenceDiagram
-    participant FE as Frontend
-    participant API as API Server
-    participant LLM as LLM Service
-    participant DB as Database
-
-    FE->>API: Request bias scores for article
-    API->>DB: Fetch article content
-    API->>LLM: Send prompts for Left, Center, Right
-    LLM-->>API: Return bias scores & explanations
-    API->>DB: Store scores
-    API-->>FE: Return scores to frontend
-```
-
----
-
-# Bias Detection Examples
-
-| Perspective | Score  | Explanation                                         |
-|-------------|--------|-----------------------------------------------------|
-| Left        | -0.9   | Emphasizes social justice themes                   |
-| Center      | 0.0    | Neutral, factual reporting                         |
-| Right       | 0.8    | Focuses on economic freedom, conservative values   |
-
-### Edge Cases
-
-- **Contradictory signals:**
-  *Left: -0.2, Center: 0.1, Right: 0.7*
-  → Mixed framing, subtle bias.
-
-- **Ambiguous content:**
-  *All scores near 0*
-  → Likely neutral or vague article.
-
-### Error Handling
-
-- **Timeouts from LLM API:**
-```json
-{ "error": "LLM service unavailable, please retry later" }
-```
-
-- **Invalid article ID:**
-```json
-{ "error": "Article not found" }
-```
-
----
-
-## Recent Highlights (May 2025)
-
-- Fully automated **validation and feedback loop** integrated into CI/CD, enabling continuous model improvement with minimal manual intervention.
-- **Continuous feedback ingestion** with real-time dashboards for monitoring bias scores, user input, and system health.
-- Comprehensive **QA framework** implemented, including automated tests, linting, peer reviews, and documentation checks.
-- Resolved outstanding **SonarQube** issues and **lint** warnings, improving code quality, security, and maintainability.
-
-See detailed documentation in:
 - [architecture_plan.md](architecture_plan.md)
+- [productContext.md](productContext.md)
 - [progress.md](progress.md)
-- [memory-bank-update-plan.md](memory-bank-update-plan.md)
-- [memory-bank-enhancement-plan.md](memory-bank-enhancement-plan.md)
+- [systemTech.md](systemTech.md)
+
+---
+
+*Note: Files `memory-bank-update-plan.md`, `memory-bank-enhancement-plan.md`, `projectbrief.md`, `systemPatterns.md`, and `techContext.md` have been archived or merged as part of the April 2025 restructuring.*

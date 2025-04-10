@@ -1,11 +1,18 @@
 <!-- Metadata -->
-Last updated: April 10, 2025
+Last updated: April 10, 2025  
 Author: Roo AI Assistant
 
 # Changelog
+- **2025-04-10:** Inserted project brief from `projectbrief.md` at the top. Part of memory-bank restructuring.
 - **2025-04-10:** Documented article page UI/UX redesign with interactive bias visualization, image optimization, and layout improvements.
 - **2025-04-09:** Added metadata and changelog sections. Planned expansion with personas, user stories, KPIs.
 - **Earlier:** Initial product context with user needs, problem statement, and value proposition.
+
+---
+
+# Project Brief: BalancedNewsGo
+
+BalancedNewsGo is a news aggregation platform designed to provide users with a balanced, multi-perspective view of current events. It leverages Large Language Models (LLMs) to analyze news articles from diverse sources, summarize differing viewpoints, and highlight potential biases. The goal is to help users break out of echo chambers and develop a more nuanced understanding of the news.
 
 ---
 

@@ -190,6 +190,11 @@ func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
 	return res.LastInsertId()
 }
 
+func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
+	_, err := db.Exec(`UPDATE articles SET score = ?, confidence = ? WHERE id = ?`, score, confidence, articleID)
+	return err
+}
+
 // FetchArticles with optional filters and pagination.
 func FetchArticles(db *sqlx.DB, source, leaning string, limit, offset int) ([]Article, error) {
 	query := "SELECT * FROM articles WHERE 1=1"

@@ -39,6 +39,11 @@ func main() {
 			break
 		}
 
+		// Limit to first 5 articles only
+		if len(articles) > 5 {
+			articles = articles[:5]
+		}
+
 		for _, article := range articles {
 			err := llmClient.AnalyzeAndStore(&article)
 			if err != nil {
@@ -49,7 +54,8 @@ func main() {
 		}
 
 		totalArticles += len(articles)
-		offset += batchSize
+		// After processing first 5, exit loop
+		break
 	}
 
 	fmt.Printf("Scoring complete.\n")

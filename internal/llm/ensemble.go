@@ -26,61 +26,79 @@ func (pv *PromptVariant) GeneratePrompt(content string) string {
 
 // callLLM queries a specific LLM with a prompt variant
 func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant PromptVariant, content string) (float64, string, float64, string, error) {
-	prompt := promptVariant.GeneratePrompt(content)
-
-	// Compute prompt hash for logging
-	h := sha256.Sum256([]byte(prompt))
-	promptHash := fmt.Sprintf("%x", h[:8]) // first 8 bytes as hex string
-	promptSnippet := prompt
-	if len(promptSnippet) > 80 {
-		promptSnippet = promptSnippet[:80] + "..."
-	}
-	log.Printf("Prompt snippet [%s]: %s", promptHash, promptSnippet)
-
+	maxRetries := 2
+	var lastErr error
 	var rawResp string
-	var err error
+	var score, confidence float64
+	var explanation string
 
-	switch modelName {
-	case "gpt-3.5", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo":
-		rawResp, err = c.callOpenAIAPI(modelName, prompt)
-	case "claude":
-		rawResp, err = c.callClaudeAPI(prompt)
-	case "finetuned":
-		rawResp, err = c.callFineTunedModelAPI(prompt)
-	default:
-		log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Unsupported model", articleID, modelName, promptHash)
-		return 0, "", 0, "", fmt.Errorf("unsupported model: %s", modelName)
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		prompt := promptVariant.GeneratePrompt(content)
+
+		// Compute prompt hash for logging
+		h := sha256.Sum256([]byte(prompt))
+		promptHash := fmt.Sprintf("%x", h[:8]) // first 8 bytes as hex string
+		promptSnippet := prompt
+		if len(promptSnippet) > 80 {
+			promptSnippet = promptSnippet[:80] + "..."
+		}
+		log.Printf("Prompt snippet [%s] (attempt %d): %s", promptHash, attempt+1, promptSnippet)
+
+		var err error
+		switch modelName {
+		case "gpt-3.5", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo":
+			rawResp, err = c.callOpenAIAPI(modelName, prompt)
+		case "claude":
+			rawResp, err = c.callClaudeAPI(prompt)
+		case "finetuned":
+			rawResp, err = c.callFineTunedModelAPI(prompt)
+		default:
+			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Unsupported model", articleID, modelName, promptHash)
+			return 0, "", 0, "", fmt.Errorf("unsupported model: %s", modelName)
+		}
+		if err != nil {
+			rawSnippet := rawResp
+			if len(rawSnippet) > 200 {
+				rawSnippet = rawSnippet[:200] + "..."
+			}
+			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | API error: %v | Raw response: %s", articleID, modelName, promptHash, err, rawSnippet)
+			if articleID == 133 {
+				log.Printf("[DEBUG][Article 133] API error: %v", err)
+				log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
+			}
+			lastErr = err
+			continue
+		}
+
+		var parseErr error
+		score, explanation, confidence, parseErr = parseLLMResponse(rawResp)
+		if parseErr != nil {
+			rawSnippet := rawResp
+			if len(rawSnippet) > 200 {
+				rawSnippet = rawSnippet[:200] + "..."
+			}
+			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Parse error: %v | Raw response: %s", articleID, modelName, promptHash, parseErr, rawSnippet)
+			if articleID == 133 {
+				log.Printf("[DEBUG][Article 133] Parse error: %v", parseErr)
+				log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
+			}
+			lastErr = parseErr
+			continue
+		}
+
+		// Validate parsed values
+		if confidence == 0 {
+			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Invalid zero confidence, retrying...", articleID, modelName, promptHash)
+			lastErr = fmt.Errorf("invalid zero confidence")
+			continue
+		}
+
+		log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Success | Score: %.3f | Confidence: %.3f", articleID, modelName, promptHash, score, confidence)
+		return score, explanation, confidence, rawResp, nil
 	}
-	if err != nil {
-		rawSnippet := rawResp
-		if len(rawSnippet) > 200 {
-			rawSnippet = rawSnippet[:200] + "..."
-		}
-		log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | API error: %v | Raw response: %s", articleID, modelName, promptHash, err, rawSnippet)
-		if articleID == 133 {
-			log.Printf("[DEBUG][Article 133] API error: %v", err)
-			log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
-		}
-		return 0, "", 0, rawResp, err
-	}
 
-	score, explanation, confidence, parseErr := parseLLMResponse(rawResp)
-	if parseErr != nil {
-		rawSnippet := rawResp
-		if len(rawSnippet) > 200 {
-			rawSnippet = rawSnippet[:200] + "..."
-		}
-		log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Parse error: %v | Raw response: %s", articleID, modelName, promptHash, parseErr, rawSnippet)
-		if articleID == 133 {
-			log.Printf("[DEBUG][Article 133] Parse error: %v", parseErr)
-			log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
-		}
-		return 0, "", 0, rawResp, parseErr
-	}
-
-	log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Success | Score: %.3f | Confidence: %.3f", articleID, modelName, promptHash, score, confidence)
-
-	return score, explanation, confidence, rawResp, nil
+	log.Printf("[LLM] ArticleID %d | Model %s | Final failure after retries. Last error: %v", articleID, modelName, lastErr)
+	return 0, "", 0, rawResp, lastErr
 }
 
 func (c *LLMClient) callOpenAIAPI(model, prompt string) (string, error) {
@@ -107,16 +125,37 @@ func (c *LLMClient) callFineTunedModelAPI(prompt string) (string, error) {
 
 // parseLLMResponse extracts score, explanation, confidence from raw response
 func parseLLMResponse(rawResp string) (float64, string, float64, error) {
-	var resp struct {
+	// Step 1: Parse the OpenAI API response JSON
+	var apiResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	err := json.Unmarshal([]byte(rawResp), &apiResp)
+	if err != nil {
+		return 0, "", 0, fmt.Errorf("error parsing OpenAI API response JSON: %w", err)
+	}
+	if len(apiResp.Choices) == 0 {
+		return 0, "", 0, fmt.Errorf("no choices in OpenAI API response")
+	}
+
+	// Step 2: Extract the content string
+	contentStr := apiResp.Choices[0].Message.Content
+
+	// Step 3: Parse the content string as JSON with score, explanation, confidence
+	var innerResp struct {
 		Score       float64 `json:"score"`
 		Explanation string  `json:"explanation"`
 		Confidence  float64 `json:"confidence"`
 	}
-	err := json.Unmarshal([]byte(rawResp), &resp)
+	err = json.Unmarshal([]byte(contentStr), &innerResp)
 	if err != nil {
-		return 0, "", 0, err
+		return 0, "", 0, fmt.Errorf("error parsing inner content JSON: %w", err)
 	}
-	return resp.Score, resp.Explanation, resp.Confidence, nil
+
+	return innerResp.Score, innerResp.Explanation, innerResp.Confidence, nil
 }
 
 // EnsembleAnalyze performs multi-model, multi-prompt ensemble analysis
@@ -251,7 +290,7 @@ func loadPromptVariants() []PromptVariant {
 		{
 			ID: "default",
 			Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) " +
-				"to 1.0 (strongly right). Respond with a JSON object containing 'score', 'explanation', and 'confidence'.",
+				"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
@@ -262,7 +301,7 @@ func loadPromptVariants() []PromptVariant {
 			ID: "left_focus",
 			Template: "From a progressive or left-leaning perspective, analyze the political bias of the following article " +
 				promptScaleFragment +
-				promptJsonFieldsFragment,
+				promptJsonFieldsFragment + "\nRespond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Strongly aligns with progressive viewpoints", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Balanced or neutral reporting", "confidence": 0.95}`,
@@ -273,7 +312,7 @@ func loadPromptVariants() []PromptVariant {
 			ID: "center_focus",
 			Template: "From a centrist or neutral perspective, analyze the political bias of the following article " +
 				promptScaleFragment +
-				promptJsonFieldsFragment,
+				promptJsonFieldsFragment + "\nRespond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Clearly favors left-leaning positions", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Appears balanced without clear bias", "confidence": 0.95}`,
@@ -284,7 +323,7 @@ func loadPromptVariants() []PromptVariant {
 			ID: "right_focus",
 			Template: "From a conservative or right-leaning perspective, analyze the political bias of the following article " +
 				promptScaleFragment +
-				promptJsonFieldsFragment,
+				promptJsonFieldsFragment + "\nRespond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Strongly opposes conservative viewpoints", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Balanced or neutral reporting", "confidence": 0.95}`,

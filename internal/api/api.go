@@ -194,6 +194,13 @@ func sortResults(results []map[string]interface{}, order string) {
 	}
 }
 
+// biasHandler returns article bias scores and composite score.
+// If no valid LLM scores are available, the API responds with:
+//   - "composite_score": null
+//   - "status": "scoring_unavailable"
+// instead of defaulting to zero values.
+// This indicates that scoring data is currently unavailable.
+
 func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		articleID, ok := parseArticleID(c)
@@ -236,17 +243,22 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			})
 		}
 
-		var composite float64
+		var composite interface{}
+		status := ""
 		if totalWeight > 0 {
 			composite = weightedSum / totalWeight
 		} else {
-			composite = 0
+			composite = nil
+			status = "scoring_unavailable"
 		}
-
-		c.JSON(http.StatusOK, gin.H{
+		resp := gin.H{
 			"composite_score": composite,
 			"results":         ensembleResults,
-		})
+		}
+		if status != "" {
+			resp["status"] = status
+		}
+		c.JSON(http.StatusOK, resp)
 	}
 }
 

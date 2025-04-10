@@ -6,11 +6,16 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 
+	"github.com/joho/godotenv"
+
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found or error loading .env:", err)
+	}
 	conn, err := sqlx.Open("sqlite", "news.db")
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)

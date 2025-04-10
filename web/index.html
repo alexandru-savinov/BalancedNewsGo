@@ -298,12 +298,41 @@
                         const compositeScore = data.composite_score;
                         const results = data.results;
 
-                        // Update composite label and score
                         const biasLabel = document.querySelector('.bias-label');
                         const confidenceSpan = document.querySelector('.confidence');
                         const compositeScoreSpan = document.querySelector('.composite-score');
                         const explanationP = document.getElementById('bias-explanation');
+                        const compositeIndicator = document.querySelector('.composite-indicator');
+                        const slider = document.querySelector('.bias-slider');
+                        const list = document.getElementById('model-details-list');
 
+                        // Check for unavailable scoring
+                        if (
+                            data.status === "scoring_unavailable" ||
+                            compositeScore === null || compositeScore === undefined ||
+                            !results || results.length === 0 ||
+                            results.every(r => r.score === null || r.score === undefined)
+                        ) {
+                            biasLabel.textContent = "Composite: Scoring unavailable";
+                            compositeScoreSpan.textContent = "Score: No data";
+                            confidenceSpan.textContent = "Confidence: No data";
+                            explanationP.textContent = "Bias scoring data is currently unavailable.";
+
+                            // Hide or gray out composite indicator
+                            compositeIndicator.style.left = "50%";
+                            compositeIndicator.style.backgroundColor = "#ccc";
+                            compositeIndicator.title = "Scoring unavailable";
+
+                            // Remove old model indicators
+                            document.querySelectorAll('.model-indicator').forEach(e => e.remove());
+
+                            // Clear advanced list
+                            list.innerHTML = '';
+
+                            return;
+                        }
+
+                        // Normal update logic
                         let labelText = 'Center';
                         if (compositeScore < -0.5) labelText = 'Left';
                         else if (compositeScore < -0.1) labelText = 'Slightly Left';
@@ -321,18 +350,18 @@
                         const avgConf = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
                         confidenceSpan.textContent = `Confidence: ${(avgConf * 100).toFixed(0)}%`;
 
-                        // Composite explanation (first explanation or combined)
+                        // Composite explanation
                         explanationP.textContent = results.map(r => `${r.model}: ${r.explanation}`).join(' | ');
 
                         // Position composite indicator
-                        const compositeIndicator = document.querySelector('.composite-indicator');
                         compositeIndicator.style.left = `${((compositeScore + 1) / 2) * 100}%`;
+                        compositeIndicator.style.backgroundColor = "black";
+                        compositeIndicator.title = "Composite Score";
 
                         // Remove old model indicators
                         document.querySelectorAll('.model-indicator').forEach(e => e.remove());
 
                         // Add model indicators
-                        const slider = document.querySelector('.bias-slider');
                         results.forEach(r => {
                             const ind = document.createElement('div');
                             ind.className = 'bias-indicator model-indicator';
@@ -342,7 +371,6 @@
                         });
 
                         // Populate advanced list
-                        const list = document.getElementById('model-details-list');
                         list.innerHTML = '';
                         results.forEach(r => {
                             const li = document.createElement('li');

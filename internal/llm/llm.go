@@ -563,9 +563,31 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 	var score *db.LLMScore
 	var err error
 
-	score, err = c.EnsembleAnalyze(articleID, content)
+	// Use only the general/default prompt variant to limit to 1 API call per model
+	generalPrompt := PromptVariant{
+		ID: "default",
+		Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) " +
+			"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
+		Examples: []string{
+			`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
+			`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
+			`{"score": 1.0, "explanation": "Strongly right-leaning language", "confidence": 0.9}`,
+		},
+	}
+
+	scoreVal, explanation, confidence, _, err := c.callLLM(articleID, model, generalPrompt, content)
 	if err != nil {
 		return nil, err
+	}
+
+	meta := fmt.Sprintf(`{"explanation": %q, "confidence": %.3f}`, explanation, confidence)
+
+	score = &db.LLMScore{
+		ArticleID: articleID,
+		Model:     model,
+		Score:     scoreVal,
+		Metadata:  meta,
+		CreatedAt: time.Now(),
 	}
 
 	score.ArticleID = articleID
@@ -688,6 +710,31 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		if err != nil {
 			log.Printf("Error inserting ensemble score for article %d: %v", article.ID, err)
 		}
+
+		// Parse ensemble metadata to extract variance and compute confidence
+		var metaMap map[string]interface{}
+		if err := json.Unmarshal([]byte(ensembleScore.Metadata), &metaMap); err != nil {
+			log.Printf("Error parsing ensemble metadata for article %d: %v", article.ID, err)
+		} else {
+			confidence := 0.0
+			if finalAgg, ok := metaMap["final_aggregation"].(map[string]interface{}); ok {
+				if varianceVal, ok := finalAgg["variance"].(float64); ok {
+					confidence = 1.0 - varianceVal
+					if confidence < 0 {
+						confidence = 0
+					}
+					if confidence > 1 {
+						confidence = 1
+					}
+				}
+			}
+			err = db.UpdateArticleScore(c.db, article.ID, ensembleScore.Score, confidence)
+			if err != nil {
+				log.Printf("Error updating article %d with ensemble score: %v", article.ID, err)
+			}
+		}
+
+		// Update article with ensemble score and confidence
 	}
 
 	return tx.Commit()
