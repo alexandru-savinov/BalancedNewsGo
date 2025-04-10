@@ -184,4 +184,106 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 - [`architecture_plan.md`](architecture_plan.md) — System architecture and validation flow
 - [`memory-bank-update-plan.md`](memory-bank-update-plan.md) — Update plans including feedback loop
 - [`memory-bank-enhancement-plan.md`](memory-bank-enhancement-plan.md) — Enhancements related to dashboards and QA
+## April 2025: Ensemble Scoring Pipeline Enhancements
+
+**Metadata:**
+_Last updated: 2025-04-10_
+_Author: Roo_
+_Change type: Enhancement_
+
+**Changelog:**
+- Added detailed plan to enforce strict JSON output, adaptive re-prompting, model switching, logging, reprocessing, and prompt refinement.
+
+## April 2025 Debugging UI Enhancements
+
+To support developer and tester transparency, the NewsBalancer UI now includes extensive debugging features:
+
+- **Main Article Feed:**
+  - Displays **article ID, source, fetch/scoring timestamps, fallback status**.
+  - Shows **raw composite score, average confidence, model count**.
+  - Features a **bias slider** with color-coded zones (blue/gray/red), **model disagreement highlights**, and **detailed tooltips** including parse status.
+  - **Advanced debug info** is **default expanded**, listing all raw model outputs, parse success/failure, and aggregation stats.
+  - Feedback options include **"Report parse error"**, and can be tagged with **"Model disagreement"**, **"Low confidence"**, or **"Fallback used"**.
+
+- **Article Detail Page / Modal:**
+  - Accessed via htmx, shows **full article text**, **all raw model responses**, **parse status**, and **timestamps**.
+  - Provides **download raw JSON**, **retry parse/re-score** buttons, and **granular bias visualization toggle**.
+  - Clearly highlights **parse failures**.
+
+- **Debugging Transparency:**
+  - Exposes **fallback triggers**, **raw API responses**, **parse success/failure**, **aggregation method**, and **timestamps**.
+  - Uses **color cues** (green/orange/red) and **tooltips** for status.
+  - Adds **inline loading/error indicators**.
+
+- **Accessibility & Responsiveness:**
+  - All info-rich elements are **keyboard accessible**, **ARIA-labeled**, and **high contrast**.
+  - Uses **semantic HTML** and a **responsive layout**.
+  - Debug info is **collapsible but default expanded** during debugging.
+
+- **Minimal JS/SCSS:**
+  - Uses **htmx** for interactivity.
+  - Employs **vanilla JS** only for bias indicator positioning, tooltips, or essential UI.
+  - Keeps CSS minimal and clear.
+
+These enhancements prioritize **transparency**, **debugging ease**, and **developer insight** during model integration and testing.
+
+---
+
+### Overview
+
+To reduce parse failures and unscored articles, the ensemble scoring pipeline will be enhanced with:
+
+- **Strict JSON output enforcement** using delimiters and examples.
+- **Adaptive re-prompting** and **model switching** on failures.
+- **Improved logging and alerting** for repeated failures.
+- **Automated reprocessing** of failed articles.
+- **Refined prompt engineering** to minimize errors.
+
+---
+
+### Implementation Plan
+
+**1. Enforce Strict JSON Output**
+
+- Update prompts to instruct LLMs to respond **only** with JSON inside triple backticks.
+- Include few-shot examples within delimiters.
+- Extract JSON between delimiters before parsing.
+- Add tests for noisy outputs.
+
+**2. Adaptive Re-Prompting and Model Switching**
+
+- Classify failures and adapt prompts accordingly.
+- Retry with stricter prompts or alternative variants.
+- Switch models if repeated failures occur.
+- Log all attempts with metadata.
+
+**3. Logging and Alerting**
+
+- Log article ID, model, prompt, error type, and raw response.
+- Track failure rates and trigger alerts on thresholds.
+- Expose metrics for monitoring.
+
+**4. Automated Reprocessing**
+
+- Queue failed articles with metadata.
+- Periodically reprocess with adaptive prompts/models.
+- Escalate persistent failures.
+
+**5. Prompt Refinement**
+
+- Use explicit JSON instructions and examples.
+- Develop multiple prompt variants.
+- Empirically select best variants.
+
+---
+
+### Cross-References
+
+- [`architecture_plan.md`](architecture_plan.md)
+- [`progress.md`](progress.md)
+- [`memory-bank-update-plan.md`](memory-bank-update-plan.md)
+- [`memory-bank-enhancement-plan.md`](memory-bank-enhancement-plan.md)
+
+---
+
 - [`progress.md`](progress.md) — Progress tracking including QA and validation milestones

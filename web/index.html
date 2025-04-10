@@ -311,7 +311,11 @@
                         else if (compositeScore > 0.1) labelText = 'Slightly Right';
 
                         biasLabel.textContent = `Composite: ${labelText}`;
-                        compositeScoreSpan.textContent = `Score: ${compositeScore.toFixed(2)}`;
+                        if (compositeScore === 0 || compositeScore === 1.0) {
+                            compositeScoreSpan.textContent = "Score: Not yet scored";
+                        } else {
+                            compositeScoreSpan.textContent = `Score: ${compositeScore.toFixed(2)}`;
+                        }
 
                         // Compute average confidence
                         const avgConf = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
@@ -368,7 +372,7 @@
 
     <main id="articles" hx-get="/articles" hx-trigger="load" hx-target="#articles" hx-swap="innerHTML">
         <!-- Example article template, will be replaced dynamically -->
-        <article aria-label="News article">
+        <article aria-label="News article" data-article-id="123">
             <header>
                 <h2>Article Title</h2>
             </header>
@@ -493,6 +497,62 @@ window.addEventListener('load', () => {
     }
 
     console.log('Frontend tests completed');
+});
+</script>
+
+<script>
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    const articles = document.querySelectorAll('article[data-article-id]');
+    articles.forEach(article => {
+        const articleId = article.getAttribute('data-article-id');
+        fetch(`/api/articles/${articleId}/bias`)
+            .then(res => res.json())
+            .then(data => {
+                const compositeScore = data.composite_score;
+                const results = data.results;
+
+                // Update composite label text
+                const biasLabel = article.querySelector('.bias-label');
+                let labelText = 'Center';
+                if (compositeScore < -0.5) labelText = 'Left';
+                else if (compositeScore < -0.1) labelText = 'Slightly Left';
+                else if (compositeScore > 0.5) labelText = 'Right';
+                else if (compositeScore > 0.1) labelText = 'Slightly Right';
+                biasLabel.textContent = `Composite: ${labelText}`;
+
+                // Update composite score text
+                const compositeScoreSpan = article.querySelector('.composite-score');
+                compositeScoreSpan.textContent = `Score: ${compositeScore.toFixed(2)}`;
+
+                // Color code the score text
+                let color = 'gray';
+                if (compositeScore < -0.5) color = 'blue';
+                else if (compositeScore > 0.5) color = 'red';
+                compositeScoreSpan.style.color = color;
+
+                // Update composite indicator position
+                const compositeIndicator = article.querySelector('.composite-indicator');
+                if (compositeIndicator) {
+                    compositeIndicator.style.left = `${((compositeScore + 1) / 2) * 100}%`;
+                }
+
+                // Remove old model indicators
+                article.querySelectorAll('.model-indicator').forEach(e => e.remove());
+
+                // Add model indicators with tooltips
+                const slider = article.querySelector('.bias-slider');
+                results.forEach(r => {
+                    const ind = document.createElement('div');
+                    ind.className = 'bias-indicator model-indicator';
+                    ind.style.left = `${((r.score + 1) / 2) * 100}%`;
+                    ind.setAttribute('data-tooltip', `${r.model}\nScore: ${r.score.toFixed(2)}\nConf: ${(r.confidence*100).toFixed(0)}%\n${r.explanation}`);
+                    slider.appendChild(ind);
+                });
+            })
+            .catch(err => {
+                console.error('Failed to fetch bias data for article', articleId, err);
+            });
+    });
 });
 </script>
 </body>

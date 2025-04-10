@@ -97,16 +97,23 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
-
 			return
 		}
 
-		go func() {
-			if err := llmClient.ReanalyzeArticle(int64(id)); err != nil {
-				log.Printf("ReanalyzeArticle error: %v", err)
-			}
-		}()
-		c.JSON(http.StatusOK, gin.H{"status": "reanalyze started"})
+		err = llmClient.ReanalyzeArticle(int64(id))
+		if err != nil {
+			log.Printf("ReanalyzeArticle error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"status": "reanalyze failed",
+				"error":  err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":     "reanalyze complete",
+			"article_id": id,
+		})
 	}
 }
 

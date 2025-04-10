@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -17,6 +18,11 @@ type Article struct {
 	Content        string    `db:"content"`
 	CreatedAt      time.Time `db:"created_at"`
 	CompositeScore float64   `db:"-"`
+
+	Status      string     `db:"status"`
+	FailCount   int        `db:"fail_count"`
+	LastAttempt *time.Time `db:"last_attempt"`
+	Escalated   bool       `db:"escalated"`
 }
 
 type LLMScore struct {
@@ -100,7 +106,31 @@ CREATE TABLE IF NOT EXISTS labels (
 		return nil, err
 	}
 
+	// Migrate: add columns for failure tracking if they don't exist
+	alterStatements := []string{
+		"ALTER TABLE articles ADD COLUMN status TEXT DEFAULT 'pending';",
+		"ALTER TABLE articles ADD COLUMN fail_count INTEGER DEFAULT 0;",
+		"ALTER TABLE articles ADD COLUMN last_attempt DATETIME;",
+		"ALTER TABLE articles ADD COLUMN escalated BOOLEAN DEFAULT 0;",
+	}
+
+	for _, stmt := range alterStatements {
+		_, err := db.Exec(stmt)
+		if err != nil && !isDuplicateColumnError(err) {
+			fmt.Printf("DB migration error: %v\n", err)
+		}
+	}
+
 	return db, nil
+}
+
+// isDuplicateColumnError returns true if the error is due to an existing column
+func isDuplicateColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate column name") || strings.Contains(msg, "already exists")
 }
 
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {

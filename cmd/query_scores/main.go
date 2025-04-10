@@ -28,7 +28,7 @@ func main() {
 	}()
 
 	var scores []LLMScore
-	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata FROM llm_scores WHERE article_id = ?", 95)
+	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata FROM llm_scores WHERE article_id = ?", 681)
 	if err != nil {
 		log.Fatalf("Failed to fetch scores: %v", err)
 	}

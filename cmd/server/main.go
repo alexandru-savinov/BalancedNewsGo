@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
@@ -94,9 +95,90 @@ func main() {
 	// Start server
 	log.Println("Server running on :8080")
 
+	// Start background reprocessing loop
+	go startReprocessingLoop(dbConn, llmClient)
+
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
+}
+
+func startReprocessingLoop(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		reprocessFailedArticles(dbConn, llmClient)
+		<-ticker.C
+	}
+}
+
+func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
+	log.Println("Reprocessing failed articles...")
+
+	var articles []db.Article
+	err := dbConn.Select(&articles, "SELECT * FROM articles WHERE status = 'failed' OR fail_count > 0")
+	if err != nil {
+		log.Printf("Error fetching failed articles: %v", err)
+		return
+	}
+
+	for _, article := range articles {
+		log.Printf("Reprocessing article ID %d (fail count: %d)", article.ID, article.FailCount)
+
+		// Adaptive prompt/model switching based on fail count
+		var prompt string
+		var model string
+		if article.FailCount >= 3 {
+			model = "gpt-4"
+			prompt = "Simplified prompt for difficult article"
+		} else {
+			model = "gpt-3.5"
+			prompt = "Standard prompt"
+		}
+
+		success := processArticleWithLLM(llmClient, article, prompt, model)
+
+		now := time.Now()
+		if success {
+			_, err := dbConn.Exec(`UPDATE articles SET status='processed', fail_count=0, last_attempt=?, escalated=0 WHERE id=?`, now, article.ID)
+			if err != nil {
+				log.Printf("Error updating article %d: %v", article.ID, err)
+			} else {
+				log.Printf("Article %d reprocessed successfully", article.ID)
+			}
+		} else {
+			newFailCount := article.FailCount + 1
+			escalated := 0
+			status := "failed"
+			if newFailCount >= 5 {
+				escalated = 1
+				status = "escalated"
+			}
+			_, err := dbConn.Exec(`UPDATE articles SET status=?, fail_count=?, last_attempt=?, escalated=? WHERE id=?`, status, newFailCount, now, escalated, article.ID)
+			if err != nil {
+				log.Printf("Error updating failed article %d: %v", article.ID, err)
+			} else {
+				log.Printf("Article %d failed again (fail count: %d)", article.ID, newFailCount)
+			}
+		}
+	}
+}
+
+func processArticleWithLLM(llmClient *llm.LLMClient, article db.Article, prompt, model string) bool {
+	// Placeholder for actual LLM call
+	// Use llmClient with adaptive prompt/model
+	// Return true if successful, false if failed
+
+	// Example:
+	// result, err := llmClient.ProcessArticle(article.Content, prompt, model)
+	// if err != nil {
+	//     return false
+	// }
+	// return result.Success
+
+	// For now, simulate success/failure randomly
+	return time.Now().UnixNano()%2 == 0
 }
 
 func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {

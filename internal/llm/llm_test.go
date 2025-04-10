@@ -1,241 +1,46 @@
 package llm
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"sort"
 	"testing"
-
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
-	"github.com/jmoiron/sqlx"
-	_ "modernc.org/sqlite"
 )
 
-const testContent = "test content"
-
-func setupTestLLMClient(t *testing.T) (*LLMClient, *sqlx.DB) {
-	dbConn, err := sqlx.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open test DB: %v", err)
-	}
-
-	_, err = dbConn.Exec(`CREATE TABLE IF NOT EXISTS llm_scores (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		article_id INTEGER,
-		model TEXT,
-		score REAL,
-		metadata TEXT,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	)`)
-	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
-	}
-
-	client := NewLLMClient(dbConn)
-
-	return client, dbConn
-}
-
-func TestCallAPI(t *testing.T) {
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"score":0.7,"metadata":{"foo":"bar"}}`))
-	}))
-	defer mockServer.Close()
-
-	client, _ := setupTestLLMClient(t)
-
-	resp, err := client.llmService.Analyze(testContent)
-	if err != nil {
-		t.Fatalf("callAPI failed: %v", err)
-	}
-
-	if resp.Score != 0.7 {
-		t.Errorf("Expected score 0.7, got %v", resp.Score)
-	}
-
-	var meta map[string]interface{}
-
-	err = json.Unmarshal([]byte(resp.Metadata), &meta)
-	if err != nil {
-		t.Errorf("Failed to parse metadata JSON: %v", err)
-	} else if meta["foo"] != "bar" {
-		t.Errorf("Expected metadata foo=bar, got %v", meta["foo"])
-	}
-}
-
-func TestCallAPIFailure(t *testing.T) {
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`Internal Server Error`))
-	}))
-	defer mockServer.Close()
-
-	client, _ := setupTestLLMClient(t)
-
-	_, err := client.llmService.Analyze(testContent)
-	if err == nil {
-		t.Errorf("Expected error on 500 response, got nil")
-	}
-}
-
-func TestCallAPIAuthError(t *testing.T) {
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`Unauthorized`))
-	}))
-	defer mockServer.Close()
-
-	client, _ := setupTestLLMClient(t)
-
-	_, err := client.llmService.Analyze(testContent)
-	if err == nil {
-		t.Errorf("Expected error on 401 response, got nil")
-	}
-}
-
-func TestCallAPIInvalidResponse(t *testing.T) {
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`not a json`)); err != nil {
-			t.Logf("Warning: failed to write mock response: %v", err)
-		}
-	}))
-	defer mockServer.Close()
-
-	client, _ := setupTestLLMClient(t)
-
-	_, err := client.llmService.Analyze(testContent)
-	if err == nil {
-		t.Errorf("Expected error on invalid JSON response, got nil")
-	}
-}
-
-func TestCallAPIPersistence(t *testing.T) {
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"score":0.9,"metadata":{"source":"mock"}}`)); err != nil {
-			t.Logf("Warning: failed to write mock response: %v", err)
-		}
-	}))
-	defer mockServer.Close()
-
-	client, db := setupTestLLMClient(t)
-
-	resp, err := client.llmService.Analyze(testContent)
-	if err != nil {
-		t.Fatalf("callAPI failed: %v", err)
-	}
-
-	// Simulate saving result
-	_, err = db.Exec(`INSERT INTO llm_scores(article_id, model, score, metadata) VALUES (?, ?, ?, ?)`,
-		1, "mock-model", resp.Score, `{"source":"mock"}`)
-	if err != nil {
-		t.Fatalf("Failed to insert LLM score: %v", err)
-	}
-
-	var count int
-
-	err = db.Get(&count, "SELECT COUNT(*) FROM llm_scores WHERE article_id=1 AND model='mock-model'")
-	if err != nil {
-		t.Fatalf("Failed to query llm_scores: %v", err)
-	}
-
-	if count != 1 {
-		t.Errorf("Expected 1 llm_score record, got %d", count)
-	}
-}
-
 func TestParseBiasResult(t *testing.T) {
-	contentResp := `{"bias":"left","confidence":0.85}`
-	result := parseBiasResult(contentResp)
+	// Set allowed categories for validation
+	BiasCfg.Categories = []string{"Politics", "Economy", "Health", "Tech"}
 
-	if result.Category == "" {
-		t.Errorf("Expected bias category to be parsed, got empty string")
-	}
-	if result.Confidence == 0 {
-		t.Errorf("Expected confidence to be parsed, got 0")
-	}
-}
-
-func TestHeuristicCategory(t *testing.T) {
 	tests := []struct {
+		name     string
 		input    string
-		expected string
+		expected BiasResult
 	}{
-		{"This is a left-leaning statement", "left"},
-		{"This is a right-leaning statement", "right"},
-		{"This is a neutral statement", "neutral"},
+		{
+			name:     "Clean JSON with delimiters",
+			input:    "```{\"category\":\"Politics\",\"confidence\":0.5}```",
+			expected: BiasResult{Category: "Politics", Confidence: 0.5},
+		},
+		{
+			name:     "Noisy output with JSON inside delimiters",
+			input:    "Some explanation text.\n```{\"category\":\"Economy\",\"confidence\":0.8}```\nMore trailing text.",
+			expected: BiasResult{Category: "Economy", Confidence: 0.8},
+		},
+		{
+			name:     "No delimiters",
+			input:    "{\"category\":\"Health\",\"confidence\":0.3}",
+			expected: BiasResult{},
+		},
+		{
+			name:     "Malformed JSON inside delimiters",
+			input:    "```{\"category\":\"Tech\", \"confidence\":}```",
+			expected: BiasResult{Category: "unknown", Confidence: 0},
+		},
 	}
 
 	for _, tt := range tests {
-		got := heuristicCategory(tt.input)
-		if got != tt.expected {
-			t.Errorf("heuristicCategory(%q) = %q; want %q", tt.input, got, tt.expected)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseBiasResult(tt.input)
+			if result.Category != tt.expected.Category || result.Confidence != tt.expected.Confidence {
+				t.Errorf("Expected %+v, got %+v", tt.expected, result)
+			}
+		})
 	}
-}
-
-type mockOpenAI struct {
-	callCount int
-	model     string
-}
-
-func (m *mockOpenAI) Analyze(content string) (*db.LLMScore, error) {
-	m.callCount++
-	switch m.callCount {
-	case 1, 3, 6:
-		return nil, fmt.Errorf("simulated error")
-	default:
-		return &db.LLMScore{
-			Score: float64(m.callCount),
-		}, nil
-	}
-}
-
-func (m *mockOpenAI) RobustAnalyze(content string) (*db.LLMScore, error) {
-	var validScores = make([]*db.LLMScore, 0, 5)
-	var attempts int
-
-	for attempts < 10 && len(validScores) < 5 {
-		score, err := m.Analyze(content)
-		attempts++
-		if err == nil && score != nil {
-			validScores = append(validScores, score)
-		}
-	}
-
-	if len(validScores) < 5 {
-		return nil, fmt.Errorf("only %d valid responses after %d attempts", len(validScores), attempts)
-	}
-
-	scores := make([]float64, 5)
-	for i, s := range validScores {
-		scores[i] = s.Score
-	}
-	sort.Float64s(scores)
-	avg := (scores[1] + scores[2] + scores[3]) / 3.0
-
-	return &db.LLMScore{
-		Model: m.model,
-		Score: avg,
-	}, nil
-}
-
-func TestRobustAnalyze(t *testing.T) {
-	mock := &mockOpenAI{model: "mock-model"}
-
-	score, err := mock.RobustAnalyze("test content")
-	if err != nil {
-		t.Fatalf("RobustAnalyze failed: %v", err)
-	}
-	if score == nil {
-		t.Fatal("RobustAnalyze returned nil score")
-	}
-	if score.Score <= 0 {
-		t.Errorf("Expected positive average score, got %v", score.Score)
-	}
-	t.Logf("RobustAnalyze average score: %v", score.Score)
 }

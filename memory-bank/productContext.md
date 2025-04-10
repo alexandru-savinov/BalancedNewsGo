@@ -22,3 +22,21 @@ Most news aggregators reinforce existing biases by surfacing similar viewpoints.
 
 ## Value Proposition
 BalancedNewsGo aggregates news from multiple sources, uses LLMs to analyze and summarize diverse perspectives, and highlights potential biases. This empowers users to make more informed opinions based on a comprehensive view of the news landscape.
+
+---
+
+## Developer & Tester Debugging Needs (April 2025)
+
+To ensure model reliability and accelerate iteration, the UI now prioritizes **transparent, info-rich debugging features**:
+
+- **Expose raw data:** Article IDs, sources, fetch/scoring timestamps, fallback status, raw composite scores, average confidence, model count.
+- **Visualize model behavior:** Bias slider with color-coded zones, model disagreement highlights, detailed tooltips including parse status.
+- **Default expanded debug info:** Raw model outputs, parse success/failure, aggregation stats.
+- **Feedback tagging:** Options to report parse errors, model disagreement, low confidence, or fallback usage, improving data collection for model refinement.
+- **Full detail views:** Article detail modal/page with full text, raw responses, parse status, timestamps, download JSON, retry parse/re-score.
+- **Transparency on fallback triggers, API responses, parse failures, aggregation methods, and timestamps.**
+- **Color cues and inline indicators** for quick status assessment.
+- **Accessibility:** ARIA labels, keyboard navigation, high contrast, semantic HTML to support all team members.
+- **Minimal JS/SCSS:** Ensures maintainability and reduces debugging complexity.
+
+These features enable developers and testers to **quickly identify issues, understand model outputs, and iterate on prompts, parsing, and aggregation logic** with minimal friction.

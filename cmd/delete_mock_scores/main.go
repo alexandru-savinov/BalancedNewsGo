@@ -14,7 +14,7 @@ func main() {
 	}
 	defer db.Close()
 
-	res, err := db.Exec(`DELETE FROM llm_scores WHERE metadata LIKE '%"mock": true%'`)
+	res, err := db.Exec(`DELETE FROM llm_scores WHERE article_id=133`)
 	if err != nil {
 		log.Fatalf("Failed to delete mock scores: %v", err)
 	}

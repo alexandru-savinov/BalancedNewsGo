@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -135,9 +136,9 @@ func init() {
 
 // LLM API endpoints.
 var (
-	LeftModelURL   = "http://localhost:8001/analyze"
+	LeftModelURL   = "https://api.openai.com/v1/chat/completions"
 	CenterModelURL = "https://api.openai.com/v1/chat/completions"
-	RightModelURL  = "http://localhost:8003/analyze"
+	RightModelURL  = "https://api.openai.com/v1/chat/completions"
 )
 
 // Cache key: hash(content) + model.
@@ -171,7 +172,7 @@ func (c *Cache) Set(contentHash, model string, score *db.LLMScore) {
 	c.store[cacheKey{contentHash, model}] = score
 }
 
-// Hash function placeholder (can replace with real hash).
+// Simple hash function (replace with a secure hash in production).
 func hashContent(content string) string {
 	// For simplicity, use content itself (not recommended for production)
 	return content
@@ -181,6 +182,7 @@ type LLMService interface {
 	Analyze(content string) (*db.LLMScore, error)
 }
 
+/*
 type MockLLMService struct{}
 
 func (m *MockLLMService) Analyze(content string) (*db.LLMScore, error) {
@@ -193,31 +195,30 @@ func (m *MockLLMService) Analyze(content string) (*db.LLMScore, error) {
 		Metadata: metadata,
 	}, nil
 }
+*/
 
 type OpenAILLMService struct {
 	client *resty.Client
-	model  string
 	apiKey string
 }
 
-func NewOpenAILLMService(client *resty.Client, model, apiKey string) *OpenAILLMService {
+func NewOpenAILLMService(client *resty.Client, apiKey string) *OpenAILLMService {
 	return &OpenAILLMService{
 		client: client,
-		model:  model,
 		apiKey: apiKey,
 	}
 }
 
-func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
-	prompt := strings.Replace(PromptTemplate, "{{ARTICLE_CONTENT}}", content, 1)
+func (o *OpenAILLMService) AnalyzeWithPrompt(model, prompt, content string) (*db.LLMScore, error) {
+	prompt = strings.Replace(prompt, "{{ARTICLE_CONTENT}}", content, 1)
 
 	var resp *resty.Response
 	var err error
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		resp, err = o.callOpenAI(prompt)
+		resp, err = o.callOpenAI(model, prompt)
 		if err == nil && resp != nil && resp.IsSuccess() {
-			return o.processOpenAIResponse(resp, content)
+			return o.processOpenAIResponse(resp, content, model)
 		}
 
 		log.Printf("OpenAI API call failed (attempt %d): %v", attempt, err)
@@ -227,7 +228,19 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 	return nil, errors.New("OpenAI API call failed after retries")
 }
 
-func (o *OpenAILLMService) callOpenAI(prompt string) (*resty.Response, error) {
+func (o *OpenAILLMService) AnalyzeWithModel(model, content string) (*db.LLMScore, error) {
+	return o.AnalyzeWithPrompt(model, PromptTemplate, content)
+}
+
+// Satisfy LLMService interface
+
+// Satisfy LLMService interface: default to gpt-3.5-turbo
+func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
+	defaultModel := "gpt-3.5-turbo"
+	return o.AnalyzeWithPrompt(defaultModel, PromptTemplate, content)
+}
+
+func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Response, error) {
 	url := "https://api.openai.com/v1/chat/completions"
 
 	req := o.client.R().
@@ -235,14 +248,14 @@ func (o *OpenAILLMService) callOpenAI(prompt string) (*resty.Response, error) {
 		SetHeader("Authorization", "Bearer "+o.apiKey)
 
 	body := map[string]interface{}{
-		"model":       o.model,
+		"model":       model,
 		"messages":    []map[string]string{{"role": "user", "content": prompt}},
 		"max_tokens":  300,
 		"temperature": 0.7,
 	}
 	req.SetBody(body)
 
-	log.Printf("[OpenAI] Sending real API request to %s with model %s", url, o.model)
+	log.Printf("[OpenAI] Sending real API request to %s with model %s", url, model)
 
 	resp, err := req.Post(url)
 
@@ -261,12 +274,14 @@ func (o *OpenAILLMService) callOpenAI(prompt string) (*resty.Response, error) {
 	return resp, nil
 }
 
-func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content string) (*db.LLMScore, error) {
+func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content string, model string) (*db.LLMScore, error) {
 	contentResp, err := parseOpenAIResponse(resp.Body())
 	if err != nil {
 		log.Printf("[Analyze] Failed to parse OpenAI response: %v\nRaw response:\n%s", err, string(resp.Body()))
 		return nil, err
 	}
+
+	log.Printf("[Analyze] Successful raw completion from model %s:\n%s", model, contentResp)
 
 	biasResult := parseBiasResult(contentResp)
 	heuristicCat := heuristicCategory(content)
@@ -288,65 +303,125 @@ func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content s
 	}
 
 	return &db.LLMScore{
-		Model:    o.model,
+		Model:    model,
 		Score:    biasResult.Confidence,
 		Metadata: string(metadataBytes),
 	}, nil
 }
 
 func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
-	var validScores = make([]*db.LLMScore, 0, 5)
-	var attempts int
+	var (
+		validScores           []*db.LLMScore
+		attempts              int
+		maxValidScores        = 5
+		maxAttemptsPerVariant = 3
+		confidenceThreshold   = 0.5
+	)
 
-	for attempts < 10 && len(validScores) < 5 {
-		score, err := o.Analyze(content)
-		attempts++
+	// Define prompt variants
+	promptVariants := []string{
+		PromptTemplate,
+		`Respond ONLY in this strict JSON format: {"parsed_bias":{"Category":"...", "Confidence":...}}. Article: {{ARTICLE_CONTENT}}`,
+		`Return JSON: {"parsed_bias":{"Category":"...", "Confidence":...}}. Text: {{ARTICLE_CONTENT}}`,
+	}
 
-		if err == nil && score != nil {
-			var meta struct {
-				ParsedBias struct {
-					Category   string  `json:"Category"`
-					Confidence float64 `json:"Confidence"`
-				} `json:"parsed_bias"`
+	// Define models: primary and fallback
+	models := []string{"gpt-4", "gpt-3.5-turbo"}
+
+	for _, modelName := range models {
+
+		for variantIdx, promptTemplate := range promptVariants {
+			for attempt := 1; attempt <= maxAttemptsPerVariant; attempt++ {
+				attempts++
+
+				score, err := o.AnalyzeWithPrompt(modelName, promptTemplate, content)
+
+				failType := ""
+				confidence := 0.0
+
+				if err != nil || score == nil {
+					failType = "api_error"
+					log.Printf("[RobustAnalyze] Attempt %d | Model: %s | PromptVariant: %d | Failure: %s | Error: %v", attempts, modelName, variantIdx, failType, err)
+					continue
+				}
+
+				var meta struct {
+					ParsedBias struct {
+						Category   string  `json:"Category"`
+						Confidence float64 `json:"Confidence"`
+					} `json:"parsed_bias"`
+				}
+				if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
+					failType = "parse_error"
+					log.Printf("[RobustAnalyze] Attempt %d | Model: %s | PromptVariant: %d | Failure: %s | Error: %v", attempts, modelName, variantIdx, failType, err)
+					continue
+				}
+
+				cat := strings.ToLower(strings.TrimSpace(meta.ParsedBias.Category))
+				confidence = meta.ParsedBias.Confidence
+
+				if cat == "" || cat == LabelUnknown {
+					failType = "empty_category"
+					log.Printf("[RobustAnalyze] Attempt %d | Model: %s | PromptVariant: %d | Failure: %s | Category: '%s'", attempts, modelName, variantIdx, failType, cat)
+					continue
+				}
+
+				if confidence < confidenceThreshold {
+					failType = "low_confidence"
+					log.Printf("[RobustAnalyze] Attempt %d | Model: %s | PromptVariant: %d | Failure: %s | Confidence: %.2f", attempts, modelName, variantIdx, failType, confidence)
+					continue
+				}
+
+				// Success
+				log.Printf("[RobustAnalyze] Attempt %d | Model: %s | PromptVariant: %d | Success | Category: '%s' | Confidence: %.2f", attempts, modelName, variantIdx, cat, confidence)
+				validScores = append(validScores, score)
+
+				if len(validScores) >= maxValidScores {
+					break
+				}
 			}
-			if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
-				log.Printf("[RobustAnalyze] Excluding response due to metadata parse error: %v", err)
-				continue
+			if len(validScores) >= maxValidScores {
+				break
 			}
-			cat := strings.ToLower(strings.TrimSpace(meta.ParsedBias.Category))
-			conf := meta.ParsedBias.Confidence
-			if cat == "" || cat == LabelUnknown || conf <= 0 {
-				log.Printf("[RobustAnalyze] Excluding response with category='%s' confidence=%.2f", cat, conf)
-				continue
-			}
-			validScores = append(validScores, score)
-		} else {
-			log.Printf("[RobustAnalyze] Attempt %d failed: %v", attempts, err)
+		}
+		if len(validScores) >= maxValidScores {
+			break
 		}
 	}
 
-	if len(validScores) < 5 {
+	if len(validScores) < maxValidScores {
 		return nil, fmt.Errorf("RobustAnalyze: only %d valid responses after %d attempts", len(validScores), attempts)
 	}
 
 	// Extract scores
-	scores := make([]float64, 5)
+	scores := make([]float64, len(validScores))
 	for i, s := range validScores {
 		scores[i] = s.Score
 	}
 
-	// Sort scores
 	sort.Float64s(scores)
 
-	// Average middle 3
-	sum := scores[1] + scores[2] + scores[3]
-	avg := sum / 3.0
+	// Average middle scores (trimmed mean)
+	start := 1
+	end := len(scores) - 2
+	if end <= start {
+		start = 0
+		end = len(scores) - 1
+	}
+	sum := 0.0
+	count := 0
+	for i := start; i <= end; i++ {
+		sum += scores[i]
+		count++
+	}
+	avg := sum / float64(count)
 
-	// Use metadata from middle score (median)
-	medianScore := validScores[2]
+	// Use metadata from median score
+	medianIdx := len(validScores) / 2
+	medianScore := validScores[medianIdx]
 
 	return &db.LLMScore{
-		Model:    o.model,
+		Model:    "", // model info unavailable here
 		Score:    avg,
 		Metadata: medianScore.Metadata,
 	}, nil
@@ -388,8 +463,18 @@ func parseOpenAIResponse(body []byte) (string, error) {
 
 func parseBiasResult(contentResp string) BiasResult {
 	var biasResult BiasResult
-	if err := json.Unmarshal([]byte(contentResp), &biasResult); err != nil {
-		log.Printf("Failed to parse LLM JSON response: %v", err)
+
+	// Extract JSON strictly between triple backticks
+	re := regexp.MustCompile("(?s)```(.*?)```")
+	matches := re.FindStringSubmatch(contentResp)
+	if len(matches) < 2 {
+		log.Printf("No JSON block found between triple backticks in LLM response")
+		return BiasResult{}
+	}
+	jsonStr := matches[1]
+
+	if err := json.Unmarshal([]byte(jsonStr), &biasResult); err != nil {
+		log.Printf("Failed to parse JSON inside triple backticks: %v", err)
 		biasResult = BiasResult{}
 	}
 
@@ -454,7 +539,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 			model = "gpt-3.5-turbo"
 		}
 
-		service = NewOpenAILLMService(client, model, apiKey)
+		service = NewOpenAILLMService(client, apiKey)
 	default:
 		log.Fatal("ERROR: LLM_PROVIDER not set or unknown, cannot initialize LLM service")
 	}
@@ -478,7 +563,7 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 	var score *db.LLMScore
 	var err error
 
-	score, err = c.EnsembleAnalyze(content)
+	score, err = c.EnsembleAnalyze(articleID, content)
 	if err != nil {
 		return nil, err
 	}
@@ -582,14 +667,26 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		score, err := c.analyzeContent(article.ID, article.Content, m.name, m.url)
 		if err != nil {
 			log.Printf("Error reanalyzing article %d with model %s: %v", article.ID, m.name, err)
-
 			continue
 		}
 
-		_, err = tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata) 
+		_, err = tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata)
 			VALUES (:article_id, :model, :score, :metadata)`, score)
 		if err != nil {
 			log.Printf("Error inserting reanalysis score for article %d model %s: %v", article.ID, m.name, err)
+		}
+	}
+
+	// Call ensemble aggregation and save result
+	ensembleScore, err := c.EnsembleAnalyze(article.ID, article.Content)
+	if err != nil {
+		log.Printf("Error generating ensemble score for article %d: %v", article.ID, err)
+	} else {
+		ensembleScore.ArticleID = article.ID
+		_, err = tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
+			VALUES (:article_id, :model, :score, :metadata, :created_at)`, ensembleScore)
+		if err != nil {
+			log.Printf("Error inserting ensemble score for article %d: %v", article.ID, err)
 		}
 	}
 

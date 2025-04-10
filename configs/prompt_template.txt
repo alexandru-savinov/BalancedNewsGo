@@ -1,2 +1,159 @@
-# Dummy prompt template for tests
-This is a placeholder prompt template.
+# LLM Prompt Variants for JSON Parsing Reliability
+
+This file contains **three prompt variants** with varying strictness, designed to empirically identify the most parse-error-resistant formulation.
+
+---
+
+## Variant A: Strictest — JSON ONLY inside ```json fenced block
+
+### Rationale:
+- Enforces **exclusive** JSON output.
+- Uses ```json for syntax highlighting and easier parsing.
+- No tolerance for extra text.
+- Diverse examples included.
+
+### Instructions:
+You must respond **only** with valid JSON enclosed within triple backticks with `json` language tag, like this:
+
+```json
+{
+  "key": "value"
+}
+```
+
+No explanations, no extra text, no markdown outside the JSON block.
+
+If unsure, output an empty JSON object:
+
+```json
+{}
+```
+
+### Few-shot examples:
+
+**Example 1: Success**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "summary": "The article discusses recent economic trends."
+  }
+}
+```
+
+**Example 2: Nested**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "summary": "The article discusses recent economic trends.",
+    "entities": [
+      {"type": "Person", "name": "John Doe"},
+      {"type": "Organization", "name": "World Bank"}
+    ],
+    "sentiment": {
+      "label": "neutral",
+      "score": 0.0
+    }
+  }
+}
+```
+
+**Example 3: Error**
+
+```json
+{
+  "status": "error",
+  "message": "Unable to process the request."
+}
+```
+
+**Example 4: Empty**
+
+```json
+{}
+```
+
+**Example 5: Array response**
+
+```json
+[
+  {"title": "News A", "score": 0.8},
+  {"title": "News B", "score": 0.6}
+]
+```
+
+---
+
+## Variant B: Moderate — JSON inside fenced block, flexible delimiter
+
+### Rationale:
+- Allows either ```json or plain ``` delimiters.
+- Slightly less strict wording.
+- Still discourages extra text.
+
+### Instructions:
+Respond with valid JSON enclosed within triple backticks, preferably with `json` language tag:
+
+```json
+{
+  "key": "value"
+}
+```
+
+No explanations or extra text outside the JSON block.
+
+If unsure, output:
+
+```json
+{}
+```
+
+### Few-shot examples:
+(Same as Variant A)
+
+---
+
+## Variant C: Lenient — Prefer JSON inside delimiters, tolerate minor text
+
+### Rationale:
+- Encourages JSON inside delimiters.
+- Tolerates minimal pre/post text if unavoidable.
+- Useful for less controllable LLMs.
+
+### Instructions:
+Please provide your response as valid JSON, ideally enclosed within triple backticks with `json`:
+
+```json
+{
+  "key": "value"
+}
+```
+
+If you must include any explanation, keep it **before** the JSON block and minimal.
+
+If unsure, output:
+
+```json
+{}
+```
+
+### Few-shot examples:
+(Same as Variant A)
+
+---
+
+# Testing Plan
+
+- Empirically test all variants with representative queries.
+- Measure parse success rate.
+- Select variant(s) with highest reliability.
+
+# Summary
+
+- 3 variants created with increasing tolerance.
+- Explicit delimiter instructions.
+- Diverse examples: success, nested, error, empty, array.
+- Designed to minimize parse errors and support empirical selection.
