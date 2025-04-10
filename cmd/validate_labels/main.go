@@ -99,62 +99,28 @@ func processLabels(database *sqlx.DB, client *llm.LLMClient, labels []db.Label) 
 	flaggedCases := []FlaggedCase{}
 
 	for _, label := range labels {
-		scoreObj, err := client.EnsembleAnalyze(label.Data)
+		scoreObj, err := analyzeLabel(client, label)
 		if err != nil {
 			log.Printf("Error scoring label ID %d: %v", label.ID, err)
 			continue
 		}
 
-		scoreObj.ArticleID = 0
-		scoreObj.Model = "validation_ensemble"
-		_, err = db.InsertLLMScore(database, scoreObj)
-		if err != nil {
-			log.Printf("Failed to insert ensemble score: %v", err)
-		}
+		insertScore(database, scoreObj)
 
-		var meta struct {
-			Aggregation struct {
-				UncertaintyFlag bool `json:"uncertainty_flag"`
-			} `json:"aggregation"`
-		}
-		if err := json.Unmarshal([]byte(scoreObj.Metadata), &meta); err != nil {
-			log.Printf("Failed to parse score metadata: %v", err)
-			continue
-		}
-		isUncertain := meta.Aggregation.UncertaintyFlag
+		isUncertain := parseUncertaintyFlag(scoreObj.Metadata)
 		if isUncertain {
 			metrics.Uncertain++
 		}
 
 		predLabel := scoreToLabel(scoreObj.Score)
 		trueLabel := normalizeLabel(label.Label)
-		disagreement := false
-		if predLabel == trueLabel {
-			metrics.Correct++
-		} else {
-			metrics.Incorrect++
-			metrics.Disagreements++
-			disagreement = true
-		}
+		disagreement := compareLabels(predLabel, trueLabel, &metrics)
 
 		if isUncertain || disagreement {
-			flaggedCases = append(flaggedCases, FlaggedCase{
-				ID:             label.ID,
-				Text:           label.Data,
-				TrueLabel:      trueLabel,
-				PredictedLabel: predLabel,
-				Score:          scoreObj.Score,
-				Uncertain:      isUncertain,
-				Disagreement:   disagreement,
-				ErrorCategory:  "",
-			})
+			flaggedCases = append(flaggedCases, createFlaggedCase(label, predLabel, scoreObj.Score, isUncertain, disagreement))
 		}
 
-		if _, ok := metrics.ConfusionMatrix[trueLabel]; ok {
-			if _, ok2 := metrics.ConfusionMatrix[trueLabel][predLabel]; ok2 {
-				metrics.ConfusionMatrix[trueLabel][predLabel]++
-			}
-		}
+		updateConfusionMatrix(&metrics, trueLabel, predLabel)
 
 		metrics.Total++
 	}
@@ -162,11 +128,87 @@ func processLabels(database *sqlx.DB, client *llm.LLMClient, labels []db.Label) 
 	return metrics, flaggedCases
 }
 
+// analyzeLabel calls the LLM client and prepares the score object
+func analyzeLabel(client *llm.LLMClient, label db.Label) (*db.LLMScore, error) {
+	scoreObj, err := client.EnsembleAnalyze(label.Data)
+	if err != nil {
+		return nil, err
+	}
+	scoreObj.ArticleID = 0
+	scoreObj.Model = "validation_ensemble"
+	return scoreObj, nil
+}
+
+// insertScore inserts the score into the database and logs errors
+func insertScore(database *sqlx.DB, scoreObj *db.LLMScore) {
+	_, err := db.InsertLLMScore(database, scoreObj)
+	if err != nil {
+		log.Printf("Failed to insert ensemble score: %v", err)
+	}
+}
+
+// parseUncertaintyFlag extracts the uncertainty flag from metadata JSON
+func parseUncertaintyFlag(metadata string) bool {
+	var meta struct {
+		Aggregation struct {
+			UncertaintyFlag bool `json:"uncertainty_flag"`
+		} `json:"aggregation"`
+	}
+	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
+		log.Printf("Failed to parse score metadata: %v", err)
+		return false
+	}
+	return meta.Aggregation.UncertaintyFlag
+}
+
+// compareLabels updates metrics and returns true if there is disagreement
+func compareLabels(predLabel, trueLabel string, metrics *Metrics) bool {
+	if predLabel == trueLabel {
+		metrics.Correct++
+		return false
+	}
+	metrics.Incorrect++
+	metrics.Disagreements++
+	return true
+}
+
+// createFlaggedCase constructs a FlaggedCase struct
+func createFlaggedCase(label db.Label, predLabel string, score float64, isUncertain, disagreement bool) FlaggedCase {
+	return FlaggedCase{
+		ID:             label.ID,
+		Text:           label.Data,
+		TrueLabel:      normalizeLabel(label.Label),
+		PredictedLabel: predLabel,
+		Score:          score,
+		Uncertain:      isUncertain,
+		Disagreement:   disagreement,
+		ErrorCategory:  "",
+	}
+}
+
+// updateConfusionMatrix increments the confusion matrix counts
+func updateConfusionMatrix(metrics *Metrics, trueLabel, predLabel string) {
+	if _, ok := metrics.ConfusionMatrix[trueLabel]; ok {
+		if _, ok2 := metrics.ConfusionMatrix[trueLabel][predLabel]; ok2 {
+			metrics.ConfusionMatrix[trueLabel][predLabel]++
+		}
+	}
+}
+
 func computeMetrics(metrics *Metrics) {
 	metrics.Accuracy = float64(metrics.Correct) / math.Max(float64(metrics.Total), 1)
 
-	var tp, fp, fn float64
-	for trueLbl, preds := range metrics.ConfusionMatrix {
+	tp, fp, fn := computeConfusionCounts(metrics.ConfusionMatrix)
+
+	metrics.Precision = tp / math.Max(tp+fp, 1)
+	metrics.Recall = tp / math.Max(tp+fn, 1)
+	if metrics.Precision+metrics.Recall > 0 {
+		metrics.F1 = 2 * metrics.Precision * metrics.Recall / (metrics.Precision + metrics.Recall)
+	}
+}
+
+func computeConfusionCounts(confusionMatrix map[string]map[string]int) (tp, fp, fn float64) {
+	for trueLbl, preds := range confusionMatrix {
 		for predLbl, count := range preds {
 			if predLbl != LabelNeutral && trueLbl != LabelNeutral {
 				if predLbl == trueLbl {
@@ -182,11 +224,7 @@ func computeMetrics(metrics *Metrics) {
 			}
 		}
 	}
-	metrics.Precision = tp / math.Max(tp+fp, 1)
-	metrics.Recall = tp / math.Max(tp+fn, 1)
-	if metrics.Precision+metrics.Recall > 0 {
-		metrics.F1 = 2 * metrics.Precision * metrics.Recall / (metrics.Precision + metrics.Recall)
-	}
+	return tp, fp, fn
 }
 
 func saveAndPrintResults(metrics Metrics) {

@@ -47,7 +47,7 @@ func TestCallAPI(t *testing.T) {
 
 	client, _ := setupTestLLMClient(t)
 
-	resp, err := client.llmService.Analyze("test content")
+	resp, err := client.llmService.Analyze(testContent)
 	if err != nil {
 		t.Fatalf("callAPI failed: %v", err)
 	}

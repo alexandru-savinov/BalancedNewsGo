@@ -159,6 +159,9 @@ func (c *LLMClient) EnsembleAnalyze(content string) (*db.LLMScore, error) {
 	}, nil
 }
 
+const promptScaleFragment = "on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', "
+const promptJsonFieldsFragment = "'explanation', and 'confidence'."
+
 // loadPromptVariants returns hardcoded prompt variants (replace with config later)
 func loadPromptVariants() []PromptVariant {
 	return []PromptVariant{
@@ -175,8 +178,8 @@ func loadPromptVariants() []PromptVariant {
 		{
 			ID: "left_focus",
 			Template: "From a progressive or left-leaning perspective, analyze the political bias of the following article " +
-				"on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', " +
-				"'explanation', and 'confidence'.",
+				promptScaleFragment +
+				promptJsonFieldsFragment,
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Strongly aligns with progressive viewpoints", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Balanced or neutral reporting", "confidence": 0.95}`,
@@ -186,8 +189,8 @@ func loadPromptVariants() []PromptVariant {
 		{
 			ID: "center_focus",
 			Template: "From a centrist or neutral perspective, analyze the political bias of the following article " +
-				"on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', " +
-				"'explanation', and 'confidence'.",
+				promptScaleFragment +
+				promptJsonFieldsFragment,
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Clearly favors left-leaning positions", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Appears balanced without clear bias", "confidence": 0.95}`,
@@ -197,8 +200,8 @@ func loadPromptVariants() []PromptVariant {
 		{
 			ID: "right_focus",
 			Template: "From a conservative or right-leaning perspective, analyze the political bias of the following article " +
-				"on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', " +
-				"'explanation', and 'confidence'.",
+				promptScaleFragment +
+				promptJsonFieldsFragment,
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Strongly opposes conservative viewpoints", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Balanced or neutral reporting", "confidence": 0.95}`,
