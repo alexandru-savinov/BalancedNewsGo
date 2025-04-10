@@ -384,8 +384,14 @@
                 <p>This is a brief summary of the article content...</p>
             </section>
             <section class="metadata">
-                <span class="bias-label" aria-label="Composite Bias">Composite: Center</span> |
-                <span class="confidence" aria-label="Composite Confidence">Confidence: 85%</span> |
+                <span><strong>ID:</strong> 123</span>
+                <span><strong>Source:</strong> ExampleSource</span>
+                <span><strong>Fetched:</strong> 2025-04-10 15:30</span>
+                <span><strong>Scored:</strong> 2025-04-10 15:31</span>
+                <span><strong>Fallback:</strong> <span style="color: orange;">Used</span></span>
+                <span><strong>Parse Status:</strong> <span style="color: red;">Failed</span></span>
+                <span class="bias-label" aria-label="Composite Bias">Composite: Center</span>
+                <span class="confidence" aria-label="Composite Confidence">Confidence: 85%</span>
                 <span class="composite-score" aria-label="Composite Score">Score: 0.00</span>
             </section>
 
@@ -403,22 +409,27 @@
 
             <button type="button" onclick="toggleAdvanced(this)">Toggle Advanced View</button>
 
-            <section class="advanced-section">
+            <section class="advanced-section visible">
                 <p><strong>Ensemble Sub-model Outputs:</strong></p>
                 <ul id="model-details-list">
                     <!-- Filled dynamically with model details -->
                 </ul>
                 <ul>
-                    <li>Model A: 0.4</li>
-                    <li>Model B: 0.5</li>
-                    <li>Model C: 0.6</li>
+                    <li>Model A: 0.4 (Parse: Success)</li>
+                    <li>Model B: 0.5 (Parse: Failed)</li>
+                    <li>Model C: 0.6 (Parse: Success)</li>
                 </ul>
                 <p><strong>Aggregation Stats:</strong> Mean=0.5, StdDev=0.1</p>
+                <p><strong>Raw API Response (truncated):</strong> {"score":0.5,"explanation":"...","conf":0.8}</p>
+                <p><strong>Fallback Triggered:</strong> Yes</p>
             </section>
             <div class="feedback-options">
                 <button>Too Left</button>
                 <button>Too Right</button>
                 <button>Agree</button>
+                <button>Parse Error</button>
+                <button>Model Disagreement</button>
+                <button>Fallback Used</button>
             </div>
             <div class="rating" aria-label="Rate this article">
                 <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
