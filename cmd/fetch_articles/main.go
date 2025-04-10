@@ -15,7 +15,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			log.Printf("Failed to close DB connection: %v", err)
+		}
+	}()
 
 	llmClient := llm.NewLLMClient(conn)
 

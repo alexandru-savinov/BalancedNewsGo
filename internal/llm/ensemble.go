@@ -94,7 +94,7 @@ func (c *LLMClient) EnsembleAnalyze(content string) (*db.LLMScore, error) {
 		RawResponse   string  `json:"raw_response"`
 	}
 
-	var subResults []SubResult
+	var subResults = make([]SubResult, 0, len(models)*len(promptVariants))
 
 	for _, model := range models {
 		for _, pv := range promptVariants {
@@ -163,12 +163,46 @@ func (c *LLMClient) EnsembleAnalyze(content string) (*db.LLMScore, error) {
 func loadPromptVariants() []PromptVariant {
 	return []PromptVariant{
 		{
-			ID:       "default",
-			Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', 'explanation', and 'confidence'.",
+			ID: "default",
+			Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) " +
+				"to 1.0 (strongly right). Respond with a JSON object containing 'score', 'explanation', and 'confidence'.",
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
 				`{"score": 1.0, "explanation": "Strongly right-leaning language", "confidence": 0.9}`,
+			},
+		},
+		{
+			ID: "left_focus",
+			Template: "From a progressive or left-leaning perspective, analyze the political bias of the following article " +
+				"on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', " +
+				"'explanation', and 'confidence'.",
+			Examples: []string{
+				`{"score": -1.0, "explanation": "Strongly aligns with progressive viewpoints", "confidence": 0.9}`,
+				`{"score": 0.0, "explanation": "Balanced or neutral reporting", "confidence": 0.95}`,
+				`{"score": 1.0, "explanation": "Strongly opposes progressive viewpoints", "confidence": 0.9}`,
+			},
+		},
+		{
+			ID: "center_focus",
+			Template: "From a centrist or neutral perspective, analyze the political bias of the following article " +
+				"on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', " +
+				"'explanation', and 'confidence'.",
+			Examples: []string{
+				`{"score": -1.0, "explanation": "Clearly favors left-leaning positions", "confidence": 0.9}`,
+				`{"score": 0.0, "explanation": "Appears balanced without clear bias", "confidence": 0.95}`,
+				`{"score": 1.0, "explanation": "Clearly favors right-leaning positions", "confidence": 0.9}`,
+			},
+		},
+		{
+			ID: "right_focus",
+			Template: "From a conservative or right-leaning perspective, analyze the political bias of the following article " +
+				"on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond with a JSON object containing 'score', " +
+				"'explanation', and 'confidence'.",
+			Examples: []string{
+				`{"score": -1.0, "explanation": "Strongly opposes conservative viewpoints", "confidence": 0.9}`,
+				`{"score": 0.0, "explanation": "Balanced or neutral reporting", "confidence": 0.95}`,
+				`{"score": 1.0, "explanation": "Strongly aligns with conservative viewpoints", "confidence": 0.9}`,
 			},
 		},
 	}

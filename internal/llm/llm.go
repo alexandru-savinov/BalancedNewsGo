@@ -16,16 +16,23 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+const (
+	LabelUnknown = "unknown"
+	LabelLeft    = "left"
+	LabelRight   = "right"
+	LabelNeutral = "neutral"
+)
+
 func ComputeCompositeScore(scores []db.LLMScore) float64 {
 	var left, center, right *float64
 
 	for _, s := range scores {
 		switch strings.ToLower(s.Model) {
-		case "left":
+		case LabelLeft:
 			left = &s.Score
 		case "center":
 			center = &s.Score
-		case "right":
+		case LabelRight:
 			right = &s.Score
 		}
 	}
@@ -265,7 +272,7 @@ func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content s
 	heuristicCat := heuristicCategory(content)
 
 	uncertain := false
-	if biasResult.Category == "unknown" || biasResult.Confidence < 0.3 {
+	if biasResult.Category == LabelUnknown || biasResult.Confidence < 0.3 {
 		uncertain = true
 	}
 
@@ -288,7 +295,7 @@ func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content s
 }
 
 func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
-	var validScores []*db.LLMScore
+	var validScores = make([]*db.LLMScore, 0, 5)
 	var attempts int
 
 	for attempts < 10 && len(validScores) < 5 {
@@ -308,7 +315,7 @@ func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
 			}
 			cat := strings.ToLower(strings.TrimSpace(meta.ParsedBias.Category))
 			conf := meta.ParsedBias.Confidence
-			if cat == "" || cat == "unknown" || conf <= 0 {
+			if cat == "" || cat == LabelUnknown || conf <= 0 {
 				log.Printf("[RobustAnalyze] Excluding response with category='%s' confidence=%.2f", cat, conf)
 				continue
 			}
@@ -395,7 +402,7 @@ func parseBiasResult(contentResp string) BiasResult {
 		}
 	}
 	if !validCategory {
-		biasResult.Category = "unknown"
+		biasResult.Category = LabelUnknown
 	}
 
 	// Validate confidence
@@ -417,7 +424,7 @@ func heuristicCategory(content string) string {
 		}
 	}
 
-	return "unknown"
+	return LabelUnknown
 }
 
 type LLMClient struct {
@@ -513,9 +520,9 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 		name string
 		url  string
 	}{
-		{"left", LeftModelURL},
+		{LabelLeft, LeftModelURL},
 		{"center", CenterModelURL},
-		{"right", RightModelURL},
+		{LabelRight, RightModelURL},
 	}
 
 	for _, m := range models {
@@ -566,9 +573,9 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		name string
 		url  string
 	}{
-		{"left", LeftModelURL},
+		{LabelLeft, LeftModelURL},
 		{"center", CenterModelURL},
-		{"right", RightModelURL},
+		{LabelRight, RightModelURL},
 	}
 
 	for _, m := range models {

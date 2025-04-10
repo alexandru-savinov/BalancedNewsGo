@@ -28,11 +28,25 @@ type LLMScore struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 type Feedback struct {
-	ID           int64     `db:"id"`
-	ArticleID    int64     `db:"article_id"`
-	UserID       string    `db:"user_id"`
-	FeedbackText string    `db:"feedback_text"`
-	CreatedAt    time.Time `db:"created_at"`
+	ID               int64     `db:"id"`
+	ArticleID        int64     `db:"article_id"`
+	UserID           string    `db:"user_id"`
+	FeedbackText     string    `db:"feedback_text"`
+	Category         string    `db:"category"`           // agree, disagree, unclear, other
+	EnsembleOutputID *int64    `db:"ensemble_output_id"` // optional, nullable
+	Source           string    `db:"source"`             // form, email, api
+	CreatedAt        time.Time `db:"created_at"`
+}
+
+type Label struct {
+	ID          int64     `db:"id"`
+	Data        string    `db:"data"`
+	Label       string    `db:"label"`
+	Source      string    `db:"source"`
+	DateLabeled time.Time `db:"date_labeled"`
+	Labeler     string    `db:"labeler"`
+	Confidence  float64   `db:"confidence"`
+	CreatedAt   time.Time `db:"created_at"`
 }
 
 func InitDB(dbPath string) (*sqlx.DB, error) {
@@ -70,6 +84,16 @@ CREATE TABLE IF NOT EXISTS feedback (
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	FOREIGN KEY(article_id) REFERENCES articles(id)
 );
+CREATE TABLE IF NOT EXISTS labels (
+   id INTEGER PRIMARY KEY AUTOINCREMENT,
+   data TEXT,
+   label TEXT,
+   source TEXT,
+   date_labeled DATETIME,
+   labeler TEXT,
+   confidence REAL,
+   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `
 	_, err = db.Exec(schema)
 	if err != nil {
@@ -85,7 +109,15 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	return res.LastInsertId()
+}
 
+func InsertLabel(db *sqlx.DB, label *Label) (int64, error) {
+	res, err := db.NamedExec(`INSERT INTO labels (data, label, source, date_labeled, labeler, confidence)
+		VALUES (:data, :label, :source, :date_labeled, :labeler, :confidence)`, label)
+	if err != nil {
+		return 0, err
+	}
 	return res.LastInsertId()
 }
 
@@ -131,7 +163,7 @@ func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
 // FetchArticles with optional filters and pagination.
 func FetchArticles(db *sqlx.DB, source, leaning string, limit, offset int) ([]Article, error) {
 	query := "SELECT * FROM articles WHERE 1=1"
-	args := []interface{}{}
+	args := make([]interface{}, 0, 3)
 
 	if source != "" {
 		query += " AND source = ?"

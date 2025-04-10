@@ -7,6 +7,11 @@ import (
 	"os"
 )
 
+const (
+	LabelLeft  = "left"
+	LabelRight = "right"
+)
+
 type AnalysisResult struct {
 	Score float64 `json:"score"`
 	Label string  `json:"label"`
@@ -38,11 +43,11 @@ func main() {
 	var score float64
 
 	switch label {
-	case "left":
+	case LabelLeft:
 		score = -1.0
 	case "center":
 		score = 0.0
-	case "right":
+	case LabelRight:
 		score = 1.0
 	default:
 		score = 0.0

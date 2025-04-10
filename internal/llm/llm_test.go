@@ -196,7 +196,7 @@ func (m *mockOpenAI) Analyze(content string) (*db.LLMScore, error) {
 }
 
 func (m *mockOpenAI) RobustAnalyze(content string) (*db.LLMScore, error) {
-	var validScores []*db.LLMScore
+	var validScores = make([]*db.LLMScore, 0, 5)
 	var attempts int
 
 	for attempts < 10 && len(validScores) < 5 {

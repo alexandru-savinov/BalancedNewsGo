@@ -21,7 +21,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Failed to close DB connection: %v", err)
+		}
+	}()
 
 	var scores []LLMScore
 	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata FROM llm_scores WHERE article_id = ?", 95)

@@ -11,6 +11,7 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/api"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 )
@@ -38,6 +39,52 @@ func main() {
 
 	// htmx endpoint for article detail
 	router.GET("/article/:id", articleDetailHandler(dbConn))
+
+	// Metrics endpoints
+	router.GET("/metrics/validation", func(c *gin.Context) {
+		metrics, err := metrics.GetValidationMetrics(dbConn)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, metrics)
+	})
+
+	router.GET("/metrics/feedback", func(c *gin.Context) {
+		summary, err := metrics.GetFeedbackSummary(dbConn)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, summary)
+	})
+
+	router.GET("/metrics/uncertainty", func(c *gin.Context) {
+		rates, err := metrics.GetUncertaintyRates(dbConn)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, rates)
+	})
+
+	router.GET("/metrics/disagreements", func(c *gin.Context) {
+		disagreements, err := metrics.GetDisagreements(dbConn)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, disagreements)
+	})
+
+	router.GET("/metrics/outliers", func(c *gin.Context) {
+		outliers, err := metrics.GetOutlierScores(dbConn)
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(200, outliers)
+	})
 
 	// Start server
 	log.Println("Server running on :8080")

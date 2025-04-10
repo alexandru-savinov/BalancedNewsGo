@@ -1,32 +1,3 @@
-<!-- Metadata -->
-Last updated: April 9, 2025
-Author: Roo AI Assistant
-
-# Changelog
-- **2025-04-09:** Added metadata and changelog sections. Planned expansion with milestones, blockers, retrospectives.
-- **Earlier:** Initial progress updates with achievements, test status, diagnostics, next steps.
-
----
-
-# Progress Update (April 9, 2025)
-
----
-
-## Recent Achievements
-
-- Completed implementation of the **multi-model, multi-prompt ensemble** architecture for bias detection.
-- Integrated **continuous bias scoring** with outlier filtering and averaging.
-- Enhanced **API** with endpoints for user feedback, bias insights, and article management.
-- Upgraded **frontend** with dynamic content loading, bias visualization, and inline feedback forms.
-- Refined **prompt engineering** using configurable templates and few-shot examples.
-- Established a **continuous validation and feedback loop** to improve model accuracy and reliability.
-- Performed major **refactoring** to improve modularity, readability, and maintainability.
-- Resolved key **SonarQube warnings**, reducing technical debt and improving code quality.
-- Fixed Go environment issues without reinstalling, enabling builds and tests.
-- Added dedicated tests for robust querying and ensemble logic, which pass successfully.
-
----
-
 ## Current Test Status
 
 - Robust querying test **passes**.
@@ -60,4 +31,15 @@ The 2025 redesign and recent improvements have significantly enhanced the system
 
 ---
 
-*End of update.*
+## Iterative Prompt and Model Refinement (April 2025)
+
+- Implemented **multi-perspective prompt variants**: default, left-focused, center-focused, right-focused.
+- Each variant includes tailored few-shot examples to improve bias detection across the spectrum.
+- This supports **ensemble diversity** and enables more nuanced aggregation.
+- Validation tool categorizes errors (`prompt_issue`, `model_failure`, `data_noise`) to guide targeted refinements.
+- Next iterations will:
+  - Adjust few-shot examples based on flagged error categories.
+  - Tune ensemble aggregation heuristics (e.g., weighting, filtering).
+  - Retrain or fine-tune models if persistent model failures are detected.
+- All changes validated on labeled datasets before deployment.
+- This iterative approach aims to continuously improve bias detection accuracy and robustness.

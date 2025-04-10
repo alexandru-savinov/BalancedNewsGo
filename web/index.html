@@ -177,8 +177,22 @@
             <div id="feedback-123" class="feedback-form" aria-hidden="true">
                 <form hx-post="/feedback/submit" hx-target="#feedback-123" hx-swap="outerHTML">
                     <label for="feedback-text-123">Your feedback:</label>
-                    <textarea id="feedback-text-123" name="feedback" rows="3"></textarea>
+                    <textarea id="feedback-text-123" name="feedback_text" rows="3"></textarea>
+            
+                    <fieldset>
+                        <legend>Category:</legend>
+                    <div>
+                        <label><input type="radio" name="category" value="agree" required> Agree</label>
+                        <label><input type="radio" name="category" value="disagree"> Disagree</label>
+                        <label><input type="radio" name="category" value="unclear"> Unclear</label>
+                        <label><input type="radio" name="category" value="other"> Other</label>
+                    </div>
+                    </fieldset>
+            
                     <input type="hidden" name="article_id" value="123" />
+                    <input type="hidden" name="source" value="form" />
+                    <input type="hidden" name="ensemble_output_id" value="" />
+            
                     <button type="submit">Submit</button>
                 </form>
             </div>

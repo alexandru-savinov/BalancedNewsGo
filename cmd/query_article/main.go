@@ -19,7 +19,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Failed to close DB connection: %v", err)
+		}
+	}()
 
 	var article Article
 	err = db.Get(&article, "SELECT id, title, content FROM articles WHERE id = ?", 94)

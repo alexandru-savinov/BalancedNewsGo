@@ -18,7 +18,7 @@ func detectPartisanCues(text string) []string {
 		"deep state", "mainstream media", "liberal agenda", "conservative values", "culture war",
 		"globalist", "elitist", "freedom-loving", "authoritarian", "biased media",
 	}
-	var found []string
+	var found = make([]string, 0, len(cues))
 	lower := strings.ToLower(text)
 	for _, cue := range cues {
 		if strings.Contains(lower, cue) {

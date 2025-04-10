@@ -151,7 +151,7 @@ func parseArticleID(c *gin.Context) (int64, bool) {
 }
 
 func filterAndTransformScores(scores []db.LLMScore, min, max float64) []map[string]interface{} {
-	var results []map[string]interface{}
+	results := make([]map[string]interface{}, 0, len(scores))
 	for _, score := range scores {
 		if score.Model != "ensemble" {
 			continue
@@ -228,7 +228,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		var details []map[string]interface{}
+		var details = make([]map[string]interface{}, 0, len(scores))
 		for _, score := range scores {
 			if score.Model != "ensemble" {
 				continue
@@ -261,13 +261,16 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			ArticleID    int64  `json:"article_id"`
-			UserID       string `json:"user_id"`
-			FeedbackText string `json:"feedback_text"`
+			ArticleID        int64  `json:"article_id" form:"article_id"`
+			UserID           string `json:"user_id" form:"user_id"`
+			FeedbackText     string `json:"feedback_text" form:"feedback_text"`
+			Category         string `json:"category" form:"category"`
+			EnsembleOutputID *int64 `json:"ensemble_output_id" form:"ensemble_output_id"`
+			Source           string `json:"source" form:"source"`
 		}
 
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		if err := c.ShouldBind(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 
 			return
 		}
@@ -279,9 +282,12 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		feedback := &db.Feedback{
-			ArticleID:    req.ArticleID,
-			UserID:       req.UserID,
-			FeedbackText: req.FeedbackText,
+			ArticleID:        req.ArticleID,
+			UserID:           req.UserID,
+			FeedbackText:     req.FeedbackText,
+			Category:         req.Category,
+			EnsembleOutputID: req.EnsembleOutputID,
+			Source:           req.Source,
 		}
 
 		_, err := db.InsertFeedback(dbConn, feedback)
