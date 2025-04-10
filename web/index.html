@@ -5,55 +5,119 @@
     <title>NewsBalancer</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
+        :root {
+            --primary-bg: #ffffff;
+            --secondary-bg: #f9f9f9;
+            --primary-text: #222222;
+            --secondary-text: #555555;
+            --highlight-bg: #eef2ff;
+            --border-color: #ccc;
+            --accent-color: #3366cc;
+            --hover-bg: #f0f0f0;
+        }
+
         body {
-            font-family: sans-serif;
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--primary-text);
+            background-color: var(--primary-bg);
             margin: 0;
             padding: 1rem;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            gap: 1.5rem;
         }
+
         header, nav, main {
             width: 100%;
         }
+
+        header h1 {
+            font-family: Georgia, serif;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
         #filters, #pagination {
             display: flex;
             flex-wrap: wrap;
             gap: 1rem;
             align-items: center;
+            background: var(--secondary-bg);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
         }
+
         #articles {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
         }
+
         article {
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            padding: 1rem;
+            background: var(--primary-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.25rem;
             display: flex;
             flex-direction: column;
+            gap: 1rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        article:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        article h2 {
+            font-family: Georgia, serif;
+            font-size: 1.5rem;
+            margin: 0 0 0.5rem 0;
+            color: var(--accent-color);
+        }
+
+        .summary p {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .metadata {
+            font-size: 0.9rem;
+            color: var(--secondary-text);
+            background: var(--highlight-bg);
+            padding: 0.5rem;
+            border-radius: 6px;
+            display: flex;
+            flex-wrap: wrap;
             gap: 0.5rem;
         }
-        .metadata {
-            font-size: 0.9em;
-            color: #555;
+
+        .metadata span {
+            font-weight: 500;
         }
+
         .bias-label {
             font-weight: bold;
+            color: #000;
         }
+
         .bias-slider-container {
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
+
         .bias-slider {
             width: 100%;
-            height: 10px;
+            height: 12px;
             background: linear-gradient(to right, blue, gray, red);
-            border-radius: 5px;
+            border-radius: 6px;
             position: relative;
         }
+
         .bias-indicator {
             position: absolute;
             top: -3px;
@@ -62,48 +126,152 @@
             background: black;
             border-radius: 2px;
         }
+
+        .composite-indicator {
+            z-index: 2;
+            border: 2px solid #fff;
+            width: 12px;
+            height: 24px;
+            top: -7px;
+            border-radius: 50%;
+        }
+
+        .model-indicator {
+            width: 8px;
+            height: 16px;
+            background-color: rgba(0,0,0,0.6);
+            border-radius: 50%;
+            position: absolute;
+            top: -5px;
+            z-index: 1;
+            cursor: pointer;
+        }
+
+        .bias-indicator:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #333;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            white-space: pre-line;
+            font-size: 12px;
+            opacity: 0.9;
+            pointer-events: none;
+        }
+
+        .explanation {
+            background: var(--secondary-bg);
+            padding: 0.75rem;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
         .advanced-section {
             display: none;
-            font-size: 0.85em;
-            background: #f9f9f9;
-            padding: 0.5rem;
-            border-radius: 5px;
-            border: 1px dashed #ccc;
+            font-size: 0.85rem;
+            background: var(--secondary-bg);
+            padding: 0.75rem;
+            border-radius: 6px;
+            border: 1px dashed var(--border-color);
         }
+
         .advanced-section.visible {
             display: block;
         }
+
         .feedback-form {
             margin-top: 0.5rem;
             display: none;
             flex-direction: column;
             gap: 0.5rem;
         }
+
         .feedback-form[aria-hidden="false"] {
             display: flex;
         }
+
         .feedback-options {
             display: flex;
             gap: 0.5rem;
             flex-wrap: wrap;
         }
+
+        .feedback-options button {
+            padding: 0.4rem 0.8rem;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--primary-bg);
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .feedback-options button:hover {
+            background-color: var(--hover-bg);
+        }
+
         .rating {
             display: flex;
             gap: 0.2rem;
         }
+
         .rating span {
             cursor: pointer;
-            font-size: 1.2em;
+            font-size: 1.4em;
+            transition: transform 0.2s ease, color 0.2s ease;
         }
+
+        .rating span:hover {
+            transform: scale(1.2);
+            color: gold;
+        }
+
+        button {
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--primary-bg);
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: var(--hover-bg);
+        }
+
         @media (max-width: 600px) {
             #filters, #pagination {
                 flex-direction: column;
                 align-items: flex-start;
             }
         }
+
         .success-message {
             color: green;
-            font-size: 0.9em;
+            font-size: 0.9rem;
+        }
+
+        /* Responsive images inside articles */
+        .article-figure {
+            margin: 0 0 1rem 0;
+            text-align: center;
+        }
+
+        .article-image {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            border-radius: 6px;
+        }
+
+        .article-caption {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.5rem;
         }
     </style>
 </head>
@@ -121,6 +289,71 @@
             <select id="leaningFilter" name="leaning" hx-get="/articles" hx-target="#articles" hx-trigger="change" hx-include="#sourceFilter,#leaningFilter,#offsetInput">
                 <option value="">All</option>
                 <option value="left">Left</option>
+            <script>
+                async function loadBiasData(articleId) {
+                    try {
+                        const response = await fetch(`/api/articles/${articleId}/bias`);
+                        const data = await response.json();
+
+                        const compositeScore = data.composite_score;
+                        const results = data.results;
+
+                        // Update composite label and score
+                        const biasLabel = document.querySelector('.bias-label');
+                        const confidenceSpan = document.querySelector('.confidence');
+                        const compositeScoreSpan = document.querySelector('.composite-score');
+                        const explanationP = document.getElementById('bias-explanation');
+
+                        let labelText = 'Center';
+                        if (compositeScore < -0.5) labelText = 'Left';
+                        else if (compositeScore < -0.1) labelText = 'Slightly Left';
+                        else if (compositeScore > 0.5) labelText = 'Right';
+                        else if (compositeScore > 0.1) labelText = 'Slightly Right';
+
+                        biasLabel.textContent = `Composite: ${labelText}`;
+                        compositeScoreSpan.textContent = `Score: ${compositeScore.toFixed(2)}`;
+
+                        // Compute average confidence
+                        const avgConf = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
+                        confidenceSpan.textContent = `Confidence: ${(avgConf * 100).toFixed(0)}%`;
+
+                        // Composite explanation (first explanation or combined)
+                        explanationP.textContent = results.map(r => `${r.model}: ${r.explanation}`).join(' | ');
+
+                        // Position composite indicator
+                        const compositeIndicator = document.querySelector('.composite-indicator');
+                        compositeIndicator.style.left = `${((compositeScore + 1) / 2) * 100}%`;
+
+                        // Remove old model indicators
+                        document.querySelectorAll('.model-indicator').forEach(e => e.remove());
+
+                        // Add model indicators
+                        const slider = document.querySelector('.bias-slider');
+                        results.forEach(r => {
+                            const ind = document.createElement('div');
+                            ind.className = 'bias-indicator model-indicator';
+                            ind.style.left = `${((r.score + 1) / 2) * 100}%`;
+                            ind.setAttribute('data-tooltip', `${r.model}\nScore: ${r.score.toFixed(2)}\nConf: ${(r.confidence*100).toFixed(0)}%\n${r.explanation}`);
+                            slider.appendChild(ind);
+                        });
+
+                        // Populate advanced list
+                        const list = document.getElementById('model-details-list');
+                        list.innerHTML = '';
+                        results.forEach(r => {
+                            const li = document.createElement('li');
+                            li.textContent = `${r.model}: Score ${r.score.toFixed(2)}, Confidence ${(r.confidence*100).toFixed(0)}%, Explanation: ${r.explanation}`;
+                            list.appendChild(li);
+                        });
+
+                    } catch (e) {
+                        console.error('Failed to load bias data', e);
+                    }
+                }
+
+                // Example usage: load article with ID 1
+                loadBiasData(1);
+            </script>
                 <option value="center">Center</option>
                 <option value="right">Right</option>
             </select>
@@ -139,25 +372,38 @@
             <header>
                 <h2>Article Title</h2>
             </header>
+            <figure class="article-figure">
+                <img src="https://via.placeholder.com/600x400" alt="Sample article image" class="article-image" loading="lazy">
+                <figcaption class="article-caption">Sample image caption describing the article image.</figcaption>
+            </figure>
             <section class="summary">
                 <p>This is a brief summary of the article content...</p>
             </section>
             <section class="metadata">
-                <span class="bias-label" aria-label="Bias label">Center</span> |
-                <span class="confidence" aria-label="Confidence score">Confidence: 85%</span> ±5% |
-                <span class="composite-score" aria-label="Composite ranking score">Rank: 0.92</span>
+                <span class="bias-label" aria-label="Composite Bias">Composite: Center</span> |
+                <span class="confidence" aria-label="Composite Confidence">Confidence: 85%</span> |
+                <span class="composite-score" aria-label="Composite Score">Score: 0.00</span>
             </section>
+
             <div class="bias-slider-container">
                 <div class="bias-slider">
-                    <div class="bias-indicator" style="left:50%;"></div>
+                    <!-- Composite indicator -->
+                    <div class="bias-indicator composite-indicator" style="left:50%;" title="Composite Score"></div>
+                    <!-- Individual model indicators will be inserted here dynamically -->
                 </div>
             </div>
+
             <section class="explanation">
-                <p>Explanation of bias classification goes here.</p>
+                <p id="bias-explanation">Composite explanation goes here.</p>
             </section>
+
             <button type="button" onclick="toggleAdvanced(this)">Toggle Advanced View</button>
+
             <section class="advanced-section">
                 <p><strong>Ensemble Sub-model Outputs:</strong></p>
+                <ul id="model-details-list">
+                    <!-- Filled dynamically with model details -->
+                </ul>
                 <ul>
                     <li>Model A: 0.4</li>
                     <li>Model B: 0.5</li>

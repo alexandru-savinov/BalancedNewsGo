@@ -86,6 +86,11 @@ func main() {
 		c.JSON(200, outliers)
 	})
 
+	// Root welcome endpoint
+	router.GET("/", func(c *gin.Context) {
+		c.String(200, "Balanced News API Server")
+	})
+
 	// Start server
 	log.Println("Server running on :8080")
 

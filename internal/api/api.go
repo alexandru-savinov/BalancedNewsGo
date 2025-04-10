@@ -207,8 +207,38 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		ensembleResults := filterAndTransformScores(scores, minScore, maxScore)
 		sortResults(ensembleResults, sortOrder)
 
+		var detailedResults []map[string]interface{}
+		var weightedSum float64
+		var totalWeight float64
+
+		for _, s := range scores {
+			var parsed struct {
+				Confidence  float64 `json:"Confidence"`
+				Explanation string  `json:"Explanation"`
+			}
+			_ = json.Unmarshal([]byte(s.Metadata), &parsed)
+
+			weightedSum += s.Score * parsed.Confidence
+			totalWeight += parsed.Confidence
+
+			detailedResults = append(detailedResults, map[string]interface{}{
+				"model":       s.Model,
+				"score":       s.Score,
+				"confidence":  parsed.Confidence,
+				"explanation": parsed.Explanation,
+			})
+		}
+
+		var composite float64
+		if totalWeight > 0 {
+			composite = weightedSum / totalWeight
+		} else {
+			composite = 0
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"results": ensembleResults,
+			"composite_score": composite,
+			"results":         detailedResults,
 		})
 	}
 }

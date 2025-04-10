@@ -1,8 +1,9 @@
 <!-- Metadata -->
-Last updated: April 9, 2025
+Last updated: April 10, 2025
 Author: Roo AI Assistant
 
 # Changelog
+- **2025-04-10:** Documented article page UI/UX redesign with interactive bias visualization, image optimization, and layout improvements.
 - **2025-04-09:** Added metadata and changelog sections. Planned expansion with personas, user stories, KPIs.
 - **Earlier:** Initial product context with user needs, problem statement, and value proposition.
 

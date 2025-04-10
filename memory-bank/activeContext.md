@@ -2,7 +2,7 @@
 
 ---
 
-**Summary (April 2025):**
+**Summary (April 2025):**  
 The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt ensemble** for nuanced bias detection. The **API** has been enhanced with endpoints for user feedback and bias insights, while the **frontend** supports dynamic content loading and inline feedback submission. **Prompt engineering** has been refined with configurable templates and few-shot examples, improving LLM reliability. A **continuous validation and feedback loop** guides ongoing improvements. Major **refactoring** improved modularity and maintainability, resolving key **SonarQube warnings** and stabilizing the codebase.
 
 ---
@@ -36,6 +36,14 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 - Supports inline user feedback submission
 - Responsive and accessible design
 
+### Article Page UI/UX Redesign (April 2025)
+- Introduced an **interactive bias visualization slider** with composite and individual model indicators.
+- Added **tooltips** for detailed model explanations, scores, and confidence.
+- Enabled **toggleable advanced view** with ensemble details and aggregation stats.
+- Optimized article images for **responsiveness and lazy loading**.
+- Improved layout with a **responsive grid**, modern styling, and inline feedback options.
+- Cross-reference: [`web/index.html`](../web/index.html)
+
 ## Current Focus
 - Testing and validation of new features
 - Collecting user feedback
@@ -47,6 +55,7 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 - **OpenAI API integration completed and verified**
 - Backend components integrated and functional end-to-end
 - Frontend enhanced with summaries, bias info, and feedback forms
+- **Article page UI/UX redesigned with interactive bias visualization, image optimization, and layout improvements**
 
 ## Debugging and Diagnostics
 
@@ -136,3 +145,43 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 - Log raw content strings on parse failures to identify malformed outputs.
 - Track metrics on failure modes to guide improvements.
 - Review and enforce OpenAI prompt formatting to ensure consistent, parseable JSON responses.
+
+---
+
+## April 2025 Update: Validation, Feedback, QA, and Code Quality
+
+### Fully Operational Validation & Feedback Loop
+- The system now features a **continuous, automated validation loop** integrated across backend and frontend.
+- **User feedback** is ingested both inline (via the UI) and through API endpoints.
+- Validation runs automatically on new data and model outputs, flagging inconsistencies or low-confidence results.
+- Feedback directly informs **prompt tuning** and **model adjustments**, creating a **closed-loop improvement cycle**.
+
+### Continuous Feedback Ingestion & Dashboards
+- Feedback is continuously collected, stored, and analyzed.
+- **Dashboards** provide real-time insights into:
+  - Feedback volume and sentiment
+  - Validation pass/fail rates
+  - Model performance trends
+- This enables rapid detection of issues and supports **data-driven iteration**.
+
+### QA Framework for Documentation
+- A **multi-stage QA process** governs all documentation updates:
+  - **Drafting:** Authors use standardized templates to ensure consistency.
+  - **Automated Checks:** Markdown linting, link validation, and style enforcement run on every commit.
+  - **Peer Review:** At least one reviewer verifies technical accuracy, clarity, and adherence to guidelines.
+  - **Approval & Merge:** Only after passing automated checks and peer review can changes be merged.
+- **Continuous Improvement:**
+  - Collect feedback on documentation usability.
+  - Periodic audits to identify outdated or unclear sections.
+  - Update templates and checklists based on lessons learned.
+
+### Resolved SonarQube and Lint Issues
+- Major **SonarQube warnings** have been addressed, improving code maintainability and security.
+- **Lint errors** across backend and frontend have been fixed.
+- The **CI pipeline** now enforces these quality gates on every commit.
+
+### Related Files
+- [`architecture_plan.md`](architecture_plan.md) — System architecture and validation flow
+- [`memory-bank-update-plan.md`](memory-bank-update-plan.md) — Update plans including feedback loop
+- [`memory-bank-enhancement-plan.md`](memory-bank-enhancement-plan.md) — Enhancements related to dashboards and QA
+- [`progress.md`](progress.md) — Progress tracking including QA and validation milestones
