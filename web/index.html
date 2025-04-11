@@ -7,48 +7,173 @@
     <script>
         // --- Article List Caching and Loading/Error Handling ---
         document.addEventListener('DOMContentLoaded', function() {
-            // Key generator for caching list view
-            function getListCacheKey() {
-                const source = document.getElementById('sourceFilter')?.value || '';
-                const leaning = document.getElementById('leaningFilter')?.value || '';
-                const offset = document.getElementById('offsetInput')?.value || '0';
-                return `articles_list_${source}_${leaning}_${offset}`;
+            const articlesContainer = document.getElementById('articles');
+            const sourceFilter = document.getElementById('sourceFilter');
+            const leaningFilter = document.getElementById('leaningFilter');
+            const offsetInput = document.getElementById('offsetInput'); // Assuming pagination might be added later
+
+            // --- Dynamic Article Rendering from JSON ---
+            async function loadAndRenderArticles() {
+                if (!articlesContainer) return; // Exit if container not found
+                articlesContainer.innerHTML = '<p class="loading-indicator">Loading articles...</p>';
+                try {
+                    const source = sourceFilter?.value || '';
+                    const leaning = leaningFilter?.value || '';
+                    const offset = offsetInput?.value || '0'; // Use offset if pagination exists
+                    const url = `/api/articles?source=${encodeURIComponent(source)}&leaning=${encodeURIComponent(leaning)}&offset=${encodeURIComponent(offset)}`;
+
+                    const resp = await fetch(url);
+                    if (!resp.ok) throw new Error(`Failed to fetch articles: ${resp.statusText}`);
+                    const responseData = await resp.json(); // Get the whole response object
+
+                    // Check for success and if data is a valid array
+                    if (!responseData || !responseData.success || !Array.isArray(responseData.data) || responseData.data.length === 0) {
+                        articlesContainer.innerHTML = '<p>No articles found.</p>';
+                        console.log("No articles found or invalid data structure received:", responseData); // Log if no articles
+                        return;
+                    }
+
+                    const articles = responseData.data; // Extract the array
+                    let articlesHtml = '';
+                    for (const article of articles) { // Iterate over the data array
+                        // Use correct PascalCase property names from JSON and add fallbacks
+                        const articleId = article.ID || 'N/A';
+                        const articleTitle = article.Title || 'Untitled';
+                        const articleUrl = article.URL || '#'; // Use URL field for link
+                        const articleSource = article.Source || 'N/A';
+                        const articleContent = article.Content || 'No content available.'; // Use Content as summary fallback
+                        const fetchedDate = article.CreatedAt ? new Date(article.CreatedAt).toLocaleString() : 'N/A'; // Use CreatedAt for Fetched
+                        const scoredDate = 'N/A'; // Scored date not available in this API response
+                        const imageUrl = article.image_url; // Assuming image_url might exist, otherwise handled below
+                        const imageCaption = article.image_caption; // Assuming image_caption might exist
+
+                        articlesHtml += `
+<article aria-label="News article" data-article-id="${articleId}">
+    <header>
+        <h2><a href="${articleUrl}" target="_blank" rel="noopener noreferrer">${articleTitle}</a></h2>
+    </header>
+    ${imageUrl ? `
+    <figure class="article-figure">
+        <img src="${imageUrl}" alt="Article image" class="article-image" loading="lazy">
+        ${imageCaption ? `<figcaption class="article-caption">${imageCaption}</figcaption>` : ''}
+    </figure>` : '<!-- No image_url provided -->'}
+    <section class="summary">
+        <p>${articleContent}</p> <!-- Displaying Content here -->
+    </section>
+    <section class="metadata">
+        <span><strong>ID:</strong> ${articleId}</span>
+        <span><strong>Source:</strong> ${articleSource}</span>
+        <span><strong>Fetched:</strong> ${fetchedDate}</span>
+        <span><strong>Scored:</strong> ${scoredDate}</span>
+        <!-- Bias placeholders - will be filled by loadBiasData -->
+        <span class="bias-label" aria-label="Composite Bias">Composite: Loading...</span>
+        <span class="confidence" aria-label="Composite Confidence">Confidence: --</span>
+        <span class="composite-score" aria-label="Composite Score">Score: --</span>
+    </section>
+
+    <!-- Bias Slider -->
+    <div class="bias-slider-container">
+        <div class="bias-slider">
+            <div class="bias-indicator composite-indicator" style="left:50%; background-color: #ccc;" title="Loading score..."></div>
+            <!-- Model indicators added by loadBiasData -->
+        </div>
+    </div>
+
+    <!-- Explanation -->
+    <section class="explanation">
+        <p id="bias-explanation">Loading explanation...</p>
+    </section>
+
+    <!-- Score Article Section -->
+    <div class="score-article-section">
+        <button type="button" class="score-article-btn" onclick="startScoring(this)" data-article-id="${articleId}">
+            <span class="score-btn-label">Score this article</span>
+            <span class="score-btn-spinner" style="display:none;">⏳</span>
+        </button>
+        <div class="score-progress-container" style="display:none;">
+            <div class="score-progress-bar-bg">
+                <div class="score-progress-bar"></div>
+            </div>
+            <ul class="score-progress-messages"></ul>
+        </div>
+        <div class="score-error-message" style="color:red;display:none;margin-top:0.5em;"></div>
+    </div>
+
+    <!-- Advanced View -->
+    <button type="button" onclick="toggleAdvanced(this)">Toggle Advanced View</button>
+    <section class="advanced-section"> <!-- Start hidden -->
+        <p><strong>Ensemble Sub-model Outputs:</strong></p>
+        <ul id="model-details-list">
+            <li>Loading details...</li>
+        </ul>
+        <!-- Add other advanced details if available in JSON -->
+    </section>
+
+    <!-- Feedback -->
+    <div class="feedback-options">
+        <button>Too Left</button>
+        <button>Too Right</button>
+        <button>Agree</button>
+        <button>Parse Error</button>
+        <button>Model Disagreement</button>
+        <button>Fallback Used</button>
+    </div>
+    <div class="rating" aria-label="Rate this article">
+        <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+    </div>
+    <!-- Feedback form placeholder - htmx might still be used here if desired -->
+    <button hx-get="/feedback/form?article_id=${articleId}" hx-target="#feedback-${articleId}" hx-swap="outerHTML">Give Feedback</button>
+    <div id="feedback-${articleId}" class="feedback-form" aria-hidden="true"></div>
+    <div class="success-message" style="display:none;">Thank you for your feedback!</div>
+</article>
+                        `;
+                    }
+                    articlesContainer.innerHTML = articlesHtml;
+
+                    // After rendering, load bias data for each article
+                    // Ensure htmx processes any new attributes if feedback form uses it
+                    if (window.htmx) {
+                        window.htmx.process(articlesContainer);
+                    }
+                    // Load bias data
+                    document.querySelectorAll('article[data-article-id]').forEach(articleElement => {
+                        const articleId = articleElement.getAttribute('data-article-id');
+                        console.log(`[loadAndRenderArticles] Attempting to load bias for articleId: ${articleId}`); // Log before calling
+                        if (typeof loadBiasData === "function") {
+                            loadBiasData(articleId, articleElement); // Pass the article element as context
+                        } else {
+                            console.error("loadBiasData function not found!");
+                        }
+                    });
+
+                } catch (e) {
+                    console.error("Error loading/rendering articles:", e);
+                    articlesContainer.innerHTML = `<p class="error-message">Failed to load articles: ${e.message}. Please try again later.</p>`;
+                }
             }
 
-            // Intercept htmx requests for /articles to implement caching
-            document.body.addEventListener('htmx:beforeRequest', function(evt) {
-                const xhr = evt.detail.xhr;
-                const url = evt.detail.path;
-                if (url && url.startsWith('/articles')) {
-                    const cacheKey = getListCacheKey();
-                    const cached = sessionStorage.getItem(cacheKey);
-                    if (cached) {
-                        evt.preventDefault();
-                        document.getElementById('articles').innerHTML = cached;
-                        document.body.dispatchEvent(new CustomEvent('htmx:afterSwap'));
-                    } else {
-                        // Show loading indicator
-                        document.getElementById('articles').innerHTML = '<p class="loading-indicator">Loading articles...</p>';
-                    }
-                }
+            // --- Event Listeners ---
+            // Initial load
+            loadAndRenderArticles();
+
+            // Reload on filter change (with debounce)
+            let filterTimeout;
+            function handleFilterChange() {
+                clearTimeout(filterTimeout);
+                filterTimeout = setTimeout(loadAndRenderArticles, 500); // Debounce filter changes
+            }
+            sourceFilter?.addEventListener('input', handleFilterChange);
+            leaningFilter?.addEventListener('change', handleFilterChange);
+
+            // Reload on manual refresh button click
+            const refreshButton = document.querySelector('button[hx-post="/api/refresh"]');
+            refreshButton?.addEventListener('click', function() {
+                // Optional: Add visual feedback for refresh start
+                setTimeout(loadAndRenderArticles, 1000); // Reload articles after a short delay
             });
 
-            // After successful swap, cache the result
-            document.body.addEventListener('htmx:afterSwap', function(evt) {
-                const url = evt.detail?.xhr?.responseURL || '';
-                if (url.includes('/articles')) {
-                    const cacheKey = getListCacheKey();
-                    sessionStorage.setItem(cacheKey, document.getElementById('articles').innerHTML);
-                }
-            });
+            // Note: Pagination logic would need to update offsetInput.value and call loadAndRenderArticles
 
-            // Error handling for htmx requests
-            document.body.addEventListener('htmx:responseError', function(evt) {
-                const url = evt.detail?.path || '';
-                if (url && url.startsWith('/articles')) {
-                    document.getElementById('articles').innerHTML = '<p class="error-message">Failed to load articles. Please try again later.</p>';
-                }
-            });
         });
     </script>
     <style>
@@ -483,6 +608,7 @@
                 }
 
                 async function loadBiasData(articleId, ctx = document) {
+                    console.log(`[loadBiasData] Received articleId: ${articleId}`); // Log at function start
                     // Show loading indicator in bias section
                     const biasLabel = ctx.querySelector('.bias-label');
                     const confidenceSpan = ctx.querySelector('.confidence');
@@ -536,7 +662,7 @@
         <input type="hidden" id="offsetInput" name="offset" value="0" />
     </div>
 
-    <main id="articles" hx-get="/articles" hx-trigger="load" hx-target="#articles" hx-swap="innerHTML">
+    <main id="articles">
         <!-- Example article template, will be replaced dynamically -->
         <article aria-label="News article" data-article-id="123">
             <header>
@@ -572,7 +698,21 @@
             <section class="explanation">
                 <p id="bias-explanation">Composite explanation goes here.</p>
             </section>
-
+            
+            <!-- Score this article button and progress UI -->
+            <div class="score-article-section">
+                <button type="button" class="score-article-btn" onclick="startScoring(this)" data-article-id="123">
+                    <span class="score-btn-label">Score this article</span>
+                    <span class="score-btn-spinner" style="display:none;">⏳</span>
+                </button>
+                <div class="score-progress-container" style="display:none;">
+                    <div class="score-progress-bar-bg" style="width:100%;height:10px;background:#eee;border-radius:5px;overflow:hidden;">
+                        <div class="score-progress-bar" style="width:0%;height:10px;background:#3366cc;transition:width 0.3s;"></div>
+                    </div>
+                    <ul class="score-progress-messages" style="margin:0.5em 0 0 0;padding-left:1em;font-size:0.95em;"></ul>
+                </div>
+                <div class="score-error-message" style="color:red;display:none;margin-top:0.5em;"></div>
+            </div>
             <button type="button" onclick="toggleAdvanced(this)">Toggle Advanced View</button>
 
             <section class="advanced-section visible">
@@ -676,6 +816,100 @@ window.addEventListener('load', () => {
 
     console.log('Frontend tests completed');
 });
+</script>
+<script>
+function startScoring(btn) {
+    const article = btn.closest('article[data-article-id]');
+    const articleId = article.getAttribute('data-article-id');
+    const progressSection = article.querySelector('.score-article-section');
+    const progressBar = progressSection.querySelector('.score-progress-bar');
+    const progressContainer = progressSection.querySelector('.score-progress-container');
+    const progressMessages = progressSection.querySelector('.score-progress-messages');
+    const errorMessage = progressSection.querySelector('.score-error-message');
+    const btnLabel = btn.querySelector('.score-btn-label');
+    const btnSpinner = btn.querySelector('.score-btn-spinner');
+
+    // Reset UI
+    btn.disabled = true;
+    btnLabel.style.display = 'none';
+    btnSpinner.style.display = '';
+    progressContainer.style.display = '';
+    progressBar.style.width = '0%';
+    progressMessages.innerHTML = '';
+    errorMessage.style.display = 'none';
+    errorMessage.textContent = '';
+
+    // Start scoring
+    fetch(`/api/llm/reanalyze/${articleId}`, { method: 'POST' })
+        .then(resp => resp.json())
+        .then(data => {
+            if (data.status && data.status.startsWith('reanalyze')) {
+                // Open SSE for progress
+                const evtSource = new EventSource(`/api/llm/score-progress/${articleId}`);
+                let lastPercent = 0;
+                evtSource.onmessage = function(event) {
+                    const progress = JSON.parse(event.data);
+                    // Update progress bar
+                    if (progress.percent !== undefined) {
+                        progressBar.style.width = progress.percent + '%';
+                        lastPercent = progress.percent;
+                    }
+                    // Add status message
+                    if (progress.message) {
+                        const li = document.createElement('li');
+                        li.textContent = progress.message;
+                        progressMessages.appendChild(li);
+                    }
+                    // Handle error
+                    if (progress.error) {
+                        errorMessage.textContent = "Error: " + progress.error;
+                        errorMessage.style.display = '';
+                        btn.disabled = false;
+                        btnLabel.style.display = '';
+                        btnSpinner.style.display = 'none';
+                        evtSource.close();
+                    }
+                    // Handle complete
+                    if (progress.step === "Complete") {
+                        progressBar.style.width = '100%';
+                        const li = document.createElement('li');
+                        li.textContent = "Scoring complete!";
+                        progressMessages.appendChild(li);
+                        btn.disabled = false;
+                        btnLabel.textContent = "Rescore article";
+                        btnLabel.style.display = '';
+                        btnSpinner.style.display = 'none';
+                        evtSource.close();
+                        // Optionally, reload bias data
+                        if (typeof loadBiasData === "function") {
+                            setTimeout(() => loadBiasData(articleId, article), 1000);
+                        }
+                    }
+                };
+                evtSource.onerror = function() {
+                    errorMessage.textContent = "Connection lost. Please try again.";
+                    errorMessage.style.display = '';
+                    btn.disabled = false;
+                    btnLabel.style.display = '';
+                    btnSpinner.style.display = 'none';
+                    evtSource.close();
+                };
+            } else {
+                errorMessage.textContent = "Failed to start scoring: " + (data.error || "Unknown error");
+                errorMessage.style.display = '';
+                btn.disabled = false;
+                btnLabel.style.display = '';
+                btnSpinner.style.display = 'none';
+            }
+        })
+        .catch(err => {
+            errorMessage.textContent = "Failed to start scoring: " + err;
+            errorMessage.style.display = '';
+            btn.disabled = false;
+            btnLabel.style.display = '';
+            btnSpinner.style.display = 'none';
+        });
+}
 </script>
 
 <script>

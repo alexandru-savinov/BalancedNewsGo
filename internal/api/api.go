@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -22,6 +23,42 @@ var (
 
 const errInvalidArticleID = "Invalid article ID"
 
+// --- Progress Tracking ---
+
+type ProgressState struct {
+	Step        string `json:"step"`
+	Message     string `json:"message"`
+	Percent     int    `json:"percent"`
+	Error       string `json:"error,omitempty"`
+	LastUpdated int64  `json:"last_updated"`
+}
+
+var (
+	progressMap     = make(map[int64]*ProgressState)
+	progressMapLock sync.RWMutex
+)
+
+func setProgress(articleID int64, step, message string, percent int, errMsg string) {
+	progressMapLock.Lock()
+	defer progressMapLock.Unlock()
+	progressMap[articleID] = &ProgressState{
+		Step:        step,
+		Message:     message,
+		Percent:     percent,
+		Error:       errMsg,
+		LastUpdated: time.Now().Unix(),
+	}
+}
+
+func getProgress(articleID int64) *ProgressState {
+	progressMapLock.RLock()
+	defer progressMapLock.RUnlock()
+	if p, ok := progressMap[articleID]; ok {
+		return p
+	}
+	return nil
+}
+
 func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient) {
 	router.GET("/api/articles", getArticlesHandler(dbConn))
 	router.GET("/api/articles/:id", getArticleByIDHandler(dbConn))
@@ -32,6 +69,7 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	router.GET("/api/articles/:id/ensemble", ensembleDetailsHandler(dbConn))
 	router.POST("/api/feedback", feedbackHandler(dbConn))
 	router.GET("/api/feeds/healthz", feedHealthHandler(rssCollector))
+	router.GET("/api/llm/score-progress/:id", scoreProgressSSEHandler())
 }
 
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
@@ -150,32 +188,134 @@ func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 		LogPerformance("refreshHandler", start)
 	}
 }
-
 func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
 		idStr := c.Param("id")
-
 		id, err := strconv.Atoi(idStr)
 		if err != nil || id < 1 {
 			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
 			LogError("reanalyzeHandler: invalid id", err)
 			return
 		}
+		articleID := int64(id)
 
-		err = llmClient.ReanalyzeArticle(int64(id))
-		if err != nil {
-			LogError("reanalyzeHandler: ReanalyzeArticle", err)
-			RespondError(c, http.StatusInternalServerError, ErrInternal, "Reanalyze failed: "+err.Error())
-			return
-		}
+		setProgress(articleID, "Queued", "Scoring job queued", 0, "")
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					setProgress(articleID, "Error", "Internal error occurred", 0, fmt.Sprintf("%v", r))
+				}
+			}()
+
+			setProgress(articleID, "Starting", "Starting scoring process", 0, "")
+
+			cfg, err := llm.LoadCompositeScoreConfig()
+			if err != nil {
+				setProgress(articleID, "Error", "Failed to load scoring config", 0, err.Error())
+				return
+			}
+
+			article, err := llmClient.GetArticle(articleID)
+			if err != nil {
+				setProgress(articleID, "Error", "Failed to load article", 0, err.Error())
+				return
+			}
+
+			totalSteps := len(cfg.Models) + 2 // +1 for storing, +1 for complete
+			stepNum := 1
+
+			// Delete old scores
+			err = llmClient.DeleteScores(articleID)
+			if err != nil {
+				setProgress(articleID, "Error", "Failed to delete old scores", percent(stepNum, totalSteps), err.Error())
+				return
+			}
+
+			// Score with each model
+			for _, m := range cfg.Models {
+				label := fmt.Sprintf("Scoring with %s", m.ModelName)
+				setProgress(articleID, label, label, percent(stepNum, totalSteps), "")
+				_, err := llmClient.ScoreWithModel(article, m.ModelName, m.URL)
+				if err != nil {
+					setProgress(articleID, "Error", fmt.Sprintf("Error scoring with %s", m.ModelName), percent(stepNum, totalSteps), err.Error())
+					return
+				}
+				stepNum++
+			}
+
+			// Store ensemble score
+			setProgress(articleID, "Storing results", "Storing ensemble score", percent(stepNum, totalSteps), "")
+			err = llmClient.StoreEnsembleScore(article)
+			if err != nil {
+				setProgress(articleID, "Error", "Error storing ensemble score", percent(stepNum, totalSteps), err.Error())
+				return
+			}
+			stepNum++
+
+			setProgress(articleID, "Complete", "Scoring complete", 100, "")
+		}()
 
 		RespondSuccess(c, map[string]interface{}{
-			"status":     "reanalyze complete",
-			"article_id": id,
+			"status":     "reanalyze queued",
+			"article_id": articleID,
 		})
-		LogPerformance("reanalyzeHandler", start)
 	}
+}
+
+// SSE handler for progress updates
+func scoreProgressSSEHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil || id < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid article ID"})
+			return
+		}
+		articleID := int64(id)
+
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Flush()
+
+		lastStep := ""
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-c.Request.Context().Done():
+				return
+			case <-ticker.C:
+				progress := getProgress(articleID)
+				if progress == nil {
+					continue
+				}
+				if progress.Step != lastStep || progress.Error != "" {
+					data, _ := json.Marshal(progress)
+					fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+					c.Writer.Flush()
+					lastStep = progress.Step
+					if progress.Step == "Complete" || progress.Error != "" {
+						return
+					}
+				}
+			}
+		}
+	}
+}
+
+// Helper to calculate percent complete
+func percent(step, total int) int {
+	if total == 0 {
+		return 0
+	}
+	p := (step * 100) / total
+	if p > 100 {
+		return 100
+	}
+	return p
 }
 
 // feedHealthHandler returns the health status of all feed sources.

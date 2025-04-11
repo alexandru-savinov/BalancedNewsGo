@@ -410,30 +410,74 @@ func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Respo
 		SetHeader("Authorization", "Bearer "+o.apiKey)
 
 	body := map[string]interface{}{
-		"model":       o.modelConfig.ModelName,
+		"model":       model, // Use the model passed as argument
 		"messages":    []map[string]string{{"role": "user", "content": prompt}},
 		"max_tokens":  300,
 		"temperature": 0.7,
 	}
 	req.SetBody(body)
 
-	log.Printf("[OpenRouter] Sending API request to %s with model %s", o.modelConfig.URL, o.modelConfig.ModelName)
+	// --- Enhanced Logging ---
+	// Mask API Key for logging
+	maskedAuthHeader := "Bearer sk-or-..."
+	if len(o.apiKey) > 8 {
+		maskedAuthHeader = "Bearer " + o.apiKey[:8] + "..."
+	}
+	// Log headers (masking auth)
+	log.Printf("[OpenRouter Request] Headers: Content-Type=%s, Authorization=%s",
+		req.Header.Get("Content-Type"),
+		maskedAuthHeader)
+	// Log body
+	bodyBytes, _ := json.Marshal(body)
+	log.Printf("[OpenRouter Request] Body: %s", string(bodyBytes))
+	// Log URL and Model being sent
+	// Construct the full endpoint URL
+	endpointURL := o.modelConfig.URL
+	if !strings.HasSuffix(endpointURL, "/") {
+		endpointURL += "/"
+	}
+	endpointURL += "chat/completions" // Standard path for chat completions
 
-	resp, err := req.Post(o.modelConfig.URL)
+	log.Printf("[OpenRouter Request] POST URL: %s | Model in Payload: %s", endpointURL, body["model"])
+	// --- End Enhanced Logging ---
 
+	resp, err := req.Post(endpointURL) // POST to the correct endpoint path
+
+	// --- Enhanced Response Logging ---
 	if err != nil {
+		// Log network/request-level errors
 		log.Printf("[OpenRouter] API request error: %v", err)
 		return nil, err
 	}
 
-	log.Printf("[OpenRouter] API response status: %d", resp.StatusCode())
-	log.Printf("[OpenRouter] API response body: %.500s", resp.String())
+	// Log status and raw body regardless of success/failure
+	log.Printf("[OpenRouter] Raw Response Status: %s", resp.Status())
+	log.Printf("[OpenRouter] Raw Response Body: %s", resp.String()) // Log full body
 
 	if !resp.IsSuccess() {
-		return resp, errors.New("API response not successful")
+		// Try to parse OpenRouter specific error structure
+		var openRouterError struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+				Code    string `json:"code"`
+			} `json:"error"`
+		}
+		if jsonErr := json.Unmarshal(resp.Body(), &openRouterError); jsonErr == nil && openRouterError.Error.Message != "" {
+			// Return a more specific error from OpenRouter response
+			specificError := fmt.Errorf("OpenRouter API error (%s): %s (Type: %s, Code: %s)",
+				resp.Status(), openRouterError.Error.Message, openRouterError.Error.Type, openRouterError.Error.Code)
+			log.Printf("%v", specificError) // Log the specific error
+			return resp, specificError
+		}
+		// Fallback generic error if parsing fails or structure is different
+		genericError := fmt.Errorf("API response not successful (%s)", resp.Status())
+		log.Printf("%v", genericError) // Log the generic error
+		return resp, genericError
 	}
+	// --- End Enhanced Response Logging ---
 
-	return resp, nil
+	return resp, nil // Return success
 }
 
 func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content string, model string) (*db.LLMScore, error) {
@@ -752,7 +796,8 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	}
 }
 
-func (c *LLMClient) analyzeContent(articleID int64, content string, model string, _ string) (*db.LLMScore, error) {
+func (c *LLMClient) analyzeContent(articleID int64, content string, model string, urlParam string) (*db.LLMScore, error) {
+	log.Printf("[analyzeContent] Entry: articleID=%d, model=%s, urlParam=%s", articleID, model, urlParam) // Log 1: Entry
 	contentHash := hashContent(content)
 
 	// Check cache
@@ -823,6 +868,7 @@ func (c *LLMClient) ProcessUnscoredArticles() error {
 }
 
 func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
+	// Removed incorrect log from AnalyzeAndStore
 	cfg, err := LoadCompositeScoreConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load composite score config: %w", err)
@@ -843,16 +889,19 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 		}
 	}
 
+	// Removed incorrect log from AnalyzeAndStore
 	return nil
 }
 
 func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
+	log.Printf("[ReanalyzeArticle %d] Starting reanalysis", articleID) // Log start
 	tx, err := c.db.Beginx()
 	if err != nil {
 		return err
 	}
 
 	// Delete existing scores
+	log.Printf("[ReanalyzeArticle %d] Deleting existing scores", articleID)
 	_, err = tx.Exec("DELETE FROM llm_scores WHERE article_id = ?", articleID)
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
@@ -864,6 +913,7 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 
 	var article db.Article
 
+	log.Printf("[ReanalyzeArticle %d] Fetching article data", articleID)
 	err = tx.Get(&article, "SELECT * FROM articles WHERE id = ?", articleID)
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
@@ -873,22 +923,30 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		return err
 	}
 
+	log.Printf("[ReanalyzeArticle %d] Fetched article: Title='%.50s'", articleID, article.Title)
+	log.Printf("[ReanalyzeArticle %d] Loading composite score config", articleID)
 	cfg, err := LoadCompositeScoreConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load composite score config: %w", err)
 	}
 
+	log.Printf("[ReanalyzeArticle %d] Starting analysis loop for %d models", articleID, len(cfg.Models))
 	for _, m := range cfg.Models {
+		log.Printf("[ReanalyzeArticle %d] Calling analyzeContent for model: %s", articleID, m.ModelName)
 		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName, m.URL)
 		if err != nil {
-			log.Printf("Error reanalyzing article %d with model %s: %v", article.ID, m.ModelName, err)
+			log.Printf("[ReanalyzeArticle %d] Error from analyzeContent for %s: %v", articleID, m.ModelName, err)
 			continue
 		}
+		log.Printf("[ReanalyzeArticle %d] analyzeContent successful for: %s. Score: %.2f", articleID, m.ModelName, score.Score)
+		// Removed extraneous closing brace
 
 		_, err = tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata)
 			VALUES (:article_id, :model, :score, :metadata)`, score)
 		if err != nil {
-			log.Printf("Error inserting reanalysis score for article %d model %s: %v", article.ID, m.ModelName, err)
+			log.Printf("[ReanalyzeArticle %d] Error inserting score for %s: %v", articleID, m.ModelName, err)
+		} else {
+			log.Printf("[ReanalyzeArticle %d] Successfully inserted score for: %s", articleID, m.ModelName)
 		}
 	}
 
@@ -930,4 +988,72 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 // Exported wrapper for analyzeContent to allow external packages to call it
 func (c *LLMClient) AnalyzeContent(articleID int64, content string, model string, url string) (*db.LLMScore, error) {
 	return c.analyzeContent(articleID, content, model, url)
+}
+
+// --- Progress Tracking Helpers for Async Scoring ---
+
+// GetArticle fetches an article by ID.
+func (c *LLMClient) GetArticle(articleID int64) (db.Article, error) {
+	var article db.Article
+	err := c.db.Get(&article, "SELECT * FROM articles WHERE id = ?", articleID)
+	return article, err
+}
+
+// DeleteScores deletes all LLM scores for an article.
+func (c *LLMClient) DeleteScores(articleID int64) error {
+	_, err := c.db.Exec("DELETE FROM llm_scores WHERE article_id = ?", articleID)
+	return err
+}
+
+// ScoreWithModel runs scoring for a single model and stores the result.
+func (c *LLMClient) ScoreWithModel(article db.Article, modelName, url string) (*db.LLMScore, error) {
+	score, err := c.analyzeContent(article.ID, article.Content, modelName, url)
+	if err != nil {
+		return nil, err
+	}
+	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata)
+		VALUES (:article_id, :model, :score, :metadata)`, score)
+	return score, err
+}
+
+// StoreEnsembleScore computes and stores the ensemble score for an article.
+func (c *LLMClient) StoreEnsembleScore(article db.Article) error {
+	ensembleScore, err := c.EnsembleAnalyze(article.ID, article.Content)
+	if err != nil {
+		return err
+	}
+	ensembleScore.ArticleID = article.ID
+	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
+		VALUES (:article_id, :model, :score, :metadata, :created_at)`, ensembleScore)
+	if err != nil {
+		return err
+	}
+
+	// Helper function to prevent panic on short strings
+	// Optionally update the article's composite score/confidence
+	var metaMap map[string]interface{}
+	if err := json.Unmarshal([]byte(ensembleScore.Metadata), &metaMap); err == nil {
+		confidence := 0.0
+		if finalAgg, ok := metaMap["final_aggregation"].(map[string]interface{}); ok {
+			if varianceVal, ok := finalAgg["variance"].(float64); ok {
+				confidence = 1.0 - varianceVal
+				if confidence < 0 {
+					confidence = 0
+				}
+				if confidence > 1 {
+					confidence = 1
+				}
+			}
+		}
+		_ = db.UpdateArticleScore(c.db, article.ID, ensembleScore.Score, confidence)
+	}
+	return nil
+}
+
+// Helper function to prevent panic on short strings
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
