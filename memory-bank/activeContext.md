@@ -7,6 +7,14 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 
 ---
 
+## E2E Testing Methodology (April 2025)
+- **Preparation:** Before running e2e tests, the `e2e_prep.js` script snapshots all news feeds and LLM model configs, performs health checks on feeds, LLM APIs, and the database, and triggers article ingestion via the Go CLI. The process halts if any critical service is unhealthy, ensuring tests run against a known-good, reproducible environment.
+- **Test Execution:** Cypress is used for e2e tests, with test specs organized under `cypress/e2e/**/*.cy.js` and executed against `http://localhost:8080`. No global support file is loaded; each suite is self-contained.
+- **Traceability:** Each test run is associated with a unique snapshot and metadata, enabling reproducibility and debugging.
+- **Best Practices:** This methodology ensures reliable, actionable e2e results and rapid diagnosis of failures.
+
+---
+
 ## Backend Status (Post-Implementation)
 
 ### RSS Fetching
@@ -150,30 +158,9 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 
 ## April 2025 Update: Validation, Feedback, QA, and Code Quality
 
-### Fully Operational Validation & Feedback Loop
-- The system now features a **continuous, automated validation loop** integrated across backend and frontend.
-- **User feedback** is ingested both inline (via the UI) and through API endpoints.
-- Validation runs automatically on new data and model outputs, flagging inconsistencies or low-confidence results.
-- Feedback directly informs **prompt tuning** and **model adjustments**, creating a **closed-loop improvement cycle**.
-
-### Continuous Feedback Ingestion & Dashboards
-- Feedback is continuously collected, stored, and analyzed.
-- **Dashboards** provide real-time insights into:
-  - Feedback volume and sentiment
-  - Validation pass/fail rates
-  - Model performance trends
-- This enables rapid detection of issues and supports **data-driven iteration**.
-
-### QA Framework for Documentation
-- A **multi-stage QA process** governs all documentation updates:
-  - **Drafting:** Authors use standardized templates to ensure consistency.
-  - **Automated Checks:** Markdown linting, link validation, and style enforcement run on every commit.
-  - **Peer Review:** At least one reviewer verifies technical accuracy, clarity, and adherence to guidelines.
-  - **Approval & Merge:** Only after passing automated checks and peer review can changes be merged.
-- **Continuous Improvement:**
-  - Collect feedback on documentation usability.
-  - Periodic audits to identify outdated or unclear sections.
-  - Update templates and checklists based on lessons learned.
+- **Validation & Feedback Loop:** Continuous, automated validation is integrated across backend and frontend. User feedback is ingested both inline (via the UI) and through API endpoints, directly informing prompt tuning and model adjustments. Validation runs automatically on new data and model outputs, flagging inconsistencies or low-confidence results.
+- **Dashboards:** Real-time dashboards provide insights into feedback volume, sentiment, validation pass/fail rates, and model performance trends, enabling rapid detection of issues and supporting data-driven iteration.
+- **QA Process:** Documentation and code updates follow a multi-stage QA process: drafting with templates, automated checks (linting, link validation, style), peer review, and approval/merge only after passing all checks. Continuous improvement is supported by periodic audits and template updates.
 
 ### Resolved SonarQube and Lint Issues
 - Major **SonarQube warnings** have been addressed, improving code maintainability and security.
