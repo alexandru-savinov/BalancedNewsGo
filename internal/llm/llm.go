@@ -624,25 +624,27 @@ func (c *LLMClient) ProcessUnscoredArticles() error {
 
 func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 	models := []struct {
-		name string
-		url  string
+		perspective string
+		modelName   string
+		url         string
 	}{
-		{LabelLeft, LeftModelURL},
-		{"center", CenterModelURL},
-		{LabelRight, RightModelURL},
+		{LabelLeft, "gpt-3.5-turbo", LeftModelURL},
+		{"center", "gpt-4", CenterModelURL},
+		{LabelRight, "gpt-3.5-turbo", RightModelURL},
 	}
 
 	for _, m := range models {
-		score, err := c.analyzeContent(article.ID, article.Content, m.name, m.url)
+		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.perspective, m.modelName, m.url)
+		score, err := c.analyzeContent(article.ID, article.Content, m.modelName, m.url)
 		if err != nil {
-			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.name, err)
+			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.modelName, err)
 
 			continue
 		}
 
 		_, err = db.InsertLLMScore(c.db, score)
 		if err != nil {
-			log.Printf("Error inserting LLM score for article %d model %s: %v", article.ID, m.name, err)
+			log.Printf("Error inserting LLM score for article %d model %s: %v", article.ID, m.modelName, err)
 		}
 	}
 

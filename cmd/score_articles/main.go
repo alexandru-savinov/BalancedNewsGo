@@ -25,38 +25,45 @@ func main() {
 
 	llmClient := llm.NewLLMClient(conn)
 
-	const batchSize = 10
-	offset := 0
+	const batchSize = 20
 	totalArticles := 0
 	totalScores := 0
 
-	for {
-		articles, err := db.FetchArticles(conn, "", "", batchSize, offset)
-		if err != nil {
-			log.Fatalf("Failed to fetch articles: %v", err)
-		}
-		if len(articles) == 0 {
-			break
-		}
-
-		// Limit to first 5 articles only
-		if len(articles) > 5 {
-			articles = articles[:5]
-		}
-
-		for _, article := range articles {
-			err := llmClient.AnalyzeAndStore(&article)
-			if err != nil {
-				log.Printf("Error scoring article ID %d: %v", article.ID, err)
-				continue
-			}
-			totalScores += 3 // left, center, right models
-		}
-
-		totalArticles += len(articles)
-		// After processing first 5, exit loop
-		break
+	articles, err := db.FetchArticles(conn, "", "", batchSize, 0)
+	if err != nil {
+		log.Fatalf("Failed to fetch articles: %v", err)
 	}
+	if len(articles) == 0 {
+		log.Println("No articles found to score.")
+		return
+	}
+
+	// Log all article IDs being scored
+	articleIDs := make([]int64, 0, len(articles))
+	found788 := false
+	for _, article := range articles {
+		articleIDs = append(articleIDs, article.ID)
+		if article.ID == 788 {
+			found788 = true
+		}
+	}
+	log.Printf("Scoring articles with IDs: %v", articleIDs)
+	if found788 {
+		log.Println("Article 788 is included in this scoring run.")
+	} else {
+		log.Println("WARNING: Article 788 is NOT included in this scoring run.")
+	}
+
+	for _, article := range articles {
+		err := llmClient.AnalyzeAndStore(&article)
+		if err != nil {
+			log.Printf("Error scoring article ID %d: %v", article.ID, err)
+			continue
+		}
+		totalScores += 3 // left, center, right models
+	}
+
+	totalArticles += len(articles)
 
 	fmt.Printf("Scoring complete.\n")
 	fmt.Printf("Total articles scored: %d\n", totalArticles)
