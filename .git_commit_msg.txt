@@ -1,0 +1,13 @@
+CompositeScore Data Flow Review – April 2025: End-to-End Pipeline Improvements
+
+This commit implements all prioritized recommendations from the April 2025 CompositeScore Data Flow Review, delivering comprehensive improvements across the entire pipeline:
+
+- **UI/Frontend:** Unified CompositeScore rendering in both list and detail views, added tooltips and visual confidence indicators, implemented frontend caching (sessionStorage), loading indicators, and user-friendly error messages.
+- **Backend/API:** Standardized all API responses with a consistent JSON schema and error format, added error and performance logging, implemented input validation and response caching.
+- **Score Calculation:** Refactored composite score logic to be fully configurable via JSON config, robust to missing/invalid data (NaN/Inf), and now outputs a confidence metric for each score.
+- **Database:** Added versioning to `llm_scores` and a composite index on (`article_id`, `version`) for performance; documented and implemented pruning/scaling strategies.
+- **Background Jobs:** Enhanced scoring jobs with batching, parallelism, config-driven model selection, and API usage monitoring/logging.
+- **Feed Management:** Moved feed sources to external config, implemented health checks (connectivity and format validation), and improved extraction/normalization logic for robustness and flexibility.
+- **Documentation:** Updated `memory-bank/progress.md` and `score_data_flow_analysis.md` to track and summarize all changes, providing a clear audit trail and roadmap for future enhancements.
+
+These changes significantly improve the robustness, maintainability, and user experience of the CompositeScore system, and lay a strong foundation for ongoing reliability and scalability.

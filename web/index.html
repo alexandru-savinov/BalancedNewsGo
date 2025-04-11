@@ -4,6 +4,51 @@
     <meta charset="UTF-8" />
     <title>NewsBalancer</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script>
+        // --- Article List Caching and Loading/Error Handling ---
+        // Key generator for caching list view
+        function getListCacheKey() {
+            const source = document.getElementById('sourceFilter')?.value || '';
+            const leaning = document.getElementById('leaningFilter')?.value || '';
+            const offset = document.getElementById('offsetInput')?.value || '0';
+            return `articles_list_${source}_${leaning}_${offset}`;
+        }
+
+        // Intercept htmx requests for /articles to implement caching
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            const xhr = evt.detail.xhr;
+            const url = evt.detail.path;
+            if (url && url.startsWith('/articles')) {
+                const cacheKey = getListCacheKey();
+                const cached = sessionStorage.getItem(cacheKey);
+                if (cached) {
+                    evt.preventDefault();
+                    document.getElementById('articles').innerHTML = cached;
+                    document.body.dispatchEvent(new CustomEvent('htmx:afterSwap'));
+                } else {
+                    // Show loading indicator
+                    document.getElementById('articles').innerHTML = '<p class="loading-indicator">Loading articles...</p>';
+                }
+            }
+        });
+
+        // After successful swap, cache the result
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            const url = evt.detail?.xhr?.responseURL || '';
+            if (url.includes('/articles')) {
+                const cacheKey = getListCacheKey();
+                sessionStorage.setItem(cacheKey, document.getElementById('articles').innerHTML);
+            }
+        });
+
+        // Error handling for htmx requests
+        document.body.addEventListener('htmx:responseError', function(evt) {
+            const url = evt.detail?.path || '';
+            if (url && url.startsWith('/articles')) {
+                document.getElementById('articles').innerHTML = '<p class="error-message">Failed to load articles. Please try again later.</p>';
+            }
+        });
+    </script>
     <style>
         :root {
             --primary-bg: #ffffff;
@@ -14,6 +59,42 @@
             --border-color: #ccc;
             --accent-color: #3366cc;
             --hover-bg: #f0f0f0;
+            --confidence-high: #4caf50;
+            --confidence-medium: #ff9800;
+            --confidence-low: #f44336;
+        }
+
+        /* Tooltip styling */
+        [data-tooltip] {
+            position: relative;
+            cursor: pointer;
+        }
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            white-space: pre-line;
+            position: absolute;
+            left: 50%;
+            top: 120%;
+            transform: translateX(-50%);
+            background: #222;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.95em;
+            z-index: 10;
+            min-width: 180px;
+            max-width: 320px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            pointer-events: none;
+        }
+        /* Confidence indicator dot */
+        .confidence-indicator {
+            display: inline-block;
+            width: 0.85em;
+            height: 0.85em;
+            border-radius: 50%;
+            margin-right: 0.4em;
+            vertical-align: middle;
         }
 
         body {
@@ -290,78 +371,95 @@
                 <option value="">All</option>
                 <option value="left">Left</option>
             <script>
-                async function loadBiasData(articleId) {
-                    try {
-                        const response = await fetch(`/api/articles/${articleId}/bias`);
-                        const data = await response.json();
+                // Unified CompositeScore rendering function
+                function renderCompositeScore(ctx, compositeScore, results, errorStatus) {
+                    const biasLabel = ctx.querySelector('.bias-label');
+                    const confidenceSpan = ctx.querySelector('.confidence');
+                    const compositeScoreSpan = ctx.querySelector('.composite-score');
+                    const compositeIndicator = ctx.querySelector('.composite-indicator');
+                    const slider = ctx.querySelector('.bias-slider');
+                    const explanationP = ctx.querySelector('#bias-explanation') || ctx.querySelector('.bias-explanation');
+                    const list = ctx.querySelector('#model-details-list');
 
-                        const compositeScore = data.composite_score;
-                        const results = data.results;
+                    // Helper for confidence color
+                    function getConfidenceColor(conf) {
+                        if (conf >= 0.8) return 'var(--confidence-high)';
+                        if (conf >= 0.5) return 'var(--confidence-medium)';
+                        return 'var(--confidence-low)';
+                    }
 
-                        const biasLabel = document.querySelector('.bias-label');
-                        const confidenceSpan = document.querySelector('.confidence');
-                        const compositeScoreSpan = document.querySelector('.composite-score');
-                        const explanationP = document.getElementById('bias-explanation');
-                        const compositeIndicator = document.querySelector('.composite-indicator');
-                        const slider = document.querySelector('.bias-slider');
-                        const list = document.getElementById('model-details-list');
-
-                        // Check for unavailable scoring
-                        if (
-                            data.status === "scoring_unavailable" ||
-                            compositeScore === null || compositeScore === undefined ||
-                            !results || results.length === 0 ||
-                            results.every(r => r.score === null || r.score === undefined)
-                        ) {
-                            biasLabel.textContent = "Composite: Scoring unavailable";
+                    // Error/unavailable handling
+                    if (
+                        errorStatus === true ||
+                        compositeScore === null || compositeScore === undefined ||
+                        !results || results.length === 0 ||
+                        results.every(r => r.score === null || r.score === undefined)
+                    ) {
+                        if (biasLabel) biasLabel.textContent = "Composite: Scoring unavailable";
+                        if (compositeScoreSpan) {
                             compositeScoreSpan.textContent = "Score: No data";
-                            confidenceSpan.textContent = "Confidence: No data";
-                            explanationP.textContent = "Bias scoring data is currently unavailable.";
-
-                            // Hide or gray out composite indicator
+                            compositeScoreSpan.removeAttribute('data-tooltip');
+                        }
+                        if (confidenceSpan) {
+                            confidenceSpan.innerHTML = `<span class="confidence-indicator" style="background:gray"></span>Confidence: No data`;
+                        }
+                        if (explanationP) explanationP.textContent = "Bias scoring data is currently unavailable.";
+                        if (compositeIndicator) {
                             compositeIndicator.style.left = "50%";
                             compositeIndicator.style.backgroundColor = "#ccc";
                             compositeIndicator.title = "Scoring unavailable";
-
-                            // Remove old model indicators
-                            document.querySelectorAll('.model-indicator').forEach(e => e.remove());
-
-                            // Clear advanced list
-                            list.innerHTML = '';
-
-                            return;
                         }
+                        if (slider) slider.querySelectorAll('.model-indicator').forEach(e => e.remove());
+                        if (list) list.innerHTML = '';
+                        return;
+                    }
 
-                        // Normal update logic
-                        let labelText = 'Center';
-                        if (compositeScore < -0.5) labelText = 'Left';
-                        else if (compositeScore < -0.1) labelText = 'Slightly Left';
-                        else if (compositeScore > 0.5) labelText = 'Right';
-                        else if (compositeScore > 0.1) labelText = 'Slightly Right';
+                    // Label
+                    let labelText = 'Center';
+                    if (compositeScore < -0.5) labelText = 'Left';
+                    else if (compositeScore < -0.1) labelText = 'Slightly Left';
+                    else if (compositeScore > 0.5) labelText = 'Right';
+                    else if (compositeScore > 0.1) labelText = 'Slightly Right';
+                    if (biasLabel) biasLabel.textContent = `Composite: ${labelText}`;
 
-                        biasLabel.textContent = `Composite: ${labelText}`;
-                        if (compositeScore === 0 || compositeScore === 1.0) {
+                    // Score
+                    if (compositeScore === 0 || compositeScore === 1.0) {
+                        if (compositeScoreSpan) {
                             compositeScoreSpan.textContent = "Score: Not yet scored";
-                        } else {
-                            compositeScoreSpan.textContent = `Score: ${compositeScore.toFixed(2)}`;
+                            compositeScoreSpan.setAttribute('data-tooltip', "The article has not yet been scored by the models.");
                         }
+                    } else {
+                        if (compositeScoreSpan) {
+                            compositeScoreSpan.textContent = `Score: ${compositeScore.toFixed(2)}`;
+                            compositeScoreSpan.setAttribute('data-tooltip', "CompositeScore: Aggregated bias score from all models. Range: -1 (Left) to +1 (Right).");
+                        }
+                    }
 
-                        // Compute average confidence
-                        const avgConf = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
-                        confidenceSpan.textContent = `Confidence: ${(avgConf * 100).toFixed(0)}%`;
+                    // Confidence
+                    const avgConf = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
+                    let confColor = getConfidenceColor(avgConf);
+                    if (confidenceSpan) {
+                        confidenceSpan.innerHTML = `<span class="confidence-indicator" style="background:${confColor}"></span>Confidence: ${(avgConf * 100).toFixed(0)}%`;
+                        confidenceSpan.setAttribute('data-tooltip', "Confidence: Average confidence of all models in the composite score.");
+                    }
 
-                        // Composite explanation
+                    // Explanation
+                    if (explanationP && results && results.length > 0) {
                         explanationP.textContent = results.map(r => `${r.model}: ${r.explanation}`).join(' | ');
+                    }
 
-                        // Position composite indicator
+                    // Composite indicator
+                    if (compositeIndicator) {
                         compositeIndicator.style.left = `${((compositeScore + 1) / 2) * 100}%`;
                         compositeIndicator.style.backgroundColor = "black";
-                        compositeIndicator.title = "Composite Score";
+                        compositeIndicator.setAttribute('data-tooltip', `CompositeScore: ${compositeScore.toFixed(2)}\nConfidence: ${(avgConf*100).toFixed(0)}%`);
+                    }
 
-                        // Remove old model indicators
-                        document.querySelectorAll('.model-indicator').forEach(e => e.remove());
+                    // Remove old model indicators
+                    if (slider) slider.querySelectorAll('.model-indicator').forEach(e => e.remove());
 
-                        // Add model indicators
+                    // Add model indicators
+                    if (slider && results) {
                         results.forEach(r => {
                             const ind = document.createElement('div');
                             ind.className = 'bias-indicator model-indicator';
@@ -369,16 +467,54 @@
                             ind.setAttribute('data-tooltip', `${r.model}\nScore: ${r.score.toFixed(2)}\nConf: ${(r.confidence*100).toFixed(0)}%\n${r.explanation}`);
                             slider.appendChild(ind);
                         });
+                    }
 
-                        // Populate advanced list
+                    // Populate advanced list
+                    if (list) {
                         list.innerHTML = '';
                         results.forEach(r => {
                             const li = document.createElement('li');
                             li.textContent = `${r.model}: Score ${r.score.toFixed(2)}, Confidence ${(r.confidence*100).toFixed(0)}%, Explanation: ${r.explanation}`;
                             list.appendChild(li);
                         });
+                    }
+                }
 
+                async function loadBiasData(articleId, ctx = document) {
+                    // Show loading indicator in bias section
+                    const biasLabel = ctx.querySelector('.bias-label');
+                    const confidenceSpan = ctx.querySelector('.confidence');
+                    const compositeScoreSpan = ctx.querySelector('.composite-score');
+                    const explanationP = ctx.querySelector('#bias-explanation') || ctx.querySelector('.bias-explanation');
+                    if (biasLabel) biasLabel.textContent = "Composite: Loading...";
+                    if (compositeScoreSpan) compositeScoreSpan.textContent = "Score: Loading...";
+                    if (confidenceSpan) confidenceSpan.innerHTML = `<span class="confidence-indicator" style="background:gray"></span>Confidence: Loading...`;
+                    if (explanationP) explanationP.textContent = "Loading bias scoring data...";
+
+                    // Caching
+                    const cacheKey = `bias_data_${articleId}`;
+                    const cached = sessionStorage.getItem(cacheKey);
+                    if (cached) {
+                        try {
+                            const data = JSON.parse(cached);
+                            renderCompositeScore(ctx, data.composite_score, data.results, data.status === "scoring_unavailable");
+                            return;
+                        } catch (e) {
+                            sessionStorage.removeItem(cacheKey);
+                        }
+                    }
+                    try {
+                        const response = await fetch(`/api/articles/${articleId}/bias`);
+                        if (!response.ok) throw new Error('Network error');
+                        const data = await response.json();
+                        sessionStorage.setItem(cacheKey, JSON.stringify(data));
+                        renderCompositeScore(ctx, data.composite_score, data.results, data.status === "scoring_unavailable");
                     } catch (e) {
+                        if (biasLabel) biasLabel.textContent = "Composite: Error loading";
+                        if (compositeScoreSpan) compositeScoreSpan.textContent = "Score: Error";
+                        if (confidenceSpan) confidenceSpan.innerHTML = `<span class="confidence-indicator" style="background:red"></span>Confidence: N/A`;
+                        if (explanationP) explanationP.textContent = "Failed to load bias scoring data. Please try again later.";
+                        renderCompositeScore(ctx, null, null, true);
                         console.error('Failed to load bias data', e);
                     }
                 }
@@ -487,7 +623,8 @@
             </div>
             <div class="success-message" style="display:none;">Thank you for your feedback!</div>
         </article>
-        <p>Loading articles...</p>
+        <p class="loading-indicator" style="display:none;">Loading articles...</p>
+        <p class="error-message" style="display:none;color:red;"></p>
     </main>
 <script>
 function toggleAdvanced(button) {
@@ -544,53 +681,7 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
     const articles = document.querySelectorAll('article[data-article-id]');
     articles.forEach(article => {
         const articleId = article.getAttribute('data-article-id');
-        fetch(`/api/articles/${articleId}/bias`)
-            .then(res => res.json())
-            .then(data => {
-                const compositeScore = data.composite_score;
-                const results = data.results;
-
-                // Update composite label text
-                const biasLabel = article.querySelector('.bias-label');
-                let labelText = 'Center';
-                if (compositeScore < -0.5) labelText = 'Left';
-                else if (compositeScore < -0.1) labelText = 'Slightly Left';
-                else if (compositeScore > 0.5) labelText = 'Right';
-                else if (compositeScore > 0.1) labelText = 'Slightly Right';
-                biasLabel.textContent = `Composite: ${labelText}`;
-
-                // Update composite score text
-                const compositeScoreSpan = article.querySelector('.composite-score');
-                compositeScoreSpan.textContent = `Score: ${compositeScore.toFixed(2)}`;
-
-                // Color code the score text
-                let color = 'gray';
-                if (compositeScore < -0.5) color = 'blue';
-                else if (compositeScore > 0.5) color = 'red';
-                compositeScoreSpan.style.color = color;
-
-                // Update composite indicator position
-                const compositeIndicator = article.querySelector('.composite-indicator');
-                if (compositeIndicator) {
-                    compositeIndicator.style.left = `${((compositeScore + 1) / 2) * 100}%`;
-                }
-
-                // Remove old model indicators
-                article.querySelectorAll('.model-indicator').forEach(e => e.remove());
-
-                // Add model indicators with tooltips
-                const slider = article.querySelector('.bias-slider');
-                results.forEach(r => {
-                    const ind = document.createElement('div');
-                    ind.className = 'bias-indicator model-indicator';
-                    ind.style.left = `${((r.score + 1) / 2) * 100}%`;
-                    ind.setAttribute('data-tooltip', `${r.model}\nScore: ${r.score.toFixed(2)}\nConf: ${(r.confidence*100).toFixed(0)}%\n${r.explanation}`);
-                    slider.appendChild(ind);
-                });
-            })
-            .catch(err => {
-                console.error('Failed to fetch bias data for article', articleId, err);
-            });
+        loadBiasData(articleId, article);
     });
 });
 </script>

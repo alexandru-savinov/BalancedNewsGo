@@ -1,0 +1,32 @@
+{
+  "formula": "average", 
+  "weights": {
+    "left": 1.0,
+    "center": 1.0,
+    "right": 1.0
+  },
+  "min_score": -1.0,
+  "max_score": 1.0,
+  "default_missing": 0.0,
+  "handle_invalid": "ignore", 
+  "confidence_method": "count_valid", 
+  "min_confidence": 0.0,
+  "max_confidence": 1.0,
+  "models": [
+    {
+      "perspective": "left",
+      "modelName": "gpt-3.5-turbo",
+      "url": "https://api.openai.com/v1/left"
+    },
+    {
+      "perspective": "center",
+      "modelName": "gpt-4",
+      "url": "https://api.openai.com/v1/center"
+    },
+    {
+      "perspective": "right",
+      "modelName": "gpt-3.5-turbo",
+      "url": "https://api.openai.com/v1/right"
+    }
+  ]
+}

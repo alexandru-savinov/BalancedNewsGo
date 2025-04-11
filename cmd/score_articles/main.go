@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
@@ -10,6 +12,33 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 )
+
+type APIUsageStats struct {
+	CallCount     int
+	ErrorCount    int
+	TotalDuration time.Duration
+	mu            sync.Mutex
+}
+
+func (s *APIUsageStats) AddCall(duration time.Duration, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.CallCount++
+	s.TotalDuration += duration
+	if err != nil {
+		s.ErrorCount++
+	}
+}
+
+func (s *APIUsageStats) Print(prefix string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	avg := time.Duration(0)
+	if s.CallCount > 0 {
+		avg = s.TotalDuration / time.Duration(s.CallCount)
+	}
+	log.Printf("%s API usage: calls=%d, errors=%d, total_time=%v, avg_time=%v", prefix, s.CallCount, s.ErrorCount, s.TotalDuration, avg)
+}
 
 func main() {
 	err := godotenv.Load()
@@ -25,47 +54,83 @@ func main() {
 
 	llmClient := llm.NewLLMClient(conn)
 
-	const batchSize = 20
-	totalArticles := 0
-	totalScores := 0
-
-	articles, err := db.FetchArticles(conn, "", "", batchSize, 0)
+	// Load config-driven models
+	config, err := llm.LoadCompositeScoreConfig()
 	if err != nil {
-		log.Fatalf("Failed to fetch articles: %v", err)
+		log.Fatalf("Failed to load composite score config: %v", err)
 	}
-	if len(articles) == 0 {
-		log.Println("No articles found to score.")
-		return
-	}
-
-	// Log all article IDs being scored
-	articleIDs := make([]int64, 0, len(articles))
-	found788 := false
-	for _, article := range articles {
-		articleIDs = append(articleIDs, article.ID)
-		if article.ID == 788 {
-			found788 = true
-		}
-	}
-	log.Printf("Scoring articles with IDs: %v", articleIDs)
-	if found788 {
-		log.Println("Article 788 is included in this scoring run.")
-	} else {
-		log.Println("WARNING: Article 788 is NOT included in this scoring run.")
+	models := config.Models
+	if len(models) == 0 {
+		log.Fatalf("No models defined in config")
 	}
 
-	for _, article := range articles {
-		err := llmClient.AnalyzeAndStore(&article)
+	const batchSize = 20
+	const workerCount = 4
+
+	var totalArticles, totalScores int
+	apiStats := &APIUsageStats{}
+
+	offset := 0
+	for {
+		articles, err := db.FetchArticles(conn, "", "", batchSize, offset)
 		if err != nil {
-			log.Printf("Error scoring article ID %d: %v", article.ID, err)
-			continue
+			log.Fatalf("Failed to fetch articles: %v", err)
 		}
-		totalScores += 3 // left, center, right models
-	}
+		if len(articles) == 0 {
+			break
+		}
 
-	totalArticles += len(articles)
+		articleIDs := make([]int64, 0, len(articles))
+		for _, article := range articles {
+			articleIDs = append(articleIDs, article.ID)
+		}
+		log.Printf("Scoring articles with IDs: %v", articleIDs)
+
+		// Parallel processing with worker pool
+		var wg sync.WaitGroup
+		articleCh := make(chan db.Article)
+
+		for i := 0; i < workerCount; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for article := range articleCh {
+					for _, m := range models {
+						start := time.Now()
+						err := func() error {
+							score, err := llmClient.AnalyzeContent(article.ID, article.Content, m.ModelName, m.URL)
+							apiStats.AddCall(time.Since(start), err)
+							if err != nil {
+								log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.ModelName, err)
+								return err
+							}
+							_, err = db.InsertLLMScore(conn, score)
+							if err != nil {
+								log.Printf("Error inserting LLM score for article %d model %s: %v", article.ID, m.ModelName, err)
+							}
+							return err
+						}()
+						if err == nil {
+							// Only count successful scores
+							totalScores++
+						}
+					}
+				}
+			}()
+		}
+
+		for _, article := range articles {
+			articleCh <- article
+		}
+		close(articleCh)
+		wg.Wait()
+
+		totalArticles += len(articles)
+		offset += len(articles)
+	}
 
 	fmt.Printf("Scoring complete.\n")
 	fmt.Printf("Total articles scored: %d\n", totalArticles)
 	fmt.Printf("Total scores generated: %d\n", totalScores)
+	apiStats.Print("LLM")
 }

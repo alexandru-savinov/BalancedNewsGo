@@ -24,40 +24,199 @@ const (
 	LabelNeutral = "neutral"
 )
 
-func ComputeCompositeScore(scores []db.LLMScore) float64 {
-	var left, center, right *float64
+type ModelConfig struct {
+	Perspective string `json:"perspective"`
+	ModelName   string `json:"modelName"`
+	URL         string `json:"url"`
+}
 
-	for _, s := range scores {
-		switch strings.ToLower(s.Model) {
-		case LabelLeft:
-			left = &s.Score
-		case "center":
-			center = &s.Score
-		case LabelRight:
-			right = &s.Score
+type CompositeScoreConfig struct {
+	Formula          string             `json:"formula"`
+	Weights          map[string]float64 `json:"weights"`
+	MinScore         float64            `json:"min_score"`
+	MaxScore         float64            `json:"max_score"`
+	DefaultMissing   float64            `json:"default_missing"`
+	HandleInvalid    string             `json:"handle_invalid"`
+	ConfidenceMethod string             `json:"confidence_method"`
+	MinConfidence    float64            `json:"min_confidence"`
+	MaxConfidence    float64            `json:"max_confidence"`
+	Models           []ModelConfig      `json:"models"`
+}
+
+var (
+	compositeScoreConfig     *CompositeScoreConfig
+	compositeScoreConfigOnce sync.Once
+)
+
+func LoadCompositeScoreConfig() (*CompositeScoreConfig, error) {
+	var err error
+	compositeScoreConfigOnce.Do(func() {
+		f, e := os.Open("configs/composite_score_config.json")
+		if e != nil {
+			err = e
+			return
 		}
+		defer f.Close()
+		decoder := json.NewDecoder(f)
+		var cfg CompositeScoreConfig
+		if e := decoder.Decode(&cfg); e != nil {
+			err = e
+			return
+		}
+		compositeScoreConfig = &cfg
+	})
+	return compositeScoreConfig, err
+}
+
+// Returns (compositeScore, confidence, error)
+func ComputeCompositeScoreWithConfidence(scores []db.LLMScore) (float64, float64, error) {
+	cfg, err := LoadCompositeScoreConfig()
+	if err != nil {
+		return 0, 0, err
 	}
 
-	// Default to 0 if missing
-	l := 0.0
-	if left != nil {
-		l = *left
+	// Map for left/center/right
+	scoreMap := map[string]*float64{
+		"left":   nil,
+		"center": nil,
+		"right":  nil,
 	}
-	c := 0.0
-	if center != nil {
-		c = *center
-	}
-	r := 0.0
-	if right != nil {
-		r = *right
+	validCount := 0
+	sum := 0.0
+	weightedSum := 0.0
+	weightTotal := 0.0
+	validModels := make(map[string]bool)
+	for _, s := range scores {
+		model := strings.ToLower(s.Model)
+		if model == LabelLeft || model == "left" {
+			model = "left"
+		} else if model == LabelRight || model == "right" {
+			model = "right"
+		} else if model == "center" {
+			model = "center"
+		} else {
+			continue
+		}
+		val := s.Score
+		if cfg.HandleInvalid == "ignore" && (isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore) {
+			continue
+		}
+		if isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore {
+			val = cfg.DefaultMissing
+		}
+		scoreMap[model] = &val
+		validCount++
+		validModels[model] = true
 	}
 
-	avg := (l + c + r) / 3.0
+	// Use weights if formula is weighted
+	for k, v := range scoreMap {
+		score := cfg.DefaultMissing
+		if v != nil {
+			score = *v
+		}
+		w := 1.0
+		if cfg.Formula == "weighted" {
+			if weight, ok := cfg.Weights[k]; ok {
+				w = weight
+			}
+		}
+		weightedSum += score * w
+		weightTotal += w
+		sum += score
+	}
+
+	var composite float64
+	switch cfg.Formula {
+	case "average":
+		composite = sum / 3.0
+	case "weighted":
+		if weightTotal > 0 {
+			composite = weightedSum / weightTotal
+		} else {
+			composite = 0.0
+		}
+	case "min":
+		composite = minNonNil(scoreMap, cfg.DefaultMissing)
+	case "max":
+		composite = maxNonNil(scoreMap, cfg.DefaultMissing)
+	default:
+		composite = sum / 3.0
+	}
 
 	// Composite favors balance (closer to center = higher score)
-	composite := 1.0 - abs(avg)
+	composite = 1.0 - abs(composite)
 
-	return composite
+	// Confidence metric
+	var confidence float64
+	switch cfg.ConfidenceMethod {
+	case "count_valid":
+		confidence = float64(len(validModels)) / 3.0
+	case "spread":
+		confidence = 1.0 - scoreSpread(scoreMap)
+	default:
+		confidence = float64(len(validModels)) / 3.0
+	}
+	if confidence < cfg.MinConfidence {
+		confidence = cfg.MinConfidence
+	}
+	if confidence > cfg.MaxConfidence {
+		confidence = cfg.MaxConfidence
+	}
+
+	return composite, confidence, nil
+}
+
+func ComputeCompositeScore(scores []db.LLMScore) float64 {
+	score, _, _ := ComputeCompositeScoreWithConfidence(scores)
+	return score
+}
+
+// Helper functions
+func isInvalid(f float64) bool {
+	return (f != f) || (f > 1e10) || (f < -1e10) // NaN or extreme values
+}
+
+func minNonNil(m map[string]*float64, def float64) float64 {
+	min := def
+	first := true
+	for _, v := range m {
+		if v != nil {
+			if first || *v < min {
+				min = *v
+				first = false
+			}
+		}
+	}
+	return min
+}
+
+func maxNonNil(m map[string]*float64, def float64) float64 {
+	max := def
+	first := true
+	for _, v := range m {
+		if first || (v != nil && *v > max) {
+			if v != nil {
+				max = *v
+			}
+			first = false
+		}
+	}
+	return max
+}
+
+func scoreSpread(m map[string]*float64) float64 {
+	vals := []float64{}
+	for _, v := range m {
+		if v != nil {
+			vals = append(vals, *v)
+		}
+	}
+	if len(vals) < 2 {
+		return 0.0
+	}
+	sort.Float64s(vals)
+	return vals[len(vals)-1] - vals[0]
 }
 
 func abs(x float64) float64 {
@@ -731,13 +890,12 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 				}
 			}
 			err = db.UpdateArticleScore(c.db, article.ID, ensembleScore.Score, confidence)
-			if err != nil {
-				log.Printf("Error updating article %d with ensemble score: %v", article.ID, err)
-			}
 		}
-
-		// Update article with ensemble score and confidence
 	}
+	return nil
+}
 
-	return tx.Commit()
+// Exported wrapper for analyzeContent to allow external packages to call it
+func (c *LLMClient) AnalyzeContent(articleID int64, content string, model string, url string) (*db.LLMScore, error) {
+	return c.analyzeContent(articleID, content, model, url)
 }

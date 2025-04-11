@@ -31,6 +31,7 @@ type LLMScore struct {
 	Model     string    `db:"model"`
 	Score     float64   `db:"score"`
 	Metadata  string    `db:"metadata"`
+	Version   int       `db:"version"`
 	CreatedAt time.Time `db:"created_at"`
 }
 type Feedback struct {
@@ -78,9 +79,12 @@ CREATE TABLE IF NOT EXISTS llm_scores (
 	model TEXT,
 	score REAL,
 	metadata TEXT,
+	version INTEGER DEFAULT 1,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	FOREIGN KEY(article_id) REFERENCES articles(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_llm_scores_article_version ON llm_scores(article_id, version);
 
 CREATE TABLE IF NOT EXISTS feedback (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,8 +185,8 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string, days int) (bool, err
 }
 
 func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
-	res, err := db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata) 
-	VALUES (:article_id, :model, :score, :metadata)`, score)
+	res, err := db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, version)
+	VALUES (:article_id, :model, :score, :metadata, :version)`, score)
 	if err != nil {
 		return 0, err
 	}
@@ -228,7 +232,7 @@ func FetchArticleByID(db *sqlx.DB, id int64) (Article, error) {
 // FetchLLMScores returns all LLM scores for an article.
 func FetchLLMScores(db *sqlx.DB, articleID int64) ([]LLMScore, error) {
 	var scores []LLMScore
-	err := db.Select(&scores, "SELECT * FROM llm_scores WHERE article_id = ?", articleID)
+	err := db.Select(&scores, "SELECT * FROM llm_scores WHERE article_id = ? ORDER BY version DESC", articleID)
 
 	return scores, err
 }

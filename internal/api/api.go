@@ -2,16 +2,22 @@ package api
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"sort"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+)
+
+var (
+	articlesCache     = NewSimpleCache()
+	articlesCacheLock sync.RWMutex
 )
 
 const errInvalidArticleID = "Invalid article ID"
@@ -25,20 +31,46 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	router.GET("/api/articles/:id/bias", biasHandler(dbConn))
 	router.GET("/api/articles/:id/ensemble", ensembleDetailsHandler(dbConn))
 	router.POST("/api/feedback", feedbackHandler(dbConn))
+	router.GET("/api/feeds/healthz", feedHealthHandler(rssCollector))
 }
 
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		source := c.Query("source")
 		leaning := c.Query("leaning")
 		limitStr := c.DefaultQuery("limit", "20")
 		offsetStr := c.DefaultQuery("offset", "0")
-		limit, _ := strconv.Atoi(limitStr)
-		offset, _ := strconv.Atoi(offsetStr)
+
+		// Input validation
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil || limit < 1 || limit > 100 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid 'limit' parameter")
+			LogError("getArticlesHandler: invalid limit", err)
+			return
+		}
+		offset, err := strconv.Atoi(offsetStr)
+		if err != nil || offset < 0 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid 'offset' parameter")
+			LogError("getArticlesHandler: invalid offset", err)
+			return
+		}
+
+		// Caching
+		cacheKey := "articles:" + source + ":" + leaning + ":" + limitStr + ":" + offsetStr
+		articlesCacheLock.RLock()
+		if cached, found := articlesCache.Get(cacheKey); found {
+			articlesCacheLock.RUnlock()
+			RespondSuccess(c, cached)
+			LogPerformance("getArticlesHandler (cache hit)", start)
+			return
+		}
+		articlesCacheLock.RUnlock()
 
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch articles"})
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch articles")
+			LogError("getArticlesHandler: fetch articles", err)
 			return
 		}
 
@@ -51,99 +83,153 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return articles[i].CompositeScore > articles[j].CompositeScore
 		})
 
-		c.JSON(http.StatusOK, articles)
+		// Cache the result for 30 seconds
+		articlesCacheLock.Lock()
+		articlesCache.Set(cacheKey, articles, 30*time.Second)
+		articlesCacheLock.Unlock()
+
+		RespondSuccess(c, articles)
+		LogPerformance("getArticlesHandler", start)
 	}
 }
 
 func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		idStr := c.Param("id")
 
 		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
-
+		if err != nil || id < 1 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			LogError("getArticleByIDHandler: invalid id", err)
 			return
 		}
 
+		// Caching
+		cacheKey := "article:" + idStr
+		articlesCacheLock.RLock()
+		if cached, found := articlesCache.Get(cacheKey); found {
+			articlesCacheLock.RUnlock()
+			RespondSuccess(c, cached)
+			LogPerformance("getArticleByIDHandler (cache hit)", start)
+			return
+		}
+		articlesCacheLock.RUnlock()
+
 		article, err := db.FetchArticleByID(dbConn, id)
 		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Article not found"})
-
+			RespondError(c, http.StatusNotFound, ErrNotFound, "Article not found")
+			LogError("getArticleByIDHandler: fetch article", err)
 			return
 		}
 
 		scores, _ := db.FetchLLMScores(dbConn, id)
-		composite := llm.ComputeCompositeScore(scores)
-		c.JSON(http.StatusOK, gin.H{
+		composite, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
+		result := map[string]interface{}{
 			"article":         article,
 			"scores":          scores,
 			"composite_score": composite,
-		})
+			"confidence":      confidence,
+		}
+
+		// Cache the result for 30 seconds
+		articlesCacheLock.Lock()
+		articlesCache.Set(cacheKey, result, 30*time.Second)
+		articlesCacheLock.Unlock()
+
+		RespondSuccess(c, result)
+		LogPerformance("getArticleByIDHandler", start)
 	}
 }
 
 func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		go rssCollector.ManualRefresh()
-		c.JSON(http.StatusOK, gin.H{"status": "refresh started"})
+		RespondSuccess(c, map[string]string{"status": "refresh started"})
+		LogPerformance("refreshHandler", start)
 	}
 }
 
 func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		idStr := c.Param("id")
 
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
+		if err != nil || id < 1 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			LogError("reanalyzeHandler: invalid id", err)
 			return
 		}
 
 		err = llmClient.ReanalyzeArticle(int64(id))
 		if err != nil {
-			log.Printf("ReanalyzeArticle error: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"status": "reanalyze failed",
-				"error":  err.Error(),
-			})
+			LogError("reanalyzeHandler: ReanalyzeArticle", err)
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Reanalyze failed: "+err.Error())
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
+		RespondSuccess(c, map[string]interface{}{
 			"status":     "reanalyze complete",
 			"article_id": id,
 		})
+		LogPerformance("reanalyzeHandler", start)
+	}
+}
+
+// feedHealthHandler returns the health status of all feed sources.
+func feedHealthHandler(rssCollector *rss.Collector) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		status := rssCollector.CheckFeedHealth()
+		c.JSON(200, status)
 	}
 }
 
 func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		idStr := c.Param("id")
 
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
-
+		if err != nil || id < 1 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			LogError("summaryHandler: invalid id", err)
 			return
 		}
 
+		// Caching
+		cacheKey := "summary:" + idStr
+		articlesCacheLock.RLock()
+		if cached, found := articlesCache.Get(cacheKey); found {
+			articlesCacheLock.RUnlock()
+			RespondSuccess(c, cached)
+			LogPerformance("summaryHandler (cache hit)", start)
+			return
+		}
+		articlesCacheLock.RUnlock()
+
 		scores, err := db.FetchLLMScores(dbConn, int64(id))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch summary"})
-
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch summary")
+			LogError("summaryHandler: fetch scores", err)
 			return
 		}
 
 		for _, score := range scores {
 			if score.Model == "summarizer" {
-				c.JSON(http.StatusOK, gin.H{"summary": score.Metadata})
-
+				result := map[string]interface{}{"summary": score.Metadata}
+				articlesCacheLock.Lock()
+				articlesCache.Set(cacheKey, result, 30*time.Second)
+				articlesCacheLock.Unlock()
+				RespondSuccess(c, result)
+				LogPerformance("summaryHandler", start)
 				return
 			}
 		}
 
-		c.JSON(http.StatusNotFound, gin.H{"error": "Summary not found"})
+		RespondError(c, http.StatusNotFound, ErrNotFound, "Summary not found")
+		LogPerformance("summaryHandler", start)
 	}
 }
 
@@ -203,25 +289,55 @@ func sortResults(results []map[string]interface{}, order string) {
 
 func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		articleID, ok := parseArticleID(c)
-		if !ok {
+		start := time.Now()
+		idStr := c.Param("id")
+		articleID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || articleID < 1 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			LogError("biasHandler: invalid id", err)
 			return
 		}
 
-		minScore, _ := strconv.ParseFloat(c.DefaultQuery("min_score", "-2"), 64)
-		maxScore, _ := strconv.ParseFloat(c.DefaultQuery("max_score", "2"), 64)
+		minScore, err := strconv.ParseFloat(c.DefaultQuery("min_score", "-2"), 64)
+		if err != nil {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid min_score")
+			LogError("biasHandler: invalid min_score", err)
+			return
+		}
+		maxScore, err := strconv.ParseFloat(c.DefaultQuery("max_score", "2"), 64)
+		if err != nil {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid max_score")
+			LogError("biasHandler: invalid max_score", err)
+			return
+		}
 		sortOrder := c.DefaultQuery("sort", "desc")
+		if sortOrder != "asc" && sortOrder != "desc" {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid sort order")
+			LogError("biasHandler: invalid sort order", nil)
+			return
+		}
+
+		// Caching
+		cacheKey := "bias:" + idStr + ":" + c.DefaultQuery("min_score", "-2") + ":" + c.DefaultQuery("max_score", "2") + ":" + sortOrder
+		articlesCacheLock.RLock()
+		if cached, found := articlesCache.Get(cacheKey); found {
+			articlesCacheLock.RUnlock()
+			RespondSuccess(c, cached)
+			LogPerformance("biasHandler (cache hit)", start)
+			return
+		}
+		articlesCacheLock.RUnlock()
 
 		scores, err := db.FetchLLMScores(dbConn, articleID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch bias data"})
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch bias data")
+			LogError("biasHandler: fetch scores", err)
 			return
 		}
 
 		ensembleResults := filterAndTransformScores(scores, minScore, maxScore)
 		sortResults(ensembleResults, sortOrder)
 
-		var detailedResults []map[string]interface{}
 		var weightedSum float64
 		var totalWeight float64
 
@@ -234,13 +350,6 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 			weightedSum += s.Score * parsed.Confidence
 			totalWeight += parsed.Confidence
-
-			detailedResults = append(detailedResults, map[string]interface{}{
-				"model":       s.Model,
-				"score":       s.Score,
-				"confidence":  parsed.Confidence,
-				"explanation": parsed.Explanation,
-			})
 		}
 
 		var composite interface{}
@@ -251,29 +360,50 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			composite = nil
 			status = "scoring_unavailable"
 		}
-		resp := gin.H{
+		resp := map[string]interface{}{
 			"composite_score": composite,
 			"results":         ensembleResults,
 		}
 		if status != "" {
 			resp["status"] = status
 		}
-		c.JSON(http.StatusOK, resp)
+
+		// Cache the result for 30 seconds
+		articlesCacheLock.Lock()
+		articlesCache.Set(cacheKey, resp, 30*time.Second)
+		articlesCacheLock.Unlock()
+
+		RespondSuccess(c, resp)
+		LogPerformance("biasHandler", start)
 	}
 }
 
 func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
+		if err != nil || id < 1 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			LogError("ensembleDetailsHandler: invalid id", err)
 			return
 		}
 
+		// Caching
+		cacheKey := "ensemble:" + idStr
+		articlesCacheLock.RLock()
+		if cached, found := articlesCache.Get(cacheKey); found {
+			articlesCacheLock.RUnlock()
+			RespondSuccess(c, cached)
+			LogPerformance("ensembleDetailsHandler (cache hit)", start)
+			return
+		}
+		articlesCacheLock.RUnlock()
+
 		scores, err := db.FetchLLMScores(dbConn, int64(id))
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch ensemble data"})
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch ensemble data")
+			LogError("ensembleDetailsHandler: fetch scores", err)
 			return
 		}
 
@@ -297,18 +427,24 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		if len(details) == 0 {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Ensemble data not found"})
+			RespondError(c, http.StatusNotFound, ErrNotFound, "Ensemble data not found")
+			LogPerformance("ensembleDetailsHandler", start)
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"ensembles": details,
-		})
+		result := map[string]interface{}{"ensembles": details}
+		articlesCacheLock.Lock()
+		articlesCache.Set(cacheKey, result, 30*time.Second)
+		articlesCacheLock.Unlock()
+
+		RespondSuccess(c, result)
+		LogPerformance("ensembleDetailsHandler", start)
 	}
 }
 
 func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
 		var req struct {
 			ArticleID        int64  `json:"article_id" form:"article_id"`
 			UserID           string `json:"user_id" form:"user_id"`
@@ -319,14 +455,14 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		if err := c.ShouldBind(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
-
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid request")
+			LogError("feedbackHandler: bind", err)
 			return
 		}
 
 		if req.ArticleID == 0 || req.FeedbackText == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing required fields"})
-
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Missing required fields")
+			LogError("feedbackHandler: missing required fields", nil)
 			return
 		}
 
@@ -341,11 +477,12 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		_, err := db.InsertFeedback(dbConn, feedback)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save feedback"})
-
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to save feedback")
+			LogError("feedbackHandler: insert", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "feedback received"})
+		RespondSuccess(c, map[string]string{"status": "feedback received"})
+		LogPerformance("feedbackHandler", start)
 	}
 }

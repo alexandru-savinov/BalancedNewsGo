@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"time"
 
@@ -202,30 +203,27 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
 	// Initialize LLM client
 	llmClient := llm.NewLLMClient(dbConn)
 
-	// Initialize RSS collector
-	feedURLs := []string{
-		// Left-leaning
-		"https://www.huffpost.com/section/front-page/feed",
-		"https://www.theguardian.com/world/rss",
-		"http://www.msnbc.com/feeds/latest",
+	// Initialize RSS collector from external config
+	type FeedSource struct {
+		Category string `json:"category"`
+		URL      string `json:"url"`
+	}
+	type FeedSourcesConfig struct {
+		Sources []FeedSource `json:"sources"`
+	}
 
-		// Right-leaning
-		"http://feeds.foxnews.com/foxnews/latest",
-		"https://www.breitbart.com/feed/",
-		"https://www.washingtontimes.com/rss/headlines/news/",
-
-		// Centrist / Mainstream
-		"https://feeds.bbci.co.uk/news/rss.xml",
-		"https://www.npr.org/rss/rss.php?id=1001",
-		"http://feeds.reuters.com/reuters/topNews",
-
-		// International
-		"https://www.aljazeera.com/xml/rss/all.xml",
-		"https://rss.dw.com/rdf/rss-en-all",
-
-		// Alternative / Niche
-		"https://reason.com/feed/",
-		"https://theintercept.com/feed/?lang=en",
+	var feedConfig FeedSourcesConfig
+	feedConfigFile := "configs/feed_sources.json"
+	feedConfigData, err := os.ReadFile(feedConfigFile)
+	if err != nil {
+		log.Fatalf("Failed to read feed sources config: %v", err)
+	}
+	if err := json.Unmarshal(feedConfigData, &feedConfig); err != nil {
+		log.Fatalf("Failed to parse feed sources config: %v", err)
+	}
+	feedURLs := make([]string, 0, len(feedConfig.Sources))
+	for _, src := range feedConfig.Sources {
+		feedURLs = append(feedURLs, src.URL)
 	}
 	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
 	rssCollector.StartScheduler()

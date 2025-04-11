@@ -95,6 +95,11 @@ Raw perspective scores are stored in the `llm_scores` table (SQLite). Columns: `
 - Develop a data pruning strategy for old or unused scores.
 - Evaluate using a different database for better scaling.
 
+#### Pruning and Scaling Strategies
+
+- **Pruning:** Old or superseded score records can be pruned by deleting or archiving entries with lower `version` numbers for each `article_id`, or by removing records older than a set retention period. This can be automated with scheduled jobs or manual SQL scripts.
+- **Scaling:** For larger datasets, ensure the composite index on (`article_id`, `version`) is present to optimize queries. If data volume exceeds SQLite's practical limits, consider migrating to a scalable database (e.g., PostgreSQL) and use partitioning or sharding strategies for the `llm_scores` table.
+
 ---
 
 ## 6. Data Processing/Aggregation
