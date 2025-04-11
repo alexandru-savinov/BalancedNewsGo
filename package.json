@@ -1,0 +1,30 @@
+{
+  "name": "newbalancer_go",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexandru-savinov/BalancedNewsGo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/alexandru-savinov/BalancedNewsGo/issues"
+  },
+  "homepage": "https://github.com/alexandru-savinov/BalancedNewsGo#readme",
+  "description": "",
+  "devDependencies": {
+    "cypress": "^14.3.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "node-fetch": "^3.3.2",
+    "xml2js": "^0.6.2"
+  }
+}

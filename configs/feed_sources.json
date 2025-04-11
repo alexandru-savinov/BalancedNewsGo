@@ -29,14 +29,6 @@
       "url": "https://feeds.bbci.co.uk/news/rss.xml"
     },
     {
-      "category": "center",
-      "url": "https://www.npr.org/rss/rss.php?id=1001"
-    },
-    {
-      "category": "center",
-      "url": "http://feeds.reuters.com/reuters/topNews"
-    },
-    {
       "category": "international",
       "url": "https://www.aljazeera.com/xml/rss/all.xml"
     },

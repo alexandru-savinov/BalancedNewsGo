@@ -31,7 +31,7 @@ func TestLiveOpenAIIntegration(t *testing.T) {
 	}
 
 	client := resty.New()
-	service := NewOpenAILLMService(client, apiKey)
+	service := NewOpenAILLMService(client)
 
 	resp, err := service.Analyze("Test content for live OpenAI API integration check.")
 	if err != nil {

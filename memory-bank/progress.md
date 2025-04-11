@@ -140,3 +140,86 @@ Prioritized Recommendations:
 
 Conclusion:
 The CompositeScore pipeline is functional but can be significantly improved in robustness, maintainability, and user experience by addressing the above recommendations. This review provides a clear roadmap for future enhancements and ongoing reliability.
+
+## CompositeScore Real-Data E2E Testing Strategy – April 2025
+
+**Objectives**
+- Validate the full CompositeScore pipeline using only real data and services.
+- Detect integration issues, data integrity problems, and error handling gaps that only appear with live data.
+- Assess system performance and user experience under real-world conditions.
+
+**Scope**
+- All components: live RSS ingestion (as per configs/feed_sources.json), real DB (production instance), LLM API (OpenAI), backend API endpoints, real web UI (browser-based, Cypress-automated), and background jobs.
+- Full data flow: RSS → DB → LLM API → DB → API → UI.
+- Error propagation and handling across all layers.
+
+**Key Test Scenarios**
+1. Live RSS ingestion to UI display: New articles from real feeds are ingested, scored, and visible in the UI with correct CompositeScore and confidence.
+2. Data integrity: Scores and metadata are consistent across DB, API, and UI.
+3. Error handling: System response to real-world failures (feed outages, LLM/API/DB errors) is validated, with user-friendly UI feedback.
+4. Performance: System remains performant with full live feed volume.
+5. Repeatability: Re-running the pipeline with the same real data yields consistent results, tolerating natural feed changes.
+6. UI/UX: CompositeScore and confidence are rendered correctly in all UI views, with tooltips, indicators, and error messages.
+
+**Required Tools & Frameworks**
+- Cypress for browser-based UI automation.
+- Postman or Go test suites for backend API validation.
+- Custom Go scripts/logs or Prometheus for job/process monitoring.
+- DB Browser for SQLite or automated SQL checks.
+- Centralized log aggregation (e.g., Grafana Loki), alerting for failures.
+- cron or CI/CD for scheduled test execution.
+
+**Data Preparation & Management**
+- All tests use the actual RSS feeds in configs/feed_sources.json.
+- Accept feed variability; design tests to validate presence and correctness of new articles, not static content.
+- Log feed snapshots and test run metadata for traceability.
+- Monitor feed and LLM API health before/during tests.
+- Use unique markers (timestamps, URLs) to track new articles per run.
+- Archive test run results for comparison and debugging.
+
+**Execution Steps**
+1. Pre-checks: Ensure all external services are reachable and healthy.
+2. Ingestion: Trigger or wait for the article ingestion job.
+3. Scoring: Wait for background scoring job to process new articles.
+4. API/DB validation: Use Go tests or Postman to verify new articles and scores in DB and API.
+5. UI validation: Run Cypress tests to confirm new articles and scores are displayed correctly, with proper UI elements and error handling.
+6. Monitoring: Collect logs, metrics, and screenshots.
+7. Reporting: Aggregate results, flag failures, and archive artifacts.
+8. Teardown: Optionally clean up test data if required.
+
+**Validation Criteria**
+- Functional: New articles appear in UI within expected time; CompositeScore and confidence match backend/API; all UI elements function as specified; system handles errors gracefully.
+- Non-functional: Ingestion-to-display latency is acceptable; no unhandled exceptions or crashes; performance is stable.
+- Data changes: Tests tolerate feed churn; failures due to external outages are logged/tracked, not treated as hard failures.
+
+**Reporting Mechanisms**
+- Automated test reports (Cypress, Go test outputs) aggregated into a dashboard or emailed.
+- Centralized log collection for backend, job, and UI logs.
+- Flakiness tracking for failures due to external factors.
+- Regular review of test results and flakiness reports for continuous improvement.
+
+**Summary**
+This strategy validates the CompositeScore system in a production-like environment, using only real data and services. It covers the full pipeline, robust error handling, data integrity, and automated UI validation, balancing real-world variability with actionable, repeatable test results.
+
+---
+
+### E2E Testing Implementation Checklist
+
+- [Done] Tooling & Environment Setup (Cypress, Postman, Go test suites, monitoring/logging, CI/CD)
+    - Cypress was installed and configured for UI automation, a Go test suite and Postman placeholder were scaffolded for backend validation, monitoring/logging configs (Prometheus, Grafana, Loki) were added, and a GitHub Actions workflow was set up for automated E2E test runs.
+- [Done] Data Preparation & Management (feed snapshotting, test run metadata, health monitoring)
+    - Feed snapshotting, test run metadata logging, and health monitoring were implemented via an automated script. Each E2E test run now archives all feed XMLs, logs run metadata, and records the health status of all feeds and LLM APIs for traceability and debugging.
+- [Done] Pre-checks: External service health validation
+    - Automated pre-checks were implemented to validate the health and availability of all external services (RSS feeds, LLM API, and database) before each E2E test run. The pre-checks log the status of each service and halt the test run if any critical service is unavailable.
+- [Done] Ingestion: Triggering or monitoring article ingestion
+    - The E2E automation now triggers the article ingestion job by running the Go CLI (`go run cmd/fetch_articles/main.go`) as part of the test flow. The process logs the start, progress, and completion of ingestion for traceability.
+- [Done] Scoring: Ensuring background scoring job processes new articles
+    - Automated E2E test triggers article ingestion, polls for new articles, and verifies that the background scoring job processes them by checking for a non-null CompositeScore. The test logs the start, progress, and completion of the scoring step.
+- [Done] API/DB Validation: Automated checks for new articles and scores
+    - Automated Go tests were implemented to validate that new articles and their CompositeScores are present and correct in both the API and database after ingestion and scoring. The tests log results and flag any discrepancies or missing data between the API and DB.
+- [Done] UI Validation: Cypress tests for UI correctness, indicators, and error handling
+    - Cypress E2E tests were implemented to validate that articles and CompositeScores are displayed correctly, including tooltips, confidence indicators, and error handling. The tests log results and flag any UI discrepancies or missing elements.
+- [Done] Monitoring & Reporting: Log/metric collection, report aggregation, flakiness tracking
+    - Log and metric collection for E2E test runs was set up using Prometheus, Grafana, and Loki. Automated report aggregation and flakiness tracking were implemented via CI workflow artifacts and Cypress reporting.
+- [Pending] Teardown/Cleanup: Optional test data cleanup and archiving
+

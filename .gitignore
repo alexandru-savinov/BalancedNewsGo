@@ -23,3 +23,8 @@ go.work.sum
 
 # env file
 .env
+
+# Test result output directories
+cypress/screenshots/
+cypress/videos/
+e2e_snapshots/

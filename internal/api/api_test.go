@@ -104,3 +104,76 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 	agg := ensembles[0]["aggregation"].(map[string]interface{})
 	assert.Equal(t, 0.1, agg["weighted_mean"])
 }
+
+// Automated E2E check for API/DB validation of new articles and CompositeScores
+func TestAPIAndDBValidationForCompositeScores(t *testing.T) {
+	dbConn := setupTestDB()
+	router := gin.Default()
+	router.GET("/api/articles/:id/ensemble", ensembleDetailsHandler(dbConn))
+
+	// Insert a mock CompositeScore for a new article
+	articleID := int64(42)
+	expectedScore := 0.75
+	expectedModel := "ensemble"
+	meta, _ := json.Marshal(map[string]interface{}{
+		"aggregation": map[string]interface{}{
+			"weighted_mean":    expectedScore,
+			"variance":         0.02,
+			"uncertainty_flag": false,
+		},
+	})
+	insertMockScore(dbConn, articleID, expectedModel, expectedScore, string(meta))
+
+	// Query DB directly
+	var dbScore float64
+	var dbModel string
+	var dbMetadata string
+	err := dbConn.QueryRowx(
+		"SELECT score, model, metadata FROM llm_scores WHERE article_id = ? AND model = ?",
+		articleID, expectedModel,
+	).Scan(&dbScore, &dbModel, &dbMetadata)
+	if err != nil {
+		t.Errorf("DB validation failed: could not find CompositeScore for article_id=%d: %v", articleID, err)
+	} else {
+		t.Logf("DB validation: found CompositeScore for article_id=%d: model=%s, score=%v", articleID, dbModel, dbScore)
+	}
+
+	// Call API to fetch CompositeScore
+	req, _ := http.NewRequest("GET", "/api/articles/42/ensemble", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != 200 {
+		t.Errorf("API validation failed: expected 200, got %d", resp.Code)
+		return
+	}
+
+	var apiBody map[string][]map[string]interface{}
+	err = json.Unmarshal(resp.Body.Bytes(), &apiBody)
+	if err != nil {
+		t.Errorf("API validation failed: could not parse response: %v", err)
+		return
+	}
+	ensembles, ok := apiBody["ensembles"]
+	if !ok || len(ensembles) == 0 {
+		t.Errorf("API validation failed: no ensembles found in response for article_id=%d", articleID)
+		return
+	}
+	apiAgg, ok := ensembles[0]["aggregation"].(map[string]interface{})
+	if !ok {
+		t.Errorf("API validation failed: aggregation missing or wrong type in API response")
+		return
+	}
+	apiScore, ok := apiAgg["weighted_mean"].(float64)
+	if !ok {
+		t.Errorf("API validation failed: weighted_mean missing or wrong type in API response")
+		return
+	}
+
+	// Compare API and DB results
+	if apiScore != dbScore {
+		t.Errorf("Discrepancy: API score (%v) does not match DB score (%v) for article_id=%d", apiScore, dbScore, articleID)
+	} else {
+		t.Logf("Validation successful: API and DB scores match for article_id=%d: %v", articleID, apiScore)
+	}
+}

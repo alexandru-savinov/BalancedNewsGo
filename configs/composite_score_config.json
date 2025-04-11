@@ -15,18 +15,18 @@
   "models": [
     {
       "perspective": "left",
-      "modelName": "gpt-3.5-turbo",
-      "url": "https://api.openai.com/v1/left"
+      "modelName": "qwen/qwen-2.5-7b-instruct:free",
+      "url": "https://openrouter.ai/api/v1"
     },
     {
       "perspective": "center",
-      "modelName": "gpt-4",
-      "url": "https://api.openai.com/v1/center"
+      "modelName": "mistralai/mistral-7b-instruct:free",
+      "url": "https://openrouter.ai/api/v1"
     },
     {
       "perspective": "right",
-      "modelName": "gpt-3.5-turbo",
-      "url": "https://api.openai.com/v1/right"
+      "modelName": "google/gemini-flash-1.5-8b-exp",
+      "url": "https://openrouter.ai/api/v1"
     }
   ]
 }

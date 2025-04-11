@@ -293,13 +293,6 @@ func init() {
 	}
 }
 
-// LLM API endpoints.
-var (
-	LeftModelURL   = "https://api.openai.com/v1/chat/completions"
-	CenterModelURL = "https://api.openai.com/v1/chat/completions"
-	RightModelURL  = "https://api.openai.com/v1/chat/completions"
-)
-
 // Cache key: hash(content) + model.
 type cacheKey struct {
 	ContentHash string
@@ -357,14 +350,26 @@ func (m *MockLLMService) Analyze(content string) (*db.LLMScore, error) {
 */
 
 type OpenAILLMService struct {
-	client *resty.Client
-	apiKey string
+	client      *resty.Client
+	apiKey      string
+	modelConfig *ModelConfig
 }
 
-func NewOpenAILLMService(client *resty.Client, apiKey string) *OpenAILLMService {
+func NewOpenAILLMService(client *resty.Client) *OpenAILLMService {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		log.Fatal("OPENAI_API_KEY environment variable not set")
+	}
+
+	cfg, err := LoadCompositeScoreConfig()
+	if err != nil {
+		log.Fatalf("Failed to load composite score config: %v", err)
+	}
+
 	return &OpenAILLMService{
-		client: client,
-		apiKey: apiKey,
+		client:      client,
+		apiKey:      apiKey,
+		modelConfig: &cfg.Models[0], // Default to first model
 	}
 }
 
@@ -400,31 +405,29 @@ func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
 }
 
 func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Response, error) {
-	url := "https://api.openai.com/v1/chat/completions"
-
 	req := o.client.R().
 		SetHeader("Content-Type", "application/json").
 		SetHeader("Authorization", "Bearer "+o.apiKey)
 
 	body := map[string]interface{}{
-		"model":       model,
+		"model":       o.modelConfig.ModelName,
 		"messages":    []map[string]string{{"role": "user", "content": prompt}},
 		"max_tokens":  300,
 		"temperature": 0.7,
 	}
 	req.SetBody(body)
 
-	log.Printf("[OpenAI] Sending real API request to %s with model %s", url, model)
+	log.Printf("[OpenRouter] Sending API request to %s with model %s", o.modelConfig.URL, o.modelConfig.ModelName)
 
-	resp, err := req.Post(url)
+	resp, err := req.Post(o.modelConfig.URL)
 
 	if err != nil {
-		log.Printf("[OpenAI] API request error: %v", err)
+		log.Printf("[OpenRouter] API request error: %v", err)
 		return nil, err
 	}
 
-	log.Printf("[OpenAI] API response status: %d", resp.StatusCode())
-	log.Printf("[OpenAI] API response body: %.500s", resp.String())
+	log.Printf("[OpenRouter] API response status: %d", resp.StatusCode())
+	log.Printf("[OpenRouter] API response body: %.500s", resp.String())
 
 	if !resp.IsSuccess() {
 		return resp, errors.New("API response not successful")
@@ -587,6 +590,44 @@ func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
 }
 
 func parseOpenAIResponse(body []byte) (string, error) {
+	// First try to extract markdown-wrapped JSON (```json ... ```)
+	content := string(body)
+	if strings.Contains(content, "```json") {
+		// Extract JSON between ```json and ```
+		start := strings.Index(content, "```json")
+		if start >= 0 {
+			start += len("```json")
+			end := strings.Index(content[start:], "```")
+			if end >= 0 {
+				content = strings.TrimSpace(content[start : start+end])
+			}
+		}
+	}
+
+	// Try parsing as direct JSON first (for models like qwen, mistral, gemini-flash)
+	var directResponse struct {
+		Content string `json:"content"`
+		Text    string `json:"text"`   // Some models use "text" instead of "content"
+		Result  string `json:"result"` // Some models use "result"
+		Output  string `json:"output"` // Some models use "output"
+	}
+	if err := json.Unmarshal([]byte(content), &directResponse); err == nil {
+		// Return the first non-empty field we find
+		if directResponse.Content != "" {
+			return directResponse.Content, nil
+		}
+		if directResponse.Text != "" {
+			return directResponse.Text, nil
+		}
+		if directResponse.Result != "" {
+			return directResponse.Result, nil
+		}
+		if directResponse.Output != "" {
+			return directResponse.Output, nil
+		}
+	}
+
+	// Fall back to OpenAI-specific parsing
 	var openaiResp struct {
 		Choices []struct {
 			Message struct {
@@ -616,8 +657,8 @@ func parseOpenAIResponse(body []byte) (string, error) {
 	}
 
 	// Log raw response for debugging
-	log.Printf("Failed to parse OpenAI response as chat completion or error.\nRaw response:\n%s", string(body))
-	return "", errors.New("invalid OpenAI API response format")
+	log.Printf("Failed to parse response as JSON or OpenAI format.\nRaw response:\n%s", string(body))
+	return "", errors.New("invalid API response format")
 }
 
 func parseBiasResult(contentResp string) BiasResult {
@@ -698,7 +739,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 			model = "gpt-3.5-turbo"
 		}
 
-		service = NewOpenAILLMService(client, apiKey)
+		service = NewOpenAILLMService(client)
 	default:
 		log.Fatal("ERROR: LLM_PROVIDER not set or unknown, cannot initialize LLM service")
 	}
@@ -782,28 +823,23 @@ func (c *LLMClient) ProcessUnscoredArticles() error {
 }
 
 func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
-	models := []struct {
-		perspective string
-		modelName   string
-		url         string
-	}{
-		{LabelLeft, "gpt-3.5-turbo", LeftModelURL},
-		{"center", "gpt-4", CenterModelURL},
-		{LabelRight, "gpt-3.5-turbo", RightModelURL},
+	cfg, err := LoadCompositeScoreConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load composite score config: %w", err)
 	}
 
-	for _, m := range models {
-		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.perspective, m.modelName, m.url)
-		score, err := c.analyzeContent(article.ID, article.Content, m.modelName, m.url)
+	for _, m := range cfg.Models {
+		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.Perspective, m.ModelName, m.URL)
+		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName, m.URL)
 		if err != nil {
-			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.modelName, err)
+			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.ModelName, err)
 
 			continue
 		}
 
 		_, err = db.InsertLLMScore(c.db, score)
 		if err != nil {
-			log.Printf("Error inserting LLM score for article %d model %s: %v", article.ID, m.modelName, err)
+			log.Printf("Error inserting LLM score for article %d model %s: %v", article.ID, m.ModelName, err)
 		}
 	}
 
@@ -837,26 +873,22 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		return err
 	}
 
-	models := []struct {
-		name string
-		url  string
-	}{
-		{LabelLeft, LeftModelURL},
-		{"center", CenterModelURL},
-		{LabelRight, RightModelURL},
+	cfg, err := LoadCompositeScoreConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load composite score config: %w", err)
 	}
 
-	for _, m := range models {
-		score, err := c.analyzeContent(article.ID, article.Content, m.name, m.url)
+	for _, m := range cfg.Models {
+		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName, m.URL)
 		if err != nil {
-			log.Printf("Error reanalyzing article %d with model %s: %v", article.ID, m.name, err)
+			log.Printf("Error reanalyzing article %d with model %s: %v", article.ID, m.ModelName, err)
 			continue
 		}
 
 		_, err = tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata)
 			VALUES (:article_id, :model, :score, :metadata)`, score)
 		if err != nil {
-			log.Printf("Error inserting reanalysis score for article %d model %s: %v", article.ID, m.name, err)
+			log.Printf("Error inserting reanalysis score for article %d model %s: %v", article.ID, m.ModelName, err)
 		}
 	}
 
