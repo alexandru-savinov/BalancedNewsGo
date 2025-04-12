@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"regexp"
 	"strings"
 	"time"
 
@@ -63,7 +64,7 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 		}
 
 		// Call the underlying API method
-		apiResp, err := httpService.callLLMAPI(modelName, prompt)
+		apiResp, err := httpService.callLLMAPIWithKey(modelName, prompt, httpService.apiKey) // Use renamed function and pass primary key
 		if err != nil {
 			// Error is already logged within callLLMAPI
 			lastErr = err
@@ -74,19 +75,47 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 			continue // Retry
 		}
 		rawResp = apiResp.String() // Store raw response on success
-		if err != nil {
-			rawSnippet := rawResp
-			if len(rawSnippet) > 200 {
-				rawSnippet = rawSnippet[:200] + "..."
+
+		// --- BEGIN INSERTED: Check for embedded error structure ---
+		var genericResponse map[string]interface{}
+		if errUnmarshal := json.Unmarshal([]byte(rawResp), &genericResponse); errUnmarshal == nil {
+			if errorField, ok := genericResponse["error"].(map[string]interface{}); ok {
+				if message, msgOK := errorField["message"].(string); msgOK && message != "" {
+					errType, _ := errorField["type"].(string)
+					errCode, _ := errorField["code"].(interface{})
+					isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", errCode) == "429"
+
+					if isRateLimit {
+						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded rate limit: %s", articleID, modelName, promptHash, message)
+						lastErr = ErrBothLLMKeysRateLimited // Use sentinel error
+					} else {
+						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded API error: %s", articleID, modelName, promptHash, message)
+						lastErr = fmt.Errorf("API error: %s (type: %s, code: %v)", message, errType, errCode)
+					}
+					continue // Skip parsing, retry loop
+				}
 			}
-			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | API error: %v | Raw response: %s", articleID, modelName, promptHash, err, rawSnippet)
-			if articleID == 133 {
-				log.Printf("[DEBUG][Article 133] API error: %v", err)
-				log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
-			}
-			lastErr = err
-			continue
 		}
+		// --- END INSERTED: Check for embedded error structure ---
+
+		// Original error handling block (seems redundant now, but keeping for safety?)
+		// This block seems to check the 'err' from callLLMAPIWithKey, which we already handled above.
+		// Let's comment it out for now as the embedded error check should cover it.
+		/*
+			if err != nil { // This 'err' is from line 66, already checked on line 67
+				rawSnippet := rawResp
+				if len(rawSnippet) > 200 {
+					rawSnippet = rawSnippet[:200] + "..."
+				}
+				log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | API error: %v | Raw response: %s", articleID, modelName, promptHash, err, rawSnippet)
+				if articleID == 133 {
+					log.Printf("[DEBUG][Article 133] API error: %v", err)
+					log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
+				}
+				lastErr = err
+				continue
+			}
+		*/
 
 		var parseErr error
 		// Use the renamed parser for nested JSON expected in this ensemble context
@@ -153,6 +182,15 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 
 	// Step 2: Extract the content string
 	contentStr := apiResp.Choices[0].Message.Content
+
+	// Add robust backtick stripping
+	re := regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)\\s*```") // Matches ```json ... ``` or ``` ... ```
+	matches := re.FindStringSubmatch(contentStr)
+	if len(matches) >= 2 {
+		contentStr = strings.TrimSpace(matches[1]) // Use the captured group
+	} else {
+		// Log if no backticks were found or regex failed
+	}
 
 	// Step 3: Parse the content string as JSON with score, explanation, confidence
 	var innerResp struct {

@@ -5,44 +5,12 @@
       "url": "https://www.huffpost.com/section/front-page/feed"
     },
     {
-      "category": "left",
+      "category": "center",
       "url": "https://www.theguardian.com/world/rss"
     },
     {
-      "category": "left",
+      "category": "right",
       "url": "http://www.msnbc.com/feeds/latest"
-    },
-    {
-      "category": "right",
-      "url": "http://feeds.foxnews.com/foxnews/latest"
-    },
-    {
-      "category": "right",
-      "url": "https://www.breitbart.com/feed/"
-    },
-    {
-      "category": "right",
-      "url": "https://www.washingtontimes.com/rss/headlines/news/"
-    },
-    {
-      "category": "center",
-      "url": "https://feeds.bbci.co.uk/news/rss.xml"
-    },
-    {
-      "category": "international",
-      "url": "https://www.aljazeera.com/xml/rss/all.xml"
-    },
-    {
-      "category": "international",
-      "url": "https://rss.dw.com/rdf/rss-en-all"
-    },
-    {
-      "category": "alternative",
-      "url": "https://reason.com/feed/"
-    },
-    {
-      "category": "alternative",
-      "url": "https://theintercept.com/feed/?lang=en"
     }
   ]
 }

@@ -45,3 +45,8 @@ _Reference: [score_data_flow_analysis.md](../score_data_flow_analysis.md)_
 ## Memory Bank Update Log
 
 [2025-04-12 12:06:27] - Memory Bank Update (UMB) completed at user request. All session context and clarifications synchronized to memory-bank files.
+[2025-04-12 16:09:58] - Debug session: Identified OpenRouter rate limit as root cause of scoring failure. Multiple tool attempts to patch reanalyzeHandler; provided manual patch instructions. Memory Bank updated (UMB) at user request.
+
+[2025-04-12 16:31:00] - Added secondary API key to .env file.
+[2025-04-12 16:31:00] - Added secondary API key to .env file.
+[2025-04-12 18:41:45] - UMB: Updated models in config, added secondary API key. New JSON parsing error (markdown backticks) identified with tokyotech-llm model. Debug task cancelled by user; decided to ignore parsing error for now.

@@ -843,12 +843,14 @@ function startScoring(btn) {
     fetch(`/api/llm/reanalyze/${articleId}`, { method: 'POST' })
         .then(resp => resp.json())
         .then(data => {
-            if (data.status && data.status.startsWith('reanalyze')) {
+            // Check the nested status property
+            if (data.data && data.data.status && data.data.status.startsWith('reanalyze')) {
                 // Open SSE for progress
                 const evtSource = new EventSource(`/api/llm/score-progress/${articleId}`);
                 let lastPercent = 0;
                 evtSource.onmessage = function(event) {
                     const progress = JSON.parse(event.data);
+
                     // Update progress bar
                     if (progress.percent !== undefined) {
                         progressBar.style.width = progress.percent + '%';
@@ -895,7 +897,7 @@ function startScoring(btn) {
                     evtSource.close();
                 };
             } else {
-                errorMessage.textContent = "Failed to start scoring: " + (data.error || "Unknown error");
+                errorMessage.textContent = "Failed to start scoring: " + (data.error?.message || "Unknown error"); // Access nested message property
                 errorMessage.style.display = '';
                 btn.disabled = false;
                 btnLabel.style.display = '';

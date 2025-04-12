@@ -17,6 +17,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+var (
+	ErrBothLLMKeysRateLimited = errors.New("both LLM API keys are rate-limited")
+	LLMRateLimitErrorMessage  = "Both LLM API keys are rate-limited. Please try again later."
+)
+
 const (
 	LabelUnknown = "unknown"
 	LabelLeft    = "left"
@@ -226,6 +231,19 @@ func abs(x float64) float64 {
 	return x
 }
 
+// isRateLimitError checks if an error indicates an API rate limit.
+func isRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Add more specific checks based on actual API error messages
+	// Consider checking for specific error codes or types if available
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "rate limit") ||
+		strings.Contains(errStr, "quota") ||
+		strings.Contains(errStr, "too many requests")
+}
+
 type BiasConfig struct {
 	Categories          []string            `json:"categories"`
 	ConfidenceThreshold float64             `json:"confidence_threshold"`
@@ -431,21 +449,44 @@ func (s *HTTPLLMService) DefaultModelName() string {
 
 func (s *HTTPLLMService) AnalyzeWithPrompt(model, prompt, content string) (*db.LLMScore, error) {
 	prompt = strings.Replace(prompt, "{{ARTICLE_CONTENT}}", content, 1)
-
 	var resp *resty.Response
 	var err error
 
-	for attempt := 1; attempt <= 3; attempt++ {
-		resp, err = s.callLLMAPI(model, prompt)
-		if err == nil && resp != nil && resp.IsSuccess() {
-			return s.processLLMResponse(resp, content, model)
-		}
+	// Attempt with primary key
+	log.Printf("[AnalyzeWithPrompt] Attempting API call with primary key for model %s", model)
+	resp, err = s.callLLMAPIWithKey(model, prompt, s.apiKey)
+	if err == nil && resp != nil && resp.IsSuccess() {
+		log.Printf("[AnalyzeWithPrompt] Primary key successful for model %s", model)
+		return s.processLLMResponse(resp, content, model)
+	}
+	log.Printf("[AnalyzeWithPrompt] Primary key failed for model %s: %v", model, err)
 
-		log.Printf("%s API call failed (attempt %d): %v", s.provider, attempt, err)
-		time.Sleep(time.Duration(attempt) * time.Second)
+	// If primary key failed with rate limit, try secondary key
+	if isRateLimitError(err) {
+		secondApiKey := os.Getenv("LLM_API_KEY_SECONDARY")
+		if secondApiKey != "" && secondApiKey != s.apiKey {
+			log.Printf("[AnalyzeWithPrompt] Primary key rate limited for model %s. Attempting with secondary key.", model)
+			resp, err = s.callLLMAPIWithKey(model, prompt, secondApiKey)
+			if err == nil && resp != nil && resp.IsSuccess() {
+				log.Printf("[AnalyzeWithPrompt] Secondary key successful for model %s", model)
+				return s.processLLMResponse(resp, content, model)
+			}
+			log.Printf("[AnalyzeWithPrompt] Secondary key failed for model %s: %v", model, err)
+			// If secondary key also rate limited, return specific error
+			if isRateLimitError(err) {
+				log.Printf("[AnalyzeWithPrompt] Both keys rate limited for model %s.", model)
+				return nil, ErrBothLLMKeysRateLimited
+			}
+		} else {
+			log.Printf("[AnalyzeWithPrompt] Primary key rate limited for model %s, but no valid secondary key found.", model)
+			// Return the original rate limit error from the primary key
+			return nil, err
+		}
 	}
 
-	return nil, fmt.Errorf("%s API call failed after retries", s.provider)
+	// Return the last error encountered (either non-rate-limit from primary, or non-rate-limit from secondary)
+	log.Printf("[AnalyzeWithPrompt] Failed after all attempts for model %s. Last error: %v", model, err)
+	return nil, err
 }
 
 func (s *HTTPLLMService) AnalyzeWithModel(model, content string) (*db.LLMScore, error) {
@@ -462,10 +503,10 @@ func (s *HTTPLLMService) Analyze(content string) (*db.LLMScore, error) {
 	return s.AnalyzeWithPrompt(s.defaultModel, PromptTemplate, content)
 }
 
-func (s *HTTPLLMService) callLLMAPI(model string, prompt string) (*resty.Response, error) {
+func (s *HTTPLLMService) callLLMAPIWithKey(model string, prompt string, apiKey string) (*resty.Response, error) { // Renamed and added apiKey param
 	req := s.client.R().
 		SetHeader("Content-Type", "application/json").
-		SetHeader("Authorization", "Bearer "+s.apiKey)
+		SetHeader("Authorization", "Bearer "+apiKey) // Use apiKey param
 
 	body := map[string]interface{}{
 		"model":       model, // Use the model passed as argument
@@ -478,10 +519,10 @@ func (s *HTTPLLMService) callLLMAPI(model string, prompt string) (*resty.Respons
 	// --- Enhanced Logging ---
 	// Mask API Key for logging
 	maskedAuthHeader := "Bearer ..."
-	if len(s.apiKey) > 8 {
+	if len(apiKey) > 8 { // Use apiKey param
 		// Basic masking, adjust if key format differs significantly
-		prefix := strings.Split(s.apiKey, "_")[0] // e.g., "sk" for openai, "sk-or" for openrouter
-		maskedAuthHeader = "Bearer " + prefix + "..." + s.apiKey[len(s.apiKey)-4:]
+		prefix := strings.Split(apiKey, "_")[0]                                // e.g., "sk" for openai, "sk-or" for openrouter // Use apiKey param
+		maskedAuthHeader = "Bearer " + prefix + "..." + apiKey[len(apiKey)-4:] // Use apiKey param
 	}
 	// Log headers (masking auth)
 	log.Printf("[%s Request] Headers: Content-Type=%s, Authorization=%s",
@@ -739,8 +780,32 @@ func parseLLMAPIResponse(body []byte) (string, error) {
 		}
 	}
 
-	// Fall back to OpenAI-specific parsing
-	// Try OpenAI/OpenRouter structure first
+	// --- Check for embedded error structure FIRST (e.g., OpenRouter rate limit in 200 OK) ---
+	var genericResponse map[string]interface{}
+	if err := json.Unmarshal(body, &genericResponse); err == nil {
+		// Check if top-level 'error' key exists and is a map
+		if errorField, ok := genericResponse["error"].(map[string]interface{}); ok {
+			// Check if 'message' key exists within the error map and is a string
+			if message, msgOK := errorField["message"].(string); msgOK && message != "" {
+				// Extract other fields if they exist, providing defaults if not
+				errType, _ := errorField["type"].(string)
+				errCode, _ := errorField["code"].(interface{}) // Code might be string or number (like 429)
+
+				// Check for specific rate limit indicators
+				isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", errCode) == "429"
+
+				if isRateLimit {
+					log.Printf("Detected rate limit error: %s (type: %s, code: %v)", message, errType, errCode) // Log detection
+					return "", ErrBothLLMKeysRateLimited                                                        // Return specific sentinel error
+				}
+				// Otherwise, return the generic formatted error
+				return "", fmt.Errorf("API error: %s (type: %s, code: %v)", message, errType, errCode)
+			}
+		}
+	}
+	// --- End embedded error check ---
+
+	// Fall back to OpenAI-specific parsing for successful responses (choices)
 	var standardResp struct {
 		Choices []struct {
 			Message struct {
@@ -749,26 +814,18 @@ func parseLLMAPIResponse(body []byte) (string, error) {
 		} `json:"choices"`
 	}
 
+	// Try parsing the standard success response (choices)
 	if err := json.Unmarshal(body, &standardResp); err == nil {
 		if len(standardResp.Choices) == 0 {
+			// This case might indicate an issue, but could also be a valid empty response.
+			// If we reached here, it means the generic error check above didn't find an error message.
 			return "", errors.New("no choices in OpenAI response")
 		}
+		// Successfully parsed choices, return the content
 		return standardResp.Choices[0].Message.Content, nil
 	}
 
-	// If parsing as chat completion failed, try parsing as error response
-	// Check for standard error structure
-	var standardErr struct {
-		Error struct {
-			Message string `json:"message"`
-			Type    string `json:"type"`
-			Param   string `json:"param"`
-			Code    string `json:"code"`
-		} `json:"error"`
-	}
-	if err2 := json.Unmarshal(body, &standardErr); err2 == nil && standardErr.Error.Message != "" {
-		return "", fmt.Errorf("API error: %s (type: %s, code: %s)", standardErr.Error.Message, standardErr.Error.Type, standardErr.Error.Code)
-	}
+	// If parsing as *both* error and standard choices failed, then it's an unknown format.
 
 	// Log raw response for debugging
 	log.Printf("Failed to parse response as JSON or OpenAI format.\nRaw response:\n%s", string(body))

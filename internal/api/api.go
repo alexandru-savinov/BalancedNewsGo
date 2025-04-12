@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log" // Added log package
 	"net/http"
 	"sort"
 	"strconv"
@@ -204,6 +205,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
+					// Consider adding logging here too if needed
 					setProgress(articleID, "Error", "Internal error occurred", 0, fmt.Sprintf("%v", r))
 				}
 			}()
@@ -212,12 +214,14 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 
 			cfg, err := llm.LoadCompositeScoreConfig()
 			if err != nil {
+				log.Printf("[reanalyzeHandler %d] Error loading config: %v", articleID, err) // Added log
 				setProgress(articleID, "Error", "Failed to load scoring config", 0, err.Error())
 				return
 			}
 
 			article, err := llmClient.GetArticle(articleID)
 			if err != nil {
+				log.Printf("[reanalyzeHandler %d] Error loading article: %v", articleID, err) // Added log
 				setProgress(articleID, "Error", "Failed to load article", 0, err.Error())
 				return
 			}
@@ -228,6 +232,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 			// Delete old scores
 			err = llmClient.DeleteScores(articleID)
 			if err != nil {
+				log.Printf("[reanalyzeHandler %d] Error deleting old scores: %v", articleID, err) // Added log
 				setProgress(articleID, "Error", "Failed to delete old scores", percent(stepNum, totalSteps), err.Error())
 				return
 			}
@@ -237,17 +242,32 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 				label := fmt.Sprintf("Scoring with %s", m.ModelName)
 				setProgress(articleID, label, label, percent(stepNum, totalSteps), "")
 				_, err := llmClient.ScoreWithModel(article, m.ModelName)
+				// Log result *after* the call
+				log.Printf("[reanalyzeHandler %d] Model %s scoring result: err=%v", articleID, m.ModelName, err) // Log 1 (Moved slightly for clarity)
 				if err != nil {
-					setProgress(articleID, "Error", fmt.Sprintf("Error scoring with %s", m.ModelName), percent(stepNum, totalSteps), err.Error())
-					return
+					log.Printf("[reanalyzeHandler %d] Actual error received from ScoreWithModel for model %s: (%T) %v", articleID, m.ModelName, err, err) // ADDED DEBUG LOG
+
+					// Log specific error before returning
+					log.Printf("[reanalyzeHandler %d] Error scoring with model %s, stopping analysis: %v", articleID, m.ModelName, err) // Log 2
+					// Special handling for LLM API rate limit sentinel error
+					if err == llm.ErrBothLLMKeysRateLimited {
+						setProgress(articleID, "Error", llm.LLMRateLimitErrorMessage, percent(stepNum, totalSteps), llm.LLMRateLimitErrorMessage)
+					} else {
+						setProgress(articleID, "Error", fmt.Sprintf("Error scoring with %s", m.ModelName), percent(stepNum, totalSteps), err.Error())
+					}
+					return // Exit the goroutine on first model error
 				}
 				stepNum++
 			}
+
+			// Log if loop completed without error
+			log.Printf("[reanalyzeHandler %d] Scoring loop finished successfully.", articleID) // Log 3
 
 			// Store ensemble score
 			setProgress(articleID, "Storing results", "Storing ensemble score", percent(stepNum, totalSteps), "")
 			err = llmClient.StoreEnsembleScore(article)
 			if err != nil {
+				log.Printf("[reanalyzeHandler %d] Error storing ensemble score: %v", articleID, err) // Added log
 				setProgress(articleID, "Error", "Error storing ensemble score", percent(stepNum, totalSteps), err.Error())
 				return
 			}

@@ -276,3 +276,8 @@ To reduce parse failures and unscored articles, the ensemble scoring pipeline wi
 [2025-04-12 12:23:25] - Debugging focus: Validating fixes for compilation error (api.go: ScoreWithModel args) and runtime parse error (llm.go: markdown-wrapped JSON). Added debug logs to api.go and llm.go. Improved markdown stripping logic in llm.go. Diagnosis confirmation requested from user. UMB triggered.
 
 - [`progress.md`](progress.md) — Progress tracking including QA and validation milestones
+[2025-04-12 16:08:46] - Debug session: Diagnosed scoring failure as OpenRouter rate limit for mistralai/mistral-7b-instruct:free. Multiple tool attempts to add diagnostic logging to reanalyzeHandler in internal/api/api.go. Provided manual patch instructions. User requested Memory Bank update (UMB).
+[2025-04-12 16:31:00] - Added secondary API key to .env file.
+[2025-04-12 16:31:00] - Added secondary API key to .env file.
+[2025-04-12 16:31:00] - Added secondary API key to .env file.
+[2025-04-12 18:41:45] - UMB: Updated models in config. Encountered new JSON parsing error (markdown backticks) with tokyotech-llm model. Debug task cancelled; decided to ignore parsing error for now.

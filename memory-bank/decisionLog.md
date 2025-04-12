@@ -129,3 +129,43 @@ Automated linting and static analysis prevent regressions, improve code health, 
 ## Implementation Details
 
 CI/CD pipeline runs golangci-lint and SonarQube checks on every commit. Major warnings and lint errors were resolved as part of the 2025 redesign.
+
+
+---
+
+[2025-04-12 18:41:45] - Updated LLM models for bias perspectives
+
+## Decision
+
+Updated the models used for left, center, and right perspectives in `configs/composite_score_config.json` to:
+- Left: `tokyotech-llm/llama-3.1-swallow-8b-instruct-v0.3`
+- Center: `mistralai/mistral-small-3.1-24b-instruct`
+- Right: `google/gemini-2.0-flash-001`
+
+## Rationale
+
+Attempting to use models without rate limits to resolve scoring issues.
+
+## Implementation Details
+
+Modified the `modelName` fields in the `models` array within `configs/composite_score_config.json`.
+
+
+---
+
+[2025-04-12 18:41:45] - Updated LLM models for bias perspectives
+
+## Decision
+
+Updated the models used for left, center, and right perspectives in `configs/composite_score_config.json` to:
+- Left: `tokyotech-llm/llama-3.1-swallow-8b-instruct-v0.3`
+- Center: `mistralai/mistral-small-3.1-24b-instruct`
+- Right: `google/gemini-2.0-flash-001`
+
+## Rationale
+
+Attempting to use models without rate limits to resolve scoring issues.
+
+## Implementation Details
+
+Modified the `modelName` fields in the `models` array within `configs/composite_score_config.json`.
