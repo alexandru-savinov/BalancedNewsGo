@@ -20,7 +20,8 @@
   "homepage": "https://github.com/alexandru-savinov/BalancedNewsGo#readme",
   "description": "",
   "devDependencies": {
-    "cypress": "^14.3.0"
+    "cypress": "^14.3.0",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

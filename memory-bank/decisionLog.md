@@ -2,6 +2,27 @@
 
 This file records architectural and implementation decisions for the NewsBalancer project. Each entry includes a timestamp, summary, rationale, and implementation details.
 
+
+---
+
+[2025-04-13 00:05:00] - Decided to switch E2E testing from Cypress to Playwright
+
+## Decision
+
+Replace Cypress with Playwright as the end-to-end testing framework for the React frontend.
+
+## Rationale
+
+Despite extensive debugging and multiple fixes to both the application and Cypress test scripts (including timing adjustments, intercept verification, and DOM structure checks), Cypress tests consistently failed to find dynamically rendered list items (`ArticleCard` components) that were confirmed to be present during manual testing and via static DOM analysis within the tests. This indicates a persistent incompatibility or visibility issue between Cypress and the React/Vite/Zustand stack in this specific environment. Playwright is chosen as a modern alternative known for better compatibility and reliability with such stacks.
+
+## Implementation Details
+
+- Install Playwright dependencies.
+- Create new Playwright test specifications covering the core user journeys (Dashboard load, Article detail, Re-analyze, Feedback).
+- Remove Cypress dependencies and configuration once Playwright tests are stable.
+- Update project documentation.
+
+
 ---
 
 [2025-04-12 12:41:40] - Adopted multi-model, multi-prompt ensemble for bias detection

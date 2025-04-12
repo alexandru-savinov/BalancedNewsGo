@@ -54,6 +54,12 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 - Cross-reference: [`web/index.html`](../web/index.html)
 
 ## Current Focus
+
+
+[2025-04-13 00:13:00] - Confirmed Cypress E2E test failures are not due to simple timing, intercept issues, or component logic/CSS within ArticleList/ArticleCard. Issue likely stems from subtle incompatibility between Cypress test runner and React/Vite rendering of mapped components. Proceeding with Playwright migration.
+
+
+[2025-04-13 00:09:00] - Current focus shifted to migrating E2E tests from Cypress to Playwright due to persistent issues with Cypress detecting dynamically rendered elements in the React/Vite frontend.
 - Testing and validation of new features
 - Collecting user feedback
 - Planning future enhancements (multi-perspective extraction, source diversity)
@@ -107,9 +113,15 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 
 ### Documentation
 - Update README, API docs, and developer setup instructions
+
+
+[2025-04-13 00:13:00] - **Cypress E2E Test Failures Root Cause:** Final debugging confirmed that while static elements render correctly within the list container in Cypress, the dynamically mapped `ArticleCard` components fail to appear in the DOM as seen by Cypress, despite logs indicating render attempts. This points to a deep incompatibility or runtime issue specific to Cypress interacting with the React/Vite rendering of these dynamic components. Decision to switch to Playwright is reaffirmed.
 - Document prompt templates and configuration options
 
 ## Known Issues
+
+
+[2025-04-13 00:09:00] - **Cypress E2E Test Failures:** Cypress tests (`cypress/e2e/frontend_core_journeys.cy.ts`) consistently fail to find dynamically rendered article cards (`[data-testid^="article-card-"]`) even after multiple debugging attempts, application fixes, and test script refinements (including timing adjustments, intercept verification, and DOM structure checks). Manual testing confirms the application renders correctly. This suggests a fundamental incompatibility or visibility issue between Cypress and the React/Vite/Zustand stack in this environment. Decision made to switch to Playwright.
 
 - **Bias detection logic requires refinement**; current heuristics sometimes yield inconsistent or incorrect results.
 - **Some logic tests in `internal/llm` continue to fail** due to variability in bias detection outputs.

@@ -1,0 +1,34 @@
+.sliderContainer {
+  width: 100%;
+  padding: 10px 0;
+  font-family: sans-serif;
+  color: #555;
+}
+
+.sliderTrack {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background-color: #ddd; /* Default track color */
+  border-radius: 4px;
+  margin-bottom: 5px;
+}
+
+.sliderThumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%); /* Center the thumb on the position */
+  width: 16px;
+  height: 16px;
+  background-color: #333; /* Dark thumb color */
+  border-radius: 50%;
+  cursor: pointer; /* Indicate interactivity, though it's display-only here */
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: #777;
+}
