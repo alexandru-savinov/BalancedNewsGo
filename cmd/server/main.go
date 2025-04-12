@@ -136,10 +136,22 @@ func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
 		var prompt string
 		var model string
 		if article.FailCount >= 3 {
-			model = "gpt-4"
+			// TODO: Make fallback/escalation model configurable (e.g., LLM_ESCALATION_MODEL)
+			model = os.Getenv("LLM_ESCALATION_MODEL")
+			if model == "" {
+				log.Println("Warning: LLM_ESCALATION_MODEL not set, using hardcoded fallback 'gpt-4'")
+				model = "gpt-4" // Hardcoded fallback
+			}
 			prompt = "Simplified prompt for difficult article"
 		} else {
-			model = "gpt-3.5"
+			// Use the default configured model for standard processing
+			// TODO: Ensure LLMClient provides access to the default model name if needed here,
+			// or read LLM_DEFAULT_MODEL directly. Assuming direct read for now.
+			model = os.Getenv("LLM_DEFAULT_MODEL")
+			if model == "" {
+				log.Println("Warning: LLM_DEFAULT_MODEL not set for reprocessing, using hardcoded fallback 'gpt-3.5-turbo'")
+				model = "gpt-3.5-turbo" // Hardcoded fallback
+			}
 			prompt = "Standard prompt"
 		}
 

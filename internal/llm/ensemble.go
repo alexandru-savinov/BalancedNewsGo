@@ -45,17 +45,35 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 		log.Printf("Prompt snippet [%s] (attempt %d): %s", promptHash, attempt+1, promptSnippet)
 
 		var err error
-		switch modelName {
-		case "gpt-3.5", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo":
-			rawResp, err = c.callOpenAIAPI(modelName, prompt)
-		case "claude":
-			rawResp, err = c.callClaudeAPI(prompt)
-		case "finetuned":
-			rawResp, err = c.callFineTunedModelAPI(prompt)
-		default:
-			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Unsupported model", articleID, modelName, promptHash)
-			return 0, "", 0, "", fmt.Errorf("unsupported model: %s", modelName)
+		// Use the generic LLM service stored in the client
+		if c.llmService == nil {
+			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | LLM service not initialized", articleID, modelName, promptHash)
+			return 0, "", 0, "", fmt.Errorf("LLM service not initialized")
 		}
+
+		// We need the raw response string and the parsed score/confidence/explanation.
+		// The current HTTPLLMService.AnalyzeWithPrompt returns a *db.LLMScore which contains metadata,
+		// but not necessarily the raw response string needed for parseLLMResponse here.
+		// Let's adapt by calling the lower-level API call method directly.
+		// Assuming c.llmService is *HTTPLLMService (might need type assertion)
+		httpService, ok := c.llmService.(*HTTPLLMService)
+		if !ok {
+			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | LLM service is not *HTTPLLMService", articleID, modelName, promptHash)
+			return 0, "", 0, "", fmt.Errorf("LLM service is not *HTTPLLMService")
+		}
+
+		// Call the underlying API method
+		apiResp, err := httpService.callLLMAPI(modelName, prompt)
+		if err != nil {
+			// Error is already logged within callLLMAPI
+			lastErr = err
+			// Try to get raw response body even on error for logging/parsing attempts
+			if apiResp != nil {
+				rawResp = apiResp.String()
+			}
+			continue // Retry
+		}
+		rawResp = apiResp.String() // Store raw response on success
 		if err != nil {
 			rawSnippet := rawResp
 			if len(rawSnippet) > 200 {
@@ -71,7 +89,8 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 		}
 
 		var parseErr error
-		score, explanation, confidence, parseErr = parseLLMResponse(rawResp)
+		// Use the renamed parser for nested JSON expected in this ensemble context
+		score, explanation, confidence, parseErr = parseNestedLLMJSONResponse(rawResp)
 		if parseErr != nil {
 			rawSnippet := rawResp
 			if len(rawSnippet) > 200 {
@@ -101,19 +120,7 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 	return 0, "", 0, rawResp, lastErr
 }
 
-func (c *LLMClient) callOpenAIAPI(model, prompt string) (string, error) {
-	// Use the existing OpenAILLMService via type assertion
-	openaiSvc, ok := c.llmService.(*OpenAILLMService)
-	if !ok {
-		return "", fmt.Errorf("LLMClient.llmService is not OpenAILLMService")
-	}
-
-	resp, err := openaiSvc.callOpenAI(model, prompt)
-	if err != nil {
-		return "", err
-	}
-	return string(resp.Body()), nil
-}
+// Removed callOpenAIAPI as it's replaced by direct use of httpService.callLLMAPI
 
 func (c *LLMClient) callClaudeAPI(prompt string) (string, error) {
 	return "", fmt.Errorf("claude API integration not implemented")
@@ -124,7 +131,10 @@ func (c *LLMClient) callFineTunedModelAPI(prompt string) (string, error) {
 }
 
 // parseLLMResponse extracts score, explanation, confidence from raw response
-func parseLLMResponse(rawResp string) (float64, string, float64, error) {
+// parseNestedLLMJSONResponse extracts score, explanation, confidence from a raw response
+// where the LLM is expected to return a JSON string *within* the main content field
+// (e.g., {"choices":[{"message":{"content":"{\"score\":...}"}}]}).
+func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error) {
 	// Step 1: Parse the OpenAI API response JSON
 	var apiResp struct {
 		Choices []struct {
@@ -135,10 +145,10 @@ func parseLLMResponse(rawResp string) (float64, string, float64, error) {
 	}
 	err := json.Unmarshal([]byte(rawResp), &apiResp)
 	if err != nil {
-		return 0, "", 0, fmt.Errorf("error parsing OpenAI API response JSON: %w", err)
+		return 0, "", 0, fmt.Errorf("error parsing outer LLM API response JSON: %w", err)
 	}
 	if len(apiResp.Choices) == 0 {
-		return 0, "", 0, fmt.Errorf("no choices in OpenAI API response")
+		return 0, "", 0, fmt.Errorf("no choices in outer LLM API response")
 	}
 
 	// Step 2: Extract the content string
@@ -160,7 +170,8 @@ func parseLLMResponse(rawResp string) (float64, string, float64, error) {
 
 // EnsembleAnalyze performs multi-model, multi-prompt ensemble analysis
 func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMScore, error) {
-	models := []string{"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"}
+	// TODO: Load models from configuration instead of hardcoding
+	models := []string{"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"} // Example models
 	promptVariants := loadPromptVariants()
 
 	type SubResult struct {

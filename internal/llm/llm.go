@@ -349,65 +349,123 @@ func (m *MockLLMService) Analyze(content string) (*db.LLMScore, error) {
 }
 */
 
-type OpenAILLMService struct {
-	client      *resty.Client
-	apiKey      string
-	modelConfig *ModelConfig
+// HTTPLLMService communicates with a generic HTTP-based LLM API.
+type HTTPLLMService struct {
+	client       *resty.Client
+	apiKey       string
+	provider     string // e.g., "openai", "openrouter"
+	baseURL      string // Base URL for the API endpoint
+	defaultModel string // Default model to use if not specified
 }
 
-func NewOpenAILLMService(client *resty.Client) *OpenAILLMService {
-	apiKey := os.Getenv("OPENAI_API_KEY")
+// NewHTTPLLMService creates a new service, reading configuration from environment variables.
+func NewHTTPLLMService(client *resty.Client) *HTTPLLMService {
+	provider := os.Getenv("LLM_PROVIDER")
+	if provider == "" {
+		log.Println("LLM_PROVIDER environment variable not set, defaulting to 'openai'")
+		provider = "openai" // Default provider
+	}
+
+	apiKey := os.Getenv("LLM_API_KEY")
 	if apiKey == "" {
-		log.Fatal("OPENAI_API_KEY environment variable not set")
+		// Attempt fallback to provider-specific key for backward compatibility
+		fallbackKeyName := strings.ToUpper(provider) + "_API_KEY"
+		apiKey = os.Getenv(fallbackKeyName)
+		if apiKey == "" {
+			log.Fatalf("LLM_API_KEY environment variable not set, and fallback %s also not set", fallbackKeyName)
+		}
+		log.Printf("Warning: Using fallback API key environment variable %s. Please set LLM_API_KEY.", fallbackKeyName)
 	}
 
-	cfg, err := LoadCompositeScoreConfig()
-	if err != nil {
-		log.Fatalf("Failed to load composite score config: %v", err)
+	baseURL := os.Getenv("LLM_BASE_URL")
+	if baseURL == "" {
+		// Determine default base URL based on provider
+		switch provider {
+		case "openrouter":
+			baseURL = "https://openrouter.ai/api/v1" // Default OpenRouter URL
+		case "openai":
+			baseURL = "https://api.openai.com/v1" // Default OpenAI URL
+		default:
+			log.Fatalf("LLM_BASE_URL must be set for provider '%s'", provider)
+		}
+		log.Printf("LLM_BASE_URL not set, defaulting to %s for provider %s", baseURL, provider)
+	}
+	// Ensure base URL doesn't end with a slash for consistency
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	defaultModel := os.Getenv("LLM_DEFAULT_MODEL")
+	if defaultModel == "" {
+		// Determine default model based on provider
+		switch provider {
+		case "openrouter":
+			defaultModel = "openai/gpt-3.5-turbo" // A common default
+		case "openai":
+			defaultModel = "gpt-3.5-turbo"
+		default:
+			log.Println("Warning: LLM_DEFAULT_MODEL not set and provider is unknown, default model may not work.")
+			// Keep defaultModel empty or set a generic placeholder? Let's leave it empty.
+		}
+		if defaultModel != "" {
+			log.Printf("LLM_DEFAULT_MODEL not set, defaulting to %s for provider %s", defaultModel, provider)
+		}
 	}
 
-	return &OpenAILLMService{
-		client:      client,
-		apiKey:      apiKey,
-		modelConfig: &cfg.Models[0], // Default to first model
+	return &HTTPLLMService{
+		client:       client,
+		apiKey:       apiKey,
+		provider:     provider,
+		baseURL:      baseURL,
+		defaultModel: defaultModel,
 	}
 }
 
-func (o *OpenAILLMService) AnalyzeWithPrompt(model, prompt, content string) (*db.LLMScore, error) {
+// BaseURL returns the configured base URL for the LLM API.
+func (s *HTTPLLMService) BaseURL() string {
+	return s.baseURL
+}
+
+// DefaultModelName returns the configured default model name.
+func (s *HTTPLLMService) DefaultModelName() string {
+	return s.defaultModel
+}
+
+func (s *HTTPLLMService) AnalyzeWithPrompt(model, prompt, content string) (*db.LLMScore, error) {
 	prompt = strings.Replace(prompt, "{{ARTICLE_CONTENT}}", content, 1)
 
 	var resp *resty.Response
 	var err error
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		resp, err = o.callOpenAI(model, prompt)
+		resp, err = s.callLLMAPI(model, prompt)
 		if err == nil && resp != nil && resp.IsSuccess() {
-			return o.processOpenAIResponse(resp, content, model)
+			return s.processLLMResponse(resp, content, model)
 		}
 
-		log.Printf("OpenAI API call failed (attempt %d): %v", attempt, err)
+		log.Printf("%s API call failed (attempt %d): %v", s.provider, attempt, err)
 		time.Sleep(time.Duration(attempt) * time.Second)
 	}
 
-	return nil, errors.New("OpenAI API call failed after retries")
+	return nil, fmt.Errorf("%s API call failed after retries", s.provider)
 }
 
-func (o *OpenAILLMService) AnalyzeWithModel(model, content string) (*db.LLMScore, error) {
-	return o.AnalyzeWithPrompt(model, PromptTemplate, content)
+func (s *HTTPLLMService) AnalyzeWithModel(model, content string) (*db.LLMScore, error) {
+	return s.AnalyzeWithPrompt(model, PromptTemplate, content)
 }
 
 // Satisfy LLMService interface
 
-// Satisfy LLMService interface: default to gpt-3.5-turbo
-func (o *OpenAILLMService) Analyze(content string) (*db.LLMScore, error) {
-	defaultModel := "gpt-3.5-turbo"
-	return o.AnalyzeWithPrompt(defaultModel, PromptTemplate, content)
+// Satisfy LLMService interface: uses the configured default model.
+func (s *HTTPLLMService) Analyze(content string) (*db.LLMScore, error) {
+	if s.defaultModel == "" {
+		return nil, errors.New("cannot call Analyze without a default model configured (set LLM_DEFAULT_MODEL)")
+	}
+	return s.AnalyzeWithPrompt(s.defaultModel, PromptTemplate, content)
 }
 
-func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Response, error) {
-	req := o.client.R().
+func (s *HTTPLLMService) callLLMAPI(model string, prompt string) (*resty.Response, error) {
+	req := s.client.R().
 		SetHeader("Content-Type", "application/json").
-		SetHeader("Authorization", "Bearer "+o.apiKey)
+		SetHeader("Authorization", "Bearer "+s.apiKey)
 
 	body := map[string]interface{}{
 		"model":       model, // Use the model passed as argument
@@ -419,26 +477,27 @@ func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Respo
 
 	// --- Enhanced Logging ---
 	// Mask API Key for logging
-	maskedAuthHeader := "Bearer sk-or-..."
-	if len(o.apiKey) > 8 {
-		maskedAuthHeader = "Bearer " + o.apiKey[:8] + "..."
+	maskedAuthHeader := "Bearer ..."
+	if len(s.apiKey) > 8 {
+		// Basic masking, adjust if key format differs significantly
+		prefix := strings.Split(s.apiKey, "_")[0] // e.g., "sk" for openai, "sk-or" for openrouter
+		maskedAuthHeader = "Bearer " + prefix + "..." + s.apiKey[len(s.apiKey)-4:]
 	}
 	// Log headers (masking auth)
-	log.Printf("[OpenRouter Request] Headers: Content-Type=%s, Authorization=%s",
+	log.Printf("[%s Request] Headers: Content-Type=%s, Authorization=%s",
+		s.provider,
 		req.Header.Get("Content-Type"),
 		maskedAuthHeader)
 	// Log body
 	bodyBytes, _ := json.Marshal(body)
-	log.Printf("[OpenRouter Request] Body: %s", string(bodyBytes))
+	log.Printf("[%s Request] Body: %s", s.provider, string(bodyBytes))
 	// Log URL and Model being sent
-	// Construct the full endpoint URL
-	endpointURL := o.modelConfig.URL
-	if !strings.HasSuffix(endpointURL, "/") {
-		endpointURL += "/"
-	}
-	endpointURL += "chat/completions" // Standard path for chat completions
+	// Construct the full endpoint URL using configured base URL
+	// Assuming a standard path, make this configurable if needed
+	endpointPath := "/chat/completions"
+	endpointURL := s.baseURL + endpointPath
 
-	log.Printf("[OpenRouter Request] POST URL: %s | Model in Payload: %s", endpointURL, body["model"])
+	log.Printf("[%s Request] POST URL: %s | Model in Payload: %s", s.provider, endpointURL, body["model"])
 	// --- End Enhanced Logging ---
 
 	resp, err := req.Post(endpointURL) // POST to the correct endpoint path
@@ -446,16 +505,16 @@ func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Respo
 	// --- Enhanced Response Logging ---
 	if err != nil {
 		// Log network/request-level errors
-		log.Printf("[OpenRouter] API request error: %v", err)
+		log.Printf("[%s] API request error: %v", s.provider, err)
 		return nil, err
 	}
 
 	// Log status and raw body regardless of success/failure
-	log.Printf("[OpenRouter] Raw Response Status: %s", resp.Status())
-	log.Printf("[OpenRouter] Raw Response Body: %s", resp.String()) // Log full body
+	log.Printf("[%s] Raw Response Status: %s", s.provider, resp.Status())
+	log.Printf("[%s] Raw Response Body: %s", s.provider, resp.String()) // Log full body
 
 	if !resp.IsSuccess() {
-		// Try to parse OpenRouter specific error structure
+		// Try to parse standard LLM error structure (common in OpenAI/OpenRouter)
 		var openRouterError struct {
 			Error struct {
 				Message string `json:"message"`
@@ -465,14 +524,14 @@ func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Respo
 		}
 		if jsonErr := json.Unmarshal(resp.Body(), &openRouterError); jsonErr == nil && openRouterError.Error.Message != "" {
 			// Return a more specific error from OpenRouter response
-			specificError := fmt.Errorf("OpenRouter API error (%s): %s (Type: %s, Code: %s)",
-				resp.Status(), openRouterError.Error.Message, openRouterError.Error.Type, openRouterError.Error.Code)
-			log.Printf("%v", specificError) // Log the specific error
+			specificError := fmt.Errorf("%s API error (%s): %s (Type: %s, Code: %s)",
+				s.provider, resp.Status(), openRouterError.Error.Message, openRouterError.Error.Type, openRouterError.Error.Code)
+			log.Printf("[%s] %v", s.provider, specificError) // Log the specific error
 			return resp, specificError
 		}
 		// Fallback generic error if parsing fails or structure is different
-		genericError := fmt.Errorf("API response not successful (%s)", resp.Status())
-		log.Printf("%v", genericError) // Log the generic error
+		genericError := fmt.Errorf("%s API response not successful (%s)", s.provider, resp.Status())
+		log.Printf("[%s] %v", s.provider, genericError) // Log the generic error
 		return resp, genericError
 	}
 	// --- End Enhanced Response Logging ---
@@ -480,11 +539,13 @@ func (o *OpenAILLMService) callOpenAI(model string, prompt string) (*resty.Respo
 	return resp, nil // Return success
 }
 
-func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content string, model string) (*db.LLMScore, error) {
-	contentResp, err := parseOpenAIResponse(resp.Body())
+// processLLMResponse processes the raw HTTP response from the LLM API call.
+func (s *HTTPLLMService) processLLMResponse(resp *resty.Response, content string, model string) (*db.LLMScore, error) {
+	// Use the renamed parser specific to this file's context
+	contentResp, err := parseLLMAPIResponse(resp.Body())
 	if err != nil {
-		log.Printf("[Analyze] Failed to parse OpenAI response: %v\nRaw response:\n%s", err, string(resp.Body()))
-		return nil, err
+		log.Printf("[processLLMResponse] Failed to parse %s response: %v\nRaw response:\n%s", s.provider, err, string(resp.Body()))
+		return nil, fmt.Errorf("failed to parse %s response body: %w", s.provider, err)
 	}
 
 	log.Printf("[Analyze] Successful raw completion from model %s:\n%s", model, contentResp)
@@ -515,7 +576,7 @@ func (o *OpenAILLMService) processOpenAIResponse(resp *resty.Response, content s
 	}, nil
 }
 
-func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
+func (s *HTTPLLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
 	var (
 		validScores           []*db.LLMScore
 		attempts              int
@@ -536,11 +597,11 @@ func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
 
 	for _, modelName := range models {
 
-		for variantIdx, promptTemplate := range promptVariants {
+		for variantIdx, _ := range promptVariants { // Use blank identifier for unused promptTemplate
 			for attempt := 1; attempt <= maxAttemptsPerVariant; attempt++ {
 				attempts++
 
-				score, err := o.AnalyzeWithPrompt(modelName, promptTemplate, content)
+				score, err := s.AnalyzeWithModel(modelName, content) // Corrected receiver 's' and method call, using :=
 
 				failType := ""
 				confidence := 0.0
@@ -633,7 +694,9 @@ func (o *OpenAILLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
 	}, nil
 }
 
-func parseOpenAIResponse(body []byte) (string, error) {
+// parseLLMResponse attempts to extract the main text content from common LLM response structures.
+// parseLLMAPIResponse attempts to extract the main text content from common LLM API response structures (like OpenAI/OpenRouter).
+func parseLLMAPIResponse(body []byte) (string, error) {
 	// First try to extract markdown-wrapped JSON (```json ... ```)
 	content := string(body)
 	if strings.Contains(content, "```json") {
@@ -672,7 +735,8 @@ func parseOpenAIResponse(body []byte) (string, error) {
 	}
 
 	// Fall back to OpenAI-specific parsing
-	var openaiResp struct {
+	// Try OpenAI/OpenRouter structure first
+	var standardResp struct {
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
@@ -680,15 +744,16 @@ func parseOpenAIResponse(body []byte) (string, error) {
 		} `json:"choices"`
 	}
 
-	if err := json.Unmarshal(body, &openaiResp); err == nil {
-		if len(openaiResp.Choices) == 0 {
+	if err := json.Unmarshal(body, &standardResp); err == nil {
+		if len(standardResp.Choices) == 0 { // Use renamed standardResp
 			return "", errors.New("no choices in OpenAI response")
 		}
-		return openaiResp.Choices[0].Message.Content, nil
+		return standardResp.Choices[0].Message.Content, nil
 	}
 
 	// If parsing as chat completion failed, try parsing as error response
-	var openaiErr struct {
+	// Check for standard error structure
+	var standardErr struct {
 		Error struct {
 			Message string `json:"message"`
 			Type    string `json:"type"`
@@ -696,8 +761,8 @@ func parseOpenAIResponse(body []byte) (string, error) {
 			Code    string `json:"code"`
 		} `json:"error"`
 	}
-	if err2 := json.Unmarshal(body, &openaiErr); err2 == nil && openaiErr.Error.Message != "" {
-		return "", fmt.Errorf("OpenAI API error: %s (type: %s, code: %s)", openaiErr.Error.Message, openaiErr.Error.Type, openaiErr.Error.Code)
+	if err2 := json.Unmarshal(body, &standardErr); err2 == nil && standardErr.Error.Message != "" { // Use renamed standardErr
+		return "", fmt.Errorf("API error: %s (type: %s, code: %s)", standardErr.Error.Message, standardErr.Error.Type, standardErr.Error.Code) // Use renamed standardErr
 	}
 
 	// Log raw response for debugging
@@ -783,7 +848,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 			model = "gpt-3.5-turbo"
 		}
 
-		service = NewOpenAILLMService(client)
+		service = NewHTTPLLMService(client) // Corrected constructor name
 	default:
 		log.Fatal("ERROR: LLM_PROVIDER not set or unknown, cannot initialize LLM service")
 	}
@@ -796,8 +861,13 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	}
 }
 
-func (c *LLMClient) analyzeContent(articleID int64, content string, model string, urlParam string) (*db.LLMScore, error) {
-	log.Printf("[analyzeContent] Entry: articleID=%d, model=%s, urlParam=%s", articleID, model, urlParam) // Log 1: Entry
+// analyzeContent uses the configured LLM service to analyze content.
+// TODO: Review if urlParam is still needed or if baseURL from HTTPLLMService is sufficient.
+// analyzeContent uses the configured LLM service to analyze content.
+// analyzeContent uses the configured LLM service to analyze content.
+func (c *LLMClient) analyzeContent(articleID int64, content string, model string) (*db.LLMScore, error) {
+	log.Printf("[analyzeContent] Entry: articleID=%d, model=%s", articleID, model) // Log 1: Entry (Removed urlParam)
+	log.Printf("[analyzeContent] Entry: articleID=%d, model=%s", articleID, model) // Log 1: Entry (Removed urlParam)
 	contentHash := hashContent(content)
 
 	// Check cache
@@ -876,7 +946,7 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 
 	for _, m := range cfg.Models {
 		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.Perspective, m.ModelName, m.URL)
-		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName, m.URL)
+		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName) // Removed URL argument
 		if err != nil {
 			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.ModelName, err)
 
@@ -933,7 +1003,7 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 	log.Printf("[ReanalyzeArticle %d] Starting analysis loop for %d models", articleID, len(cfg.Models))
 	for _, m := range cfg.Models {
 		log.Printf("[ReanalyzeArticle %d] Calling analyzeContent for model: %s", articleID, m.ModelName)
-		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName, m.URL)
+		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName) // Removed URL argument
 		if err != nil {
 			log.Printf("[ReanalyzeArticle %d] Error from analyzeContent for %s: %v", articleID, m.ModelName, err)
 			continue
@@ -987,7 +1057,7 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 
 // Exported wrapper for analyzeContent to allow external packages to call it
 func (c *LLMClient) AnalyzeContent(articleID int64, content string, model string, url string) (*db.LLMScore, error) {
-	return c.analyzeContent(articleID, content, model, url)
+	return c.analyzeContent(articleID, content, model) // Removed URL argument
 }
 
 // --- Progress Tracking Helpers for Async Scoring ---
@@ -1006,8 +1076,11 @@ func (c *LLMClient) DeleteScores(articleID int64) error {
 }
 
 // ScoreWithModel runs scoring for a single model and stores the result.
-func (c *LLMClient) ScoreWithModel(article db.Article, modelName, url string) (*db.LLMScore, error) {
-	score, err := c.analyzeContent(article.ID, article.Content, modelName, url)
+// ScoreWithModel analyzes an article with a specific model.
+// ScoreWithModel analyzes an article with a specific model.
+func (c *LLMClient) ScoreWithModel(article db.Article, modelName string) (*db.LLMScore, error) {
+	// Removed URL parameter from call
+	score, err := c.analyzeContent(article.ID, article.Content, modelName) // Removed URL argument
 	if err != nil {
 		return nil, err
 	}
