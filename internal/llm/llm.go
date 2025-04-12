@@ -697,16 +697,21 @@ func (s *HTTPLLMService) RobustAnalyze(content string) (*db.LLMScore, error) {
 // parseLLMResponse attempts to extract the main text content from common LLM response structures.
 // parseLLMAPIResponse attempts to extract the main text content from common LLM API response structures (like OpenAI/OpenRouter).
 func parseLLMAPIResponse(body []byte) (string, error) {
-	// First try to extract markdown-wrapped JSON (```json ... ```)
+	// First try to extract markdown-wrapped JSON (```json ... ``` or ``` ... ```)
 	content := string(body)
-	if strings.Contains(content, "```json") {
-		// Extract JSON between ```json and ```
-		start := strings.Index(content, "```json")
-		if start >= 0 {
-			start += len("```json")
-			end := strings.Index(content[start:], "```")
-			if end >= 0 {
-				content = strings.TrimSpace(content[start : start+end])
+	if strings.Contains(content, "```json") || strings.Contains(content, "```") {
+		// Extract JSON between ```json and ``` or just ``` and ```
+		var start, end int
+		if idx := strings.Index(content, "```json"); idx >= 0 {
+			start = idx + len("```json")
+		} else if idx := strings.Index(content, "```"); idx >= 0 {
+			start = idx + len("```")
+		}
+		if start > 0 {
+			rest := content[start:]
+			if idx := strings.Index(rest, "```"); idx >= 0 {
+				end = start + idx
+				content = strings.TrimSpace(content[start:end])
 			}
 		}
 	}
@@ -714,9 +719,9 @@ func parseLLMAPIResponse(body []byte) (string, error) {
 	// Try parsing as direct JSON first (for models like qwen, mistral, gemini-flash)
 	var directResponse struct {
 		Content string `json:"content"`
-		Text    string `json:"text"`   // Some models use "text" instead of "content"
-		Result  string `json:"result"` // Some models use "result"
-		Output  string `json:"output"` // Some models use "output"
+		Text    string `json:"text"`   // Some models use "text" instead of "content"`
+		Result  string `json:"result"` // Some models use "result"`
+		Output  string `json:"output"` // Some models use "output"`
 	}
 	if err := json.Unmarshal([]byte(content), &directResponse); err == nil {
 		// Return the first non-empty field we find
@@ -745,7 +750,7 @@ func parseLLMAPIResponse(body []byte) (string, error) {
 	}
 
 	if err := json.Unmarshal(body, &standardResp); err == nil {
-		if len(standardResp.Choices) == 0 { // Use renamed standardResp
+		if len(standardResp.Choices) == 0 {
 			return "", errors.New("no choices in OpenAI response")
 		}
 		return standardResp.Choices[0].Message.Content, nil
@@ -761,8 +766,8 @@ func parseLLMAPIResponse(body []byte) (string, error) {
 			Code    string `json:"code"`
 		} `json:"error"`
 	}
-	if err2 := json.Unmarshal(body, &standardErr); err2 == nil && standardErr.Error.Message != "" { // Use renamed standardErr
-		return "", fmt.Errorf("API error: %s (type: %s, code: %s)", standardErr.Error.Message, standardErr.Error.Type, standardErr.Error.Code) // Use renamed standardErr
+	if err2 := json.Unmarshal(body, &standardErr); err2 == nil && standardErr.Error.Message != "" {
+		return "", fmt.Errorf("API error: %s (type: %s, code: %s)", standardErr.Error.Message, standardErr.Error.Type, standardErr.Error.Code)
 	}
 
 	// Log raw response for debugging
@@ -849,8 +854,15 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 		}
 
 		service = NewHTTPLLMService(client) // Corrected constructor name
+	case "openrouter":
+		apiKey := os.Getenv("LLM_API_KEY") // Use generic LLM_API_KEY for OpenRouter
+		if apiKey == "" {
+			log.Fatal("ERROR: LLM_API_KEY not set, cannot use OpenRouter LLM provider")
+		}
+		// Base URL is handled within NewHTTPLLMService based on provider
+		service = NewHTTPLLMService(client)
 	default:
-		log.Fatal("ERROR: LLM_PROVIDER not set or unknown, cannot initialize LLM service")
+		log.Fatalf("ERROR: LLM_PROVIDER '%s' unknown, cannot initialize LLM service", provider)
 	}
 
 	return &LLMClient{

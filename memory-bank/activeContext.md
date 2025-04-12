@@ -1,5 +1,6 @@
 # Active Context
 
+[2025-04-12 12:06:01] - Memory Bank Update (UMB) performed at user request. All memory-bank files reviewed; session context synchronized.
 ---
 
 **Summary (April 2025):**  
@@ -272,5 +273,6 @@ To reduce parse failures and unscored articles, the ensemble scoring pipeline wi
 - [`memory-bank-enhancement-plan.md`](memory-bank-enhancement-plan.md)
 
 ---
+[2025-04-12 12:23:25] - Debugging focus: Validating fixes for compilation error (api.go: ScoreWithModel args) and runtime parse error (llm.go: markdown-wrapped JSON). Added debug logs to api.go and llm.go. Improved markdown stripping logic in llm.go. Diagnosis confirmation requested from user. UMB triggered.
 
 - [`progress.md`](progress.md) — Progress tracking including QA and validation milestones

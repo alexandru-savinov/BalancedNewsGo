@@ -236,7 +236,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 			for _, m := range cfg.Models {
 				label := fmt.Sprintf("Scoring with %s", m.ModelName)
 				setProgress(articleID, label, label, percent(stepNum, totalSteps), "")
-				_, err := llmClient.ScoreWithModel(article, m.ModelName, m.URL)
+				_, err := llmClient.ScoreWithModel(article, m.ModelName)
 				if err != nil {
 					setProgress(articleID, "Error", fmt.Sprintf("Error scoring with %s", m.ModelName), percent(stepNum, totalSteps), err.Error())
 					return
