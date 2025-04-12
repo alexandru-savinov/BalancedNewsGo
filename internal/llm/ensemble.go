@@ -208,8 +208,25 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 
 // EnsembleAnalyze performs multi-model, multi-prompt ensemble analysis
 func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMScore, error) {
-	// TODO: Load models from configuration instead of hardcoding
-	models := []string{"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"} // Example models
+	// Use models defined in the loaded configuration
+	if c.config == nil || len(c.config.Models) == 0 {
+		log.Printf("[Ensemble] ArticleID %d | Error: LLMClient config is nil or has no models defined.", articleID)
+		return nil, fmt.Errorf("LLMClient config is nil or has no models defined")
+	}
+	// Extract model names from the config
+	models := make([]string, 0, len(c.config.Models))
+	for _, modelCfg := range c.config.Models {
+		if modelCfg.ModelName == "" {
+			log.Printf("[Ensemble] Warning: Skipping model config with empty name (Perspective: %s)", modelCfg.Perspective)
+			continue
+		}
+		models = append(models, modelCfg.ModelName)
+	}
+	if len(models) == 0 {
+		log.Printf("[Ensemble] ArticleID %d | Error: No valid models found in configuration after filtering.", articleID)
+		return nil, fmt.Errorf("no valid models found in configuration")
+	}
+	log.Printf("[Ensemble] ArticleID %d | Using %d models from config: %v", articleID, len(models), models)
 	promptVariants := loadPromptVariants()
 
 	type SubResult struct {

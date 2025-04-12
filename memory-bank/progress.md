@@ -50,3 +50,5 @@ _Reference: [score_data_flow_analysis.md](../score_data_flow_analysis.md)_
 [2025-04-12 16:31:00] - Added secondary API key to .env file.
 [2025-04-12 16:31:00] - Added secondary API key to .env file.
 [2025-04-12 18:41:45] - UMB: Updated models in config, added secondary API key. New JSON parsing error (markdown backticks) identified with tokyotech-llm model. Debug task cancelled by user; decided to ignore parsing error for now.
+[2025-04-12 19:28:30] - Fixed score display issue: Modified getArticlesHandler in internal/api/api.go to use stored ensemble score instead of recalculating.
+[2025-04-12 19:28:30] - Fixed score display issue: Modified getArticlesHandler in internal/api/api.go to use stored ensemble score instead of recalculating.

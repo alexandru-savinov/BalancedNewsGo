@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -20,6 +21,7 @@ import (
 )
 
 func main() {
+	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found or error loading .env file:", err)
@@ -102,7 +104,7 @@ func main() {
 	log.Println("Server running on :8080")
 
 	// Start background reprocessing loop
-	go startReprocessingLoop(dbConn, llmClient)
+	// go startReprocessingLoop(dbConn, llmClient) // Temporarily disabled for debugging
 
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
@@ -132,30 +134,18 @@ func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
 	for _, article := range articles {
 		log.Printf("Reprocessing article ID %d (fail count: %d)", article.ID, article.FailCount)
 
-		// Adaptive prompt/model switching based on fail count
-		var prompt string
-		var model string
-		if article.FailCount >= 3 {
-			// TODO: Make fallback/escalation model configurable (e.g., LLM_ESCALATION_MODEL)
-			model = os.Getenv("LLM_ESCALATION_MODEL")
-			if model == "" {
-				log.Println("Warning: LLM_ESCALATION_MODEL not set, using hardcoded fallback 'gpt-4'")
-				model = "gpt-4" // Hardcoded fallback
-			}
-			prompt = "Simplified prompt for difficult article"
-		} else {
-			// Use the default configured model for standard processing
-			// TODO: Ensure LLMClient provides access to the default model name if needed here,
-			// or read LLM_DEFAULT_MODEL directly. Assuming direct read for now.
-			model = os.Getenv("LLM_DEFAULT_MODEL")
-			if model == "" {
-				log.Println("Warning: LLM_DEFAULT_MODEL not set for reprocessing, using hardcoded fallback 'gpt-3.5-turbo'")
-				model = "gpt-3.5-turbo" // Hardcoded fallback
-			}
-			prompt = "Standard prompt"
+		// Call the ensemble analysis method directly, using the configured models
+		// The EnsembleAnalyze method should handle its own internal logic based on config
+		_, err := llmClient.EnsembleAnalyze(article.ID, article.Content)
+		// Determine success based on the error returned by EnsembleAnalyze
+		success := err == nil
+		if err != nil && !errors.Is(err, llm.ErrBothLLMKeysRateLimited) { // Log errors unless it's just rate limiting
+			log.Printf("Error during ensemble analysis for article %d: %v", article.ID, err)
+		} else if errors.Is(err, llm.ErrBothLLMKeysRateLimited) {
+			log.Printf("Skipping update for article %d due to rate limiting: %v", article.ID, err)
+			// Optionally continue to next article instead of updating status below
+			// continue
 		}
-
-		success := processArticleWithLLM(llmClient, article, prompt, model)
 
 		now := time.Now()
 		if success {
@@ -183,21 +173,7 @@ func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
 	}
 }
 
-func processArticleWithLLM(llmClient *llm.LLMClient, article db.Article, prompt, model string) bool {
-	// Placeholder for actual LLM call
-	// Use llmClient with adaptive prompt/model
-	// Return true if successful, false if failed
-
-	// Example:
-	// result, err := llmClient.ProcessArticle(article.Content, prompt, model)
-	// if err != nil {
-	//     return false
-	// }
-	// return result.Success
-
-	// For now, simulate success/failure randomly
-	return time.Now().UnixNano()%2 == 0
-}
+// Removed placeholder function processArticleWithLLM as it's replaced by llmClient.EnsembleAnalyze
 
 func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
 	// Load environment variables from .env file if present

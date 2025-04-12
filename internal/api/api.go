@@ -27,11 +27,13 @@ const errInvalidArticleID = "Invalid article ID"
 // --- Progress Tracking ---
 
 type ProgressState struct {
-	Step        string `json:"step"`
-	Message     string `json:"message"`
-	Percent     int    `json:"percent"`
-	Error       string `json:"error,omitempty"`
-	LastUpdated int64  `json:"last_updated"`
+	Step        string   `json:"step"`                  // Current detailed step (e.g., "Scoring with model X")
+	Message     string   `json:"message"`               // User-friendly message for the step
+	Percent     int      `json:"percent"`               // Progress percentage
+	Status      string   `json:"status"`                // Overall status: "InProgress", "Success", "Error"
+	Error       string   `json:"error,omitempty"`       // Error message if Status is "Error"
+	FinalScore  *float64 `json:"final_score,omitempty"` // Final score if Status is "Success"
+	LastUpdated int64    `json:"last_updated"`          // Timestamp
 }
 
 var (
@@ -39,14 +41,16 @@ var (
 	progressMapLock sync.RWMutex
 )
 
-func setProgress(articleID int64, step, message string, percent int, errMsg string) {
+func setProgress(articleID int64, step, message string, percent int, status string, errMsg string, finalScore *float64) {
 	progressMapLock.Lock()
 	defer progressMapLock.Unlock()
 	progressMap[articleID] = &ProgressState{
 		Step:        step,
 		Message:     message,
 		Percent:     percent,
+		Status:      status, // Added status
 		Error:       errMsg,
+		FinalScore:  finalScore, // Added finalScore
 		LastUpdated: time.Now().Unix(),
 	}
 }
@@ -98,28 +102,57 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		// Caching
 		cacheKey := "articles:" + source + ":" + leaning + ":" + limitStr + ":" + offsetStr
 		articlesCacheLock.RLock()
+		log.Printf("[getArticlesHandler] Checking cache for key: %s", cacheKey) // DEBUG LOG ADDED
 		if cached, found := articlesCache.Get(cacheKey); found {
 			articlesCacheLock.RUnlock()
+			log.Printf("[getArticlesHandler] Cache HIT for key: %s. Serving cached data.", cacheKey) // DEBUG LOG ADDED
+			// Optionally log cached data details if needed, be mindful of log volume
+			// log.Printf("[getArticlesHandler] Cached data: %+v", cached)
 			RespondSuccess(c, cached)
 			LogPerformance("getArticlesHandler (cache hit)", start)
 			return
 		}
 		articlesCacheLock.RUnlock()
+		log.Printf("[getArticlesHandler] Cache MISS for key: %s. Fetching from DB.", cacheKey) // DEBUG LOG ADDED
 
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
+		// Log fetched data *after* potential error check
 		if err != nil {
 			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch articles")
 			LogError("getArticlesHandler: fetch articles", err)
 			return
 		}
+		log.Printf("[getArticlesHandler] Fetched %d articles from DB for key: %s", len(articles), cacheKey) // DEBUG LOG ADDED
+		// Optionally log specific article details if needed, e.g., the one being re-analyzed
+		// for _, art := range articles { if art.ID == 1680 { log.Printf("[getArticlesHandler] DB Data for Article 1680: %+v", art) } }
 
 		for i := range articles {
-			scores, _ := db.FetchLLMScores(dbConn, articles[i].ID)
-			articles[i].CompositeScore = llm.ComputeCompositeScore(scores)
+			// Fetch the latest ensemble score directly
+			ensembleScore, scoreErr := db.FetchLatestEnsembleScore(dbConn, articles[i].ID)
+			if scoreErr != nil {
+				// Log error fetching the specific ensemble score, but don't block response
+				log.Printf("[getArticlesHandler] Error fetching latest ensemble score for article %d: %v", articles[i].ID, scoreErr)
+				articles[i].CompositeScore = nil // Default to nil if fetch fails
+			} else {
+				// Take the address of the float64 to assign to *float64
+				scoreCopy := ensembleScore // Create a copy to ensure its address is stable
+				articles[i].CompositeScore = &scoreCopy
+			}
+			// Optional: Log the fetched ensemble score if needed for debugging
+			// log.Printf("[getArticlesHandler] Fetched EnsembleScore for Article %d: %f", articles[i].ID, articles[i].CompositeScore)
 		}
 
 		sort.Slice(articles, func(i, j int) bool {
-			return articles[i].CompositeScore > articles[j].CompositeScore
+			// Safely dereference pointers for comparison, treat nil as 0
+			scoreI := 0.0
+			if articles[i].CompositeScore != nil {
+				scoreI = *articles[i].CompositeScore
+			}
+			scoreJ := 0.0
+			if articles[j].CompositeScore != nil {
+				scoreJ = *articles[j].CompositeScore
+			}
+			return scoreI > scoreJ
 		})
 
 		// Cache the result for 30 seconds
@@ -200,80 +233,118 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 		}
 		articleID := int64(id)
 
-		setProgress(articleID, "Queued", "Scoring job queued", 0, "")
+		// Set initial progress: Queued
+		setProgress(articleID, "Queued", "Scoring job queued", 0, "InProgress", "", nil)
 
 		go func() {
+			// Use recover for panics
 			defer func() {
 				if r := recover(); r != nil {
-					// Consider adding logging here too if needed
-					setProgress(articleID, "Error", "Internal error occurred", 0, fmt.Sprintf("%v", r))
+					errMsg := fmt.Sprintf("Internal panic: %v", r)
+					log.Printf("[reanalyzeHandler %d] Recovered from panic: %s", articleID, errMsg)
+					setProgress(articleID, "Error", "Internal error occurred", 0, "Error", errMsg, nil)
 				}
 			}()
 
-			setProgress(articleID, "Starting", "Starting scoring process", 0, "")
+			// Set progress: Starting
+			setProgress(articleID, "Starting", "Starting scoring process", 0, "InProgress", "", nil)
 
+			// Load configuration
 			cfg, err := llm.LoadCompositeScoreConfig()
 			if err != nil {
-				log.Printf("[reanalyzeHandler %d] Error loading config: %v", articleID, err) // Added log
-				setProgress(articleID, "Error", "Failed to load scoring config", 0, err.Error())
+				errMsg := fmt.Sprintf("Failed to load scoring config: %v", err)
+				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
+				setProgress(articleID, "Error", errMsg, 0, "Error", errMsg, nil)
 				return
 			}
 
+			// Load article
 			article, err := llmClient.GetArticle(articleID)
 			if err != nil {
-				log.Printf("[reanalyzeHandler %d] Error loading article: %v", articleID, err) // Added log
-				setProgress(articleID, "Error", "Failed to load article", 0, err.Error())
+				errMsg := fmt.Sprintf("Failed to load article: %v", err)
+				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
+				setProgress(articleID, "Error", errMsg, 0, "Error", errMsg, nil)
 				return
 			}
 
-			totalSteps := len(cfg.Models) + 2 // +1 for storing, +1 for complete
+			// Define total steps for progress calculation
+			totalSteps := len(cfg.Models) + 3 // +1 delete, +N models, +1 calculate, +1 store
 			stepNum := 1
 
-			// Delete old scores
+			// Step 1: Delete old scores
+			setProgress(articleID, "Preparing", "Deleting old scores", percent(stepNum, totalSteps), "InProgress", "", nil)
 			err = llmClient.DeleteScores(articleID)
 			if err != nil {
-				log.Printf("[reanalyzeHandler %d] Error deleting old scores: %v", articleID, err) // Added log
-				setProgress(articleID, "Error", "Failed to delete old scores", percent(stepNum, totalSteps), err.Error())
-				return
-			}
-
-			// Score with each model
-			for _, m := range cfg.Models {
-				label := fmt.Sprintf("Scoring with %s", m.ModelName)
-				setProgress(articleID, label, label, percent(stepNum, totalSteps), "")
-				_, err := llmClient.ScoreWithModel(article, m.ModelName)
-				// Log result *after* the call
-				log.Printf("[reanalyzeHandler %d] Model %s scoring result: err=%v", articleID, m.ModelName, err) // Log 1 (Moved slightly for clarity)
-				if err != nil {
-					log.Printf("[reanalyzeHandler %d] Actual error received from ScoreWithModel for model %s: (%T) %v", articleID, m.ModelName, err, err) // ADDED DEBUG LOG
-
-					// Log specific error before returning
-					log.Printf("[reanalyzeHandler %d] Error scoring with model %s, stopping analysis: %v", articleID, m.ModelName, err) // Log 2
-					// Special handling for LLM API rate limit sentinel error
-					if err == llm.ErrBothLLMKeysRateLimited {
-						setProgress(articleID, "Error", llm.LLMRateLimitErrorMessage, percent(stepNum, totalSteps), llm.LLMRateLimitErrorMessage)
-					} else {
-						setProgress(articleID, "Error", fmt.Sprintf("Error scoring with %s", m.ModelName), percent(stepNum, totalSteps), err.Error())
-					}
-					return // Exit the goroutine on first model error
-				}
-				stepNum++
-			}
-
-			// Log if loop completed without error
-			log.Printf("[reanalyzeHandler %d] Scoring loop finished successfully.", articleID) // Log 3
-
-			// Store ensemble score
-			setProgress(articleID, "Storing results", "Storing ensemble score", percent(stepNum, totalSteps), "")
-			err = llmClient.StoreEnsembleScore(article)
-			if err != nil {
-				log.Printf("[reanalyzeHandler %d] Error storing ensemble score: %v", articleID, err) // Added log
-				setProgress(articleID, "Error", "Error storing ensemble score", percent(stepNum, totalSteps), err.Error())
+				errMsg := fmt.Sprintf("Failed to delete old scores: %v", err)
+				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
+				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
 				return
 			}
 			stepNum++
 
-			setProgress(articleID, "Complete", "Scoring complete", 100, "")
+			// Step 2: Score with each model
+			for _, m := range cfg.Models {
+				label := fmt.Sprintf("Scoring with %s", m.ModelName)
+				setProgress(articleID, label, label, percent(stepNum, totalSteps), "InProgress", "", nil)
+
+				_, scoreErr := llmClient.ScoreWithModel(article, m.ModelName) // Renamed err to scoreErr for clarity
+				log.Printf("[reanalyzeHandler %d] Model %s scoring result: err=%v", articleID, m.ModelName, scoreErr)
+
+				if scoreErr != nil {
+					log.Printf("[reanalyzeHandler %d] Actual error received from ScoreWithModel for model %s: (%T) %v", articleID, m.ModelName, scoreErr, scoreErr)
+					log.Printf("[reanalyzeHandler %d] Error scoring with model %s, stopping analysis: %v", articleID, m.ModelName, scoreErr)
+
+					errorMsg := scoreErr.Error()
+					userMsg := fmt.Sprintf("Error scoring with %s", m.ModelName)
+					if scoreErr == llm.ErrBothLLMKeysRateLimited {
+						userMsg = llm.LLMRateLimitErrorMessage // Use specific user message for rate limit
+						errorMsg = userMsg                     // Log the user message as the error too
+					}
+					setProgress(articleID, "Error", userMsg, percent(stepNum, totalSteps), "Error", errorMsg, nil)
+					return // Exit the goroutine on first model error
+				}
+				stepNum++
+			}
+			log.Printf("[reanalyzeHandler %d] Scoring loop finished successfully.", articleID)
+
+			// Step 3: Fetch scores and Calculate Final Composite Score
+			setProgress(articleID, "Calculating", "Fetching scores for final calculation", percent(stepNum, totalSteps), "InProgress", "", nil)
+			scores, fetchErr := llmClient.FetchScores(articleID) // Corrected: Use exported method from LLMClient
+			if fetchErr != nil {
+				errMsg := fmt.Sprintf("Failed to fetch scores for calculation: %v", fetchErr)
+				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
+				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
+				return
+			}
+			finalScoreValue, _, calcErr := llm.ComputeCompositeScoreWithConfidence(scores)
+			if calcErr != nil {
+				errMsg := fmt.Sprintf("Failed to calculate final score: %v", calcErr)
+				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
+				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
+				return
+			}
+			log.Printf("[reanalyzeHandler %d] Calculated final score: %f", articleID, finalScoreValue)
+			stepNum++
+
+			// Step 4: Store ensemble score (Note: Ensure StoreEnsembleScore uses the calculated score if needed, or update article object)
+			// Assuming StoreEnsembleScore implicitly uses the latest scores from DB or updates the article object passed to it.
+			// If StoreEnsembleScore needs the calculated value explicitly, the call needs modification.
+			log.Printf("[reanalyzeHandler %d] Attempting to store ensemble score.", articleID)
+			actualFinalScore, storeErr := llmClient.StoreEnsembleScore(article) // Capture both return values
+			if storeErr != nil {
+				errMsg := fmt.Sprintf("Error storing ensemble score: %v", storeErr)
+				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
+				// Even if storing failed, report the score that was calculated before the failure
+				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, &actualFinalScore)
+				return
+			}
+			// Send "Storing results" message AFTER successful storage
+			setProgress(articleID, "Storing results", "Storing ensemble score", percent(stepNum, totalSteps), "InProgress", "", nil)
+			// stepNum++ // No need to increment stepNum here, as the next step is the final one (100%)
+
+			// Step 5: Final success step
+			log.Printf("[reanalyzeHandler %d] Scoring complete. Final score reported: %f", articleID, actualFinalScore) // Log the score being reported
+			setProgress(articleID, "Complete", "Scoring complete", 100, "Success", "", &actualFinalScore)               // Use actualFinalScore
 		}()
 
 		RespondSuccess(c, map[string]interface{}{
@@ -495,35 +566,79 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		ensembleResults := filterAndTransformScores(scores, minScore, maxScore)
-		sortResults(ensembleResults, sortOrder)
+		var latestEnsembleScore *db.LLMScore
+		individualResults := make([]map[string]interface{}, 0)
 
-		var weightedSum float64
-		var totalWeight float64
+		// Find the latest ensemble score and gather individual scores
+		for i := range scores {
+			score := scores[i] // Create a copy to avoid loop variable issues if needed later
 
-		for _, s := range scores {
-			var parsed struct {
-				Confidence  float64 `json:"Confidence"`
-				Explanation string  `json:"Explanation"`
+			if score.Model == "ensemble" {
+				if latestEnsembleScore == nil || score.CreatedAt.After(latestEnsembleScore.CreatedAt) {
+					latestEnsembleScore = &score // Store pointer to the score
+				}
+			} else {
+				// Parse metadata for individual scores
+				var meta struct {
+					Confidence  *float64 `json:"Confidence"`  // Use pointer for optional field
+					Explanation *string  `json:"Explanation"` // Use pointer for optional field
+				}
+				// Default values
+				confidence := 0.0
+				explanation := ""
+
+				if score.Metadata != "" {
+					if err := json.Unmarshal([]byte(score.Metadata), &meta); err == nil {
+						if meta.Confidence != nil {
+							confidence = *meta.Confidence
+						}
+						if meta.Explanation != nil {
+							explanation = *meta.Explanation
+						}
+					} else {
+						log.Printf("WARN: biasHandler: Failed to unmarshal metadata for score ID %d, model %s: %v", score.ID, score.Model, err)
+					}
+				} else {
+					log.Printf("WARN: biasHandler: Empty metadata for score ID %d, model %s", score.ID, score.Model)
+				}
+
+				// Add to results, applying score filtering
+				if score.Score >= minScore && score.Score <= maxScore {
+					individualResults = append(individualResults, map[string]interface{}{
+						"model":       score.Model,
+						"score":       score.Score,
+						"confidence":  confidence,
+						"explanation": explanation,
+						"created_at":  score.CreatedAt, // Include timestamp if needed by frontend/sorting
+					})
+				}
 			}
-			_ = json.Unmarshal([]byte(s.Metadata), &parsed)
-
-			weightedSum += s.Score * parsed.Confidence
-			totalWeight += parsed.Confidence
 		}
 
-		var composite interface{}
+		// Sort individual results
+		sort.SliceStable(individualResults, func(i, j int) bool {
+			scoreI := individualResults[i]["score"].(float64)
+			scoreJ := individualResults[j]["score"].(float64)
+			if sortOrder == "asc" {
+				return scoreI < scoreJ
+			}
+			return scoreI > scoreJ // desc
+		})
+
+		var compositeScoreValue interface{} = nil // Default to null
 		status := ""
-		if totalWeight > 0 {
-			composite = weightedSum / totalWeight
+		if latestEnsembleScore != nil {
+			compositeScoreValue = latestEnsembleScore.Score
 		} else {
-			composite = nil
+			// If no ensemble score exists, explicitly set status
 			status = "scoring_unavailable"
 		}
+
 		resp := map[string]interface{}{
-			"composite_score": composite,
-			"results":         ensembleResults,
+			"composite_score": compositeScoreValue,
+			"results":         individualResults,
 		}
+		// Add status only if it's set (i.e., no ensemble score found)
 		if status != "" {
 			resp["status"] = status
 		}
@@ -532,6 +647,11 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		articlesCacheLock.Lock()
 		articlesCache.Set(cacheKey, resp, 30*time.Second)
 		articlesCacheLock.Unlock()
+
+		// DEBUG: Log the response being sent, especially for article 1646
+		if articleID == 1646 {
+			log.Printf("[biasHandler DEBUG 1646] Sending response: %+v", resp)
+		}
 
 		RespondSuccess(c, resp)
 		LogPerformance("biasHandler", start)

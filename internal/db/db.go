@@ -17,7 +17,8 @@ type Article struct {
 	Title          string    `db:"title"`
 	Content        string    `db:"content"`
 	CreatedAt      time.Time `db:"created_at"`
-	CompositeScore float64   `db:"-"`
+	CompositeScore *float64  `db:"composite_score"` // Use pointer for nullable
+	Confidence     *float64  `db:"confidence"`      // Use pointer for nullable
 
 	Status      string     `db:"status"`
 	FailCount   int        `db:"fail_count"`
@@ -70,6 +71,8 @@ CREATE TABLE IF NOT EXISTS articles (
 	url TEXT UNIQUE,
 	title TEXT,
 	content TEXT,
+	composite_score REAL, -- ADDED
+	confidence REAL,      -- ADDED
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -116,6 +119,8 @@ CREATE TABLE IF NOT EXISTS labels (
 		"ALTER TABLE articles ADD COLUMN fail_count INTEGER DEFAULT 0;",
 		"ALTER TABLE articles ADD COLUMN last_attempt DATETIME;",
 		"ALTER TABLE articles ADD COLUMN escalated BOOLEAN DEFAULT 0;",
+		"ALTER TABLE articles ADD COLUMN composite_score REAL;", // ADDED Migration
+		"ALTER TABLE articles ADD COLUMN confidence REAL;",      // ADDED Migration
 	}
 
 	for _, stmt := range alterStatements {
@@ -195,7 +200,7 @@ func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
 }
 
 func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
-	_, err := db.Exec(`UPDATE articles SET score = ?, confidence = ? WHERE id = ?`, score, confidence, articleID)
+	_, err := db.Exec(`UPDATE articles SET composite_score = ?, confidence = ? WHERE id = ?`, score, confidence, articleID)
 	return err
 }
 
@@ -235,4 +240,21 @@ func FetchLLMScores(db *sqlx.DB, articleID int64) ([]LLMScore, error) {
 	err := db.Select(&scores, "SELECT * FROM llm_scores WHERE article_id = ? ORDER BY version DESC", articleID)
 
 	return scores, err
+}
+
+// FetchLatestEnsembleScore returns the score value of the most recent 'ensemble' score record for an article.
+// Returns 0.0 and nil error if no ensemble score is found.
+func FetchLatestEnsembleScore(db *sqlx.DB, articleID int64) (float64, error) {
+	var score float64
+	// Query for the score field of the latest record matching article_id and model='ensemble'
+	err := db.Get(&score, "SELECT score FROM llm_scores WHERE article_id = ? AND model = 'ensemble' ORDER BY created_at DESC LIMIT 1", articleID)
+	if err != nil {
+		// If no rows are found, it's not a fatal error, just means no ensemble score exists yet.
+		if err.Error() == "sql: no rows in result set" { // Check specifically for no rows error
+			return 0.0, nil // Return 0.0 score, no error
+		}
+		// For other potential errors (DB connection issues, etc.), return the error.
+		return 0.0, err
+	}
+	return score, nil
 }

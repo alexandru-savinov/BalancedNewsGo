@@ -349,7 +349,9 @@ func hashContent(content string) string {
 }
 
 type LLMService interface {
-	Analyze(content string) (*db.LLMScore, error)
+	// Analyze method removed as it relied on a default model concept,
+	// which is incompatible with the ensemble configuration approach.
+	// Use ensemble methods or AnalyzeWithPrompt/AnalyzeWithModel directly.
 }
 
 /*
@@ -369,11 +371,11 @@ func (m *MockLLMService) Analyze(content string) (*db.LLMScore, error) {
 
 // HTTPLLMService communicates with a generic HTTP-based LLM API.
 type HTTPLLMService struct {
-	client       *resty.Client
-	apiKey       string
-	provider     string // e.g., "openai", "openrouter"
-	baseURL      string // Base URL for the API endpoint
-	defaultModel string // Default model to use if not specified
+	client   *resty.Client
+	apiKey   string
+	provider string // e.g., "openai", "openrouter"
+	baseURL  string // Base URL for the API endpoint
+	// defaultModel field removed (Refactor: Eliminate Env Var Reliance)
 }
 
 // NewHTTPLLMService creates a new service, reading configuration from environment variables.
@@ -411,29 +413,14 @@ func NewHTTPLLMService(client *resty.Client) *HTTPLLMService {
 	// Ensure base URL doesn't end with a slash for consistency
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
-	defaultModel := os.Getenv("LLM_DEFAULT_MODEL")
-	if defaultModel == "" {
-		// Determine default model based on provider
-		switch provider {
-		case "openrouter":
-			defaultModel = "openai/gpt-3.5-turbo" // A common default
-		case "openai":
-			defaultModel = "gpt-3.5-turbo"
-		default:
-			log.Println("Warning: LLM_DEFAULT_MODEL not set and provider is unknown, default model may not work.")
-			// Keep defaultModel empty or set a generic placeholder? Let's leave it empty.
-		}
-		if defaultModel != "" {
-			log.Printf("LLM_DEFAULT_MODEL not set, defaulting to %s for provider %s", defaultModel, provider)
-		}
-	}
+	// Removed logic for LLM_DEFAULT_MODEL (Refactor: Eliminate Env Var Reliance)
 
 	return &HTTPLLMService{
-		client:       client,
-		apiKey:       apiKey,
-		provider:     provider,
-		baseURL:      baseURL,
-		defaultModel: defaultModel,
+		client:   client,
+		apiKey:   apiKey,
+		provider: provider,
+		baseURL:  baseURL,
+		// defaultModel assignment removed (Refactor: Eliminate Env Var Reliance)
 	}
 }
 
@@ -442,10 +429,7 @@ func (s *HTTPLLMService) BaseURL() string {
 	return s.baseURL
 }
 
-// DefaultModelName returns the configured default model name.
-func (s *HTTPLLMService) DefaultModelName() string {
-	return s.defaultModel
-}
+// DefaultModelName function removed as defaultModel field was removed.
 
 func (s *HTTPLLMService) AnalyzeWithPrompt(model, prompt, content string) (*db.LLMScore, error) {
 	prompt = strings.Replace(prompt, "{{ARTICLE_CONTENT}}", content, 1)
@@ -495,13 +479,8 @@ func (s *HTTPLLMService) AnalyzeWithModel(model, content string) (*db.LLMScore, 
 
 // Satisfy LLMService interface
 
-// Satisfy LLMService interface: uses the configured default model.
-func (s *HTTPLLMService) Analyze(content string) (*db.LLMScore, error) {
-	if s.defaultModel == "" {
-		return nil, errors.New("cannot call Analyze without a default model configured (set LLM_DEFAULT_MODEL)")
-	}
-	return s.AnalyzeWithPrompt(s.defaultModel, PromptTemplate, content)
-}
+// Analyze function removed as it relied on the removed defaultModel field
+// and is superseded by ensemble methods or explicit model calls like AnalyzeWithModel.
 
 func (s *HTTPLLMService) callLLMAPIWithKey(model string, prompt string, apiKey string) (*resty.Response, error) { // Renamed and added apiKey param
 	req := s.client.R().
@@ -888,6 +867,7 @@ type LLMClient struct {
 	cache      *Cache
 	db         *sqlx.DB
 	llmService LLMService
+	config     *CompositeScoreConfig // Added field to hold ensemble config
 }
 
 func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
@@ -897,6 +877,16 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	provider := os.Getenv("LLM_PROVIDER")
 
 	var service LLMService
+
+	// Load the composite score configuration
+	config, err := LoadCompositeScoreConfig()
+	if err != nil {
+		log.Fatalf("Failed to load composite score config: %v", err)
+	}
+	if config == nil || len(config.Models) == 0 {
+		log.Fatalf("Composite score config loaded but is nil or contains no models.")
+	}
+	log.Printf("Loaded composite score config with %d models.", len(config.Models))
 
 	switch provider {
 	case "openai":
@@ -927,6 +917,7 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 		cache:      cache,
 		db:         dbConn,
 		llmService: service,
+		config:     config, // Assign loaded config
 	}
 }
 
@@ -1144,6 +1135,12 @@ func (c *LLMClient) DeleteScores(articleID int64) error {
 	return err
 }
 
+// FetchScores retrieves all LLM scores for a given article ID.
+func (c *LLMClient) FetchScores(articleID int64) ([]db.LLMScore, error) {
+	return db.FetchLLMScores(c.db, articleID)
+}
+
+// ScoreWithModel runs scoring for a single model and stores the result.
 // ScoreWithModel runs scoring for a single model and stores the result.
 // ScoreWithModel analyzes an article with a specific model.
 // ScoreWithModel analyzes an article with a specific model.
@@ -1159,16 +1156,16 @@ func (c *LLMClient) ScoreWithModel(article db.Article, modelName string) (*db.LL
 }
 
 // StoreEnsembleScore computes and stores the ensemble score for an article.
-func (c *LLMClient) StoreEnsembleScore(article db.Article) error {
+func (c *LLMClient) StoreEnsembleScore(article db.Article) (float64, error) { // MODIFIED return type
 	ensembleScore, err := c.EnsembleAnalyze(article.ID, article.Content)
 	if err != nil {
-		return err
+		return 0.0, err // MODIFIED return
 	}
 	ensembleScore.ArticleID = article.ID
 	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
 		VALUES (:article_id, :model, :score, :metadata, :created_at)`, ensembleScore)
 	if err != nil {
-		return err
+		return 0.0, err // MODIFIED return
 	}
 
 	// Helper function to prevent panic on short strings
@@ -1187,9 +1184,13 @@ func (c *LLMClient) StoreEnsembleScore(article db.Article) error {
 				}
 			}
 		}
-		_ = db.UpdateArticleScore(c.db, article.ID, ensembleScore.Score, confidence)
+		updateErr := db.UpdateArticleScore(c.db, article.ID, ensembleScore.Score, confidence) // CAPTURE ERROR
+		if updateErr != nil {
+			// Return the calculated score even if the update failed, but propagate the error
+			return ensembleScore.Score, updateErr // MODIFIED return
+		}
 	}
-	return nil
+	return ensembleScore.Score, nil // MODIFIED return
 }
 
 // Helper function to prevent panic on short strings

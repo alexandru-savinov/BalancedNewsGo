@@ -278,6 +278,5 @@ To reduce parse failures and unscored articles, the ensemble scoring pipeline wi
 - [`progress.md`](progress.md) — Progress tracking including QA and validation milestones
 [2025-04-12 16:08:46] - Debug session: Diagnosed scoring failure as OpenRouter rate limit for mistralai/mistral-7b-instruct:free. Multiple tool attempts to add diagnostic logging to reanalyzeHandler in internal/api/api.go. Provided manual patch instructions. User requested Memory Bank update (UMB).
 [2025-04-12 16:31:00] - Added secondary API key to .env file.
-[2025-04-12 16:31:00] - Added secondary API key to .env file.
-[2025-04-12 16:31:00] - Added secondary API key to .env file.
 [2025-04-12 18:41:45] - UMB: Updated models in config. Encountered new JSON parsing error (markdown backticks) with tokyotech-llm model. Debug task cancelled; decided to ignore parsing error for now.
+[2025-04-12 19:28:30] - Fixed score display issue: Modified getArticlesHandler in internal/api/api.go to use stored ensemble score instead of recalculating based on perspectives.

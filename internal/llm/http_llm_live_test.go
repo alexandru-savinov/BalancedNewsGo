@@ -39,9 +39,27 @@ func TestLiveHTTPLLMIntegration(t *testing.T) {
 	client := resty.New()
 	service := NewHTTPLLMService(client) // Use the generic service
 
-	// Analyze uses the default model configured in the service
-	testContent := fmt.Sprintf("Test content for live %s API integration check.", provider)
-	resp, err := service.Analyze(testContent)
+	// Define the model to use for the test, mimicking the old default logic
+	testModel := os.Getenv("LLM_DEFAULT_MODEL")
+	if testModel == "" {
+		switch provider {
+		case "openrouter":
+			testModel = "openai/gpt-3.5-turbo"
+		case "openai":
+			testModel = "gpt-3.5-turbo"
+		default:
+			// If provider is unknown and default isn't set, we can't reliably pick a model.
+			// However, NewHTTPLLMService would have failed earlier if provider was unknown and URL wasn't set.
+			// Let's default to a common one, but this case is less likely.
+			testModel = "gpt-3.5-turbo"
+			t.Logf("Warning: LLM_DEFAULT_MODEL not set and provider is '%s', defaulting test model to %s", provider, testModel)
+		}
+	}
+	t.Logf("Using model '%s' for live test.", testModel)
+
+	testContent := fmt.Sprintf("Test content for live %s API integration check using model %s.", provider, testModel)
+	// Call AnalyzeWithModel explicitly with the determined test model
+	resp, err := service.AnalyzeWithModel(testModel, testContent)
 	if err != nil {
 		t.Fatalf("Live %s API call failed: %v", provider, err)
 	}
@@ -50,5 +68,6 @@ func TestLiveHTTPLLMIntegration(t *testing.T) {
 		t.Fatalf("Live %s API call returned nil response", provider)
 	}
 
-	t.Logf("Live %s API call succeeded using model %s. Score: %f, Metadata: %s", provider, service.defaultModel, resp.Score, resp.Metadata)
+	// Use the explicitly defined testModel in the log message
+	t.Logf("Live %s API call succeeded using model %s. Score: %f, Metadata: %s", provider, testModel, resp.Score, resp.Metadata)
 }

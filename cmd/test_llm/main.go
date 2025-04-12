@@ -45,7 +45,7 @@ func main() {
 	client := resty.New()
 	// Create the service once, configured via environment variables
 	service := llm.NewHTTPLLMService(client)
-	log.Printf("Service configured with BaseURL: %s, DefaultModel: %s", service.BaseURL(), service.DefaultModelName()) // Assuming helper methods exist
+	log.Printf("Service configured with BaseURL: %s", service.BaseURL()) // Removed DefaultModelName() call
 
 	for _, model := range models {
 		log.Printf("Testing model: %s", model)

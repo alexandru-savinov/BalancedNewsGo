@@ -500,6 +500,15 @@
             <script>
                 // Unified CompositeScore rendering function
                 function renderCompositeScore(ctx, compositeScore, results, errorStatus) {
+
+                    // DEBUG: Log received data for article 1646
+                    if (ctx && ctx.id === 'article-1646') {
+                        console.log('[renderCompositeScore DEBUG 1646] Received compositeScore:', compositeScore);
+                        console.log('[renderCompositeScore DEBUG 1646] Received results:', JSON.stringify(results)); // Stringify for better object logging
+                        console.log('[renderCompositeScore DEBUG 1646] Received errorStatus:', errorStatus);
+                    }
+
+
                     const biasLabel = ctx.querySelector('.bias-label');
                     const confidenceSpan = ctx.querySelector('.confidence');
                     const compositeScoreSpan = ctx.querySelector('.composite-score');
@@ -607,8 +616,10 @@
                     }
                 }
 
+
                 async function loadBiasData(articleId, ctx = document) {
                     console.log(`[loadBiasData] Received articleId: ${articleId}`); // Log at function start
+
                     // Show loading indicator in bias section
                     const biasLabel = ctx.querySelector('.bias-label');
                     const confidenceSpan = ctx.querySelector('.confidence');
@@ -632,12 +643,17 @@
                         }
                     }
                     try {
+
                         const response = await fetch(`/api/articles/${articleId}/bias`);
                         if (!response.ok) throw new Error('Network error');
                         const data = await response.json();
+                        console.log(`[loadBiasData] Raw JSON response for ${articleId}: `, JSON.stringify(data));
+
+
                         sessionStorage.setItem(cacheKey, JSON.stringify(data));
                         renderCompositeScore(ctx, data.composite_score, data.results, data.status === "scoring_unavailable");
                     } catch (e) {
+
                         if (biasLabel) biasLabel.textContent = "Composite: Error loading";
                         if (compositeScoreSpan) compositeScoreSpan.textContent = "Score: Error";
                         if (confidenceSpan) confidenceSpan.innerHTML = `<span class="confidence-indicator" style="background:red"></span>Confidence: N/A`;
@@ -815,9 +831,12 @@ window.addEventListener('load', () => {
     }
 
     console.log('Frontend tests completed');
+
+
 });
 </script>
 <script>
+
 function startScoring(btn) {
     const article = btn.closest('article[data-article-id]');
     const articleId = article.getAttribute('data-article-id');
@@ -850,42 +869,58 @@ function startScoring(btn) {
                 let lastPercent = 0;
                 evtSource.onmessage = function(event) {
                     const progress = JSON.parse(event.data);
+                    console.log("SSE Progress:", progress); // Optional: Log progress for debugging
 
-                    // Update progress bar
-                    if (progress.percent !== undefined) {
-                        progressBar.style.width = progress.percent + '%';
-                        lastPercent = progress.percent;
-                    }
-                    // Add status message
-                    if (progress.message) {
-                        const li = document.createElement('li');
-                        li.textContent = progress.message;
-                        progressMessages.appendChild(li);
-                    }
-                    // Handle error
-                    if (progress.error) {
-                        errorMessage.textContent = "Error: " + progress.error;
-                        errorMessage.style.display = '';
-                        btn.disabled = false;
-                        btnLabel.style.display = '';
-                        btnSpinner.style.display = 'none';
-                        evtSource.close();
-                    }
-                    // Handle complete
-                    if (progress.step === "Complete") {
+                    // Update progress bar and message based on status
+                    if (progress.status === "InProgress") {
+                        if (progress.percent !== undefined) {
+                            progressBar.style.width = progress.percent + '%';
+                        }
+                        if (progress.message) {
+                            const li = document.createElement('li');
+                            li.textContent = progress.message;
+                            // Avoid duplicate messages if step hasn't changed
+                            if (!progressMessages.lastChild || progressMessages.lastChild.textContent !== progress.message) {
+                                progressMessages.appendChild(li);
+                            }
+                        }
+                    } else if (progress.status === "Success") {
                         progressBar.style.width = '100%';
                         const li = document.createElement('li');
                         li.textContent = "Scoring complete!";
                         progressMessages.appendChild(li);
+
+                        // --- Trigger Full Refresh for Consistency ---
+                        if (typeof loadBiasData === "function") {
+                            console.log(`[SSE Success] Triggering loadBiasData for article ${articleId}`);
+
+                            loadBiasData(articleId, article); // Trigger full refresh
+                        } else {
+console.log('[SSE Success DEBUG 1646] loadBiasData function check failed for articleId:', articleId);
+                            console.error("[SSE Success] loadBiasData function not found! Cannot refresh UI.");
+                            // Optionally add a message to the UI indicating partial update or need for manual refresh
+                            const li = document.createElement('li');
+                            li.textContent = "Score updated, but full details require manual refresh.";
+                            li.style.color = "orange";
+                            progressMessages.appendChild(li);
+                        }
+                        // --- End Trigger Full Refresh ---
+
                         btn.disabled = false;
                         btnLabel.textContent = "Rescore article";
                         btnLabel.style.display = '';
                         btnSpinner.style.display = 'none';
                         evtSource.close();
-                        // Optionally, reload bias data
-                        if (typeof loadBiasData === "function") {
-                            setTimeout(() => loadBiasData(articleId, article), 1000);
-                        }
+
+                    } else if (progress.status === "Error") {
+                        errorMessage.textContent = "Error: " + (progress.error || "Unknown error occurred");
+                        errorMessage.style.display = '';
+                        progressBar.style.backgroundColor = 'red'; // Indicate error on bar
+                        btn.disabled = false;
+                        btnLabel.textContent = "Retry Score"; // Update label on error
+                        btnLabel.style.display = '';
+                        btnSpinner.style.display = 'none';
+                        evtSource.close();
                     }
                 };
                 evtSource.onerror = function() {
