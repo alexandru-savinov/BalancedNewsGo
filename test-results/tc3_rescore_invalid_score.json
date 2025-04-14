@@ -1,0 +1,1500 @@
+{
+  "collection": {
+    "item": [
+      {
+        "id": "ceddd94f-5dfe-496c-88a0-5c312616276a",
+        "name": "TC1 - Rescore Existing Article (Valid Score)",
+        "item": [
+          {
+            "id": "37d9e380-60ec-44cf-8e9e-64a2a368cd51",
+            "name": "Create Article",
+            "request": {
+              "url": {
+                "path": [
+                  "api",
+                  "articles"
+                ],
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "query": [],
+                "variable": []
+              },
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"title\": \"Test Article TC1\",\n  \"content\": \"This is a test article for TC1.\",\n  \"url\": \"{{latestNewsUrl}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "prerequest",
+                "script": {
+                  "id": "70e2063e-055c-4b1f-8ba8-b4000cdbc8d4",
+                  "type": "text/javascript",
+                  "exec": [
+                    "// Fetch a real news article URL from NewsAPI and set it as latestNewsUrl",
+                    "pm.sendRequest({",
+                    "    url: 'https://newsapi.org/v2/top-headlines?country=us&pageSize=1&apiKey=4b07b82ea0ef463db6edd5d6d0ea9a38',",
+                    "    method: 'GET'",
+                    "}, function (err, res) {",
+                    "    if (!err && res.code === 200) {",
+                    "        var articles = res.json().articles;",
+                    "        if (articles && articles.length > 0 && articles[0].url) {",
+                    "            pm.environment.set(\"latestNewsUrl\", articles[0].url);",
+                    "        } else {",
+                    "            pm.environment.unset(\"latestNewsUrl\");",
+                    "        }",
+                    "    } else {",
+                    "        pm.environment.unset(\"latestNewsUrl\");",
+                    "    }",
+                    "});"
+                  ]
+                }
+              },
+              {
+                "listen": "test",
+                "script": {
+                  "id": "5f8785c1-3b00-45e4-9c7e-ec570afc13c8",
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test(\"Status code is 201\", function () {",
+                    "    pm.response.to.have.status(201);",
+                    "});",
+                    "if (pm.response.code === 201) {",
+                    "    var json = pm.response.json();",
+                    "    pm.environment.set(\"articleId_TC1\", json.id);",
+                    "} else {",
+                    "    pm.environment.unset(\"articleId_TC1\");",
+                    "}"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "1444c1ba-1665-42d1-b8b9-fe9d6fbdb697",
+            "name": "Rescore Article (Valid Score)",
+            "request": {
+              "url": {
+                "path": [
+                  "api",
+                  "llm",
+                  "reanalyze",
+                  "{{articleId_TC1}}"
+                ],
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "query": [],
+                "variable": []
+              },
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"score\": 5\n}"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "id": "04bc78ec-75f7-467e-b23e-6cd8a611648a",
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test(\"Status code is 200\", function () {",
+                    "    pm.response.to.have.status(200);",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "id": "58961db8-a311-491f-9127-74fa61423bae",
+            "name": "Get Article (Verify Score)",
+            "request": {
+              "url": {
+                "path": [
+                  "api",
+                  "articles",
+                  "{{articleId_TC1}}"
+                ],
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "query": [],
+                "variable": []
+              },
+              "method": "GET"
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "id": "80cfeae5-8e8a-477d-af35-6830cd00d28c",
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test(\"Status code is 200\", function () {",
+                    "    pm.response.to.have.status(200);",
+                    "});",
+                    "var json = pm.response.json();",
+                    "pm.test(\"Score updated to 5\", function () {",
+                    "    pm.expect(json.score).to.eql(5);",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "event": []
+      },
+      {
+        "id": "e9d46de9-e504-450f-b636-6039a68be598",
+        "name": "TC2 - Rescore Non-existent Article",
+        "item": [
+          {
+            "id": "36d51d93-8c44-43a9-be55-1c22c4725475",
+            "name": "Rescore Non-existent Article",
+            "request": {
+              "url": {
+                "path": [
+                  "api",
+                  "llm",
+                  "reanalyze",
+                  "999999"
+                ],
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "query": [],
+                "variable": []
+              },
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"score\": 5\n}"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "id": "00328a78-47b5-4c68-96e1-01874fd2fea7",
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test(\"Status code is 404\", function () {",
+                    "    pm.response.to.have.status(404);",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "event": []
+      },
+      {
+        "id": "c6db4ef8-9d13-4c80-9aa4-463c5f257852",
+        "name": "TC3 - Rescore with Invalid Score (Out of Range)",
+        "item": [
+          {
+            "id": "08c60f48-22e2-4960-bb83-fb6c9e2ea3e8",
+            "name": "Create Article",
+            "request": {
+              "url": {
+                "path": [
+                  "api",
+                  "articles"
+                ],
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "query": [],
+                "variable": []
+              },
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"title\": \"Test Article TC3\",\n  \"content\": \"This is a test article for TC3.\",\n  \"url\": \"https://example.com/tc3-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "id": "112a2f1c-b285-4bc0-9344-69fa8bee0153",
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test(\"Status code is 200 or 201\", function () {",
+                    "    pm.expect([200, 201]).to.include(pm.response.code);",
+                    "});",
+                    "if (pm.response.code === 200 || pm.response.code === 201) {",
+                    "    var json = pm.response.json();",
+                    "    var articleId = json.data.article_id;",
+                    "    pm.environment.set(\"articleId_TC3\", articleId);",
+                    "    console.log('Response JSON:', JSON.stringify(json));",
+                    "    console.log('Article ID set to: ' + articleId);",
+                    "} else {",
+                    "    pm.environment.unset(\"articleId_TC3\");",
+                    "}"
+                  ],
+                  "_lastExecutionId": "9994b305-af18-4e5a-a6dd-51d591abd804"
+                }
+              }
+            ]
+          },
+          {
+            "id": "162658cf-751f-4a84-a887-d724ef5676af",
+            "name": "Rescore Article (Invalid Score -2.0)",
+            "request": {
+              "url": {
+                "path": [
+                  "api",
+                  "llm",
+                  "reanalyze",
+                  "{{articleId_TC3}}"
+                ],
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "query": [],
+                "variable": []
+              },
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"score\": -2.0\n}"
+              }
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "id": "f9857d73-e73e-429d-a993-fe6a8afb33d8",
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test(\"Status code is 400\", function () {",
+                    "    pm.response.to.have.status(400);",
+                    "});"
+                  ],
+                  "_lastExecutionId": "88d2a9f8-e4d2-4ecc-8663-bf680bb15bc2"
+                }
+              }
+            ]
+          },
+          {
+            "id": "f67f5ff9-9a37-4b2f-87fa-bce3a146328e",
+            "name": "Get Article (Verify Score Unchanged)",
+            "request": {
+              "url": {
+                "path": [
+                  "api",
+                  "articles",
+                  "{{articleId_TC3}}"
+                ],
+                "host": [
+                  "{{baseUrl}}"
+                ],
+                "query": [],
+                "variable": []
+              },
+              "method": "GET"
+            },
+            "response": [],
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "id": "98f9bb20-767e-4671-803b-ba402557209d",
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test(\"Status code is 200\", function () {",
+                    "    pm.response.to.have.status(200);",
+                    "});",
+                    "var json = pm.response.json();",
+                    "pm.test(\"Score unchanged (not -2.0)\", function () {",
+                    "    pm.expect(json.score).not.eql(-2.0);",
+                    "});"
+                  ],
+                  "_lastExecutionId": "56e919a8-1e8a-4255-99d4-9bf34b9527e6"
+                }
+              }
+            ]
+          }
+        ],
+        "event": []
+      }
+    ],
+    "event": [],
+    "variable": [
+      {
+        "type": "any",
+        "value": "http://localhost:8080",
+        "key": "baseUrl"
+      }
+    ],
+    "info": {
+      "_postman_id": "e152da6e-fa6a-485d-9afd-bb3fe7bbc920",
+      "name": "Article Rescoring Tests",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+      "description": {
+        "content": "Automated Postman collection for validating the article manual scoring (rescoring) workflow in the Go backend API. Covers creation, rescoring, retrieval, and error handling.",
+        "type": "text/plain"
+      }
+    }
+  },
+  "environment": {
+    "id": "9fca18df-83d0-4df5-a782-a0ea5ff190ba",
+    "values": [
+      {
+        "type": "any",
+        "value": 1777,
+        "key": "articleId_TC3"
+      }
+    ]
+  },
+  "globals": {
+    "id": "d36e04e6-b8d5-4716-961a-f6971e5b1ac6",
+    "values": []
+  },
+  "run": {
+    "stats": {
+      "iterations": {
+        "total": 1,
+        "pending": 0,
+        "failed": 0
+      },
+      "items": {
+        "total": 3,
+        "pending": 0,
+        "failed": 0
+      },
+      "scripts": {
+        "total": 3,
+        "pending": 0,
+        "failed": 0
+      },
+      "prerequests": {
+        "total": 3,
+        "pending": 0,
+        "failed": 0
+      },
+      "requests": {
+        "total": 3,
+        "pending": 0,
+        "failed": 0
+      },
+      "tests": {
+        "total": 3,
+        "pending": 0,
+        "failed": 0
+      },
+      "assertions": {
+        "total": 4,
+        "pending": 0,
+        "failed": 0
+      },
+      "testScripts": {
+        "total": 3,
+        "pending": 0,
+        "failed": 0
+      },
+      "prerequestScripts": {
+        "total": 0,
+        "pending": 0,
+        "failed": 0
+      }
+    },
+    "timings": {
+      "responseAverage": 14.333333333333334,
+      "responseMin": 3,
+      "responseMax": 33,
+      "responseSd": 13.299958228840003,
+      "dnsAverage": 0,
+      "dnsMin": 0,
+      "dnsMax": 0,
+      "dnsSd": 0,
+      "firstByteAverage": 0,
+      "firstByteMin": 0,
+      "firstByteMax": 0,
+      "firstByteSd": 0,
+      "started": 1744620102514,
+      "completed": 1744620102821
+    },
+    "executions": [
+      {
+        "cursor": {
+          "position": 0,
+          "iteration": 0,
+          "length": 3,
+          "cycles": 1,
+          "empty": false,
+          "eof": false,
+          "bof": true,
+          "cr": false,
+          "ref": "94af3f6d-922b-42d7-ac97-c0a8248a9bc0",
+          "httpRequestId": "aa14a0a3-96bc-4215-9e5f-b7d04930c449"
+        },
+        "item": {
+          "id": "08c60f48-22e2-4960-bb83-fb6c9e2ea3e8",
+          "name": "Create Article",
+          "request": {
+            "url": {
+              "path": [
+                "api",
+                "articles"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC3\",\n  \"content\": \"This is a test article for TC3.\",\n  \"url\": \"https://example.com/tc3-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "112a2f1c-b285-4bc0-9344-69fa8bee0153",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    var articleId = json.data.article_id;",
+                  "    pm.environment.set(\"articleId_TC3\", articleId);",
+                  "    console.log('Response JSON:', JSON.stringify(json));",
+                  "    console.log('Article ID set to: ' + articleId);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC3\");",
+                  "}"
+                ],
+                "_lastExecutionId": "9994b305-af18-4e5a-a6dd-51d591abd804"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8080",
+            "path": [
+              "api",
+              "articles"
+            ],
+            "host": [
+              "localhost"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "User-Agent",
+              "value": "PostmanRuntime/7.39.1",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "*/*",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "e9dd9596-8a7e-4a10-b8dd-7db63ed64306",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "localhost:8080",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "gzip, deflate, br",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "keep-alive",
+              "system": true
+            },
+            {
+              "key": "Content-Length",
+              "value": "190",
+              "system": true
+            }
+          ],
+          "method": "POST",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"title\": \"Test Article TC3\",\n  \"content\": \"This is a test article for TC3.\",\n  \"url\": \"https://example.com/tc3-1744620103\",\n  \"pub_date\": \"2025-04-14T08:41:42.561Z\",\n  \"source\": \"test\"\n}"
+          }
+        },
+        "response": {
+          "id": "fa3b2fd9-657f-4bb5-a0fc-a8f1aa457a33",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "key": "Date",
+              "value": "Mon, 14 Apr 2025 08:41:42 GMT"
+            },
+            {
+              "key": "Content-Length",
+              "value": "62"
+            }
+          ],
+          "stream": {
+            "type": "Buffer",
+            "data": [
+              123,
+              34,
+              115,
+              117,
+              99,
+              99,
+              101,
+              115,
+              115,
+              34,
+              58,
+              116,
+              114,
+              117,
+              101,
+              44,
+              34,
+              100,
+              97,
+              116,
+              97,
+              34,
+              58,
+              123,
+              34,
+              97,
+              114,
+              116,
+              105,
+              99,
+              108,
+              101,
+              95,
+              105,
+              100,
+              34,
+              58,
+              49,
+              55,
+              55,
+              55,
+              44,
+              34,
+              115,
+              116,
+              97,
+              116,
+              117,
+              115,
+              34,
+              58,
+              34,
+              99,
+              114,
+              101,
+              97,
+              116,
+              101,
+              100,
+              34,
+              125,
+              125
+            ]
+          },
+          "cookie": [],
+          "responseTime": 33,
+          "responseSize": 62
+        },
+        "id": "08c60f48-22e2-4960-bb83-fb6c9e2ea3e8",
+        "assertions": [
+          {
+            "assertion": "Status code is 200 or 201",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "37c0fb3f-4f8c-426a-886b-4f2f4b739785",
+          "length": 3,
+          "cycles": 1,
+          "position": 1,
+          "iteration": 0,
+          "httpRequestId": "1a7481ee-7ec5-47da-951d-9a1a72bed377"
+        },
+        "item": {
+          "id": "162658cf-751f-4a84-a887-d724ef5676af",
+          "name": "Rescore Article (Invalid Score -2.0)",
+          "request": {
+            "url": {
+              "path": [
+                "api",
+                "llm",
+                "reanalyze",
+                "{{articleId_TC3}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": -2.0\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "f9857d73-e73e-429d-a993-fe6a8afb33d8",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "_lastExecutionId": "88d2a9f8-e4d2-4ecc-8663-bf680bb15bc2"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8080",
+            "path": [
+              "api",
+              "llm",
+              "reanalyze",
+              "1777"
+            ],
+            "host": [
+              "localhost"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "User-Agent",
+              "value": "PostmanRuntime/7.39.1",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "*/*",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "ef267a93-9b6c-4406-a2ff-c81e5c379508",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "localhost:8080",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "gzip, deflate, br",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "keep-alive",
+              "system": true
+            },
+            {
+              "key": "Content-Length",
+              "value": "19",
+              "system": true
+            }
+          ],
+          "method": "POST",
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"score\": -2.0\n}"
+          }
+        },
+        "response": {
+          "id": "a1cb8287-6961-422d-80cf-ae73cd750e70",
+          "status": "Bad Request",
+          "code": 400,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "key": "Date",
+              "value": "Mon, 14 Apr 2025 08:41:42 GMT"
+            },
+            {
+              "key": "Content-Length",
+              "value": "100"
+            }
+          ],
+          "stream": {
+            "type": "Buffer",
+            "data": [
+              123,
+              34,
+              115,
+              117,
+              99,
+              99,
+              101,
+              115,
+              115,
+              34,
+              58,
+              102,
+              97,
+              108,
+              115,
+              101,
+              44,
+              34,
+              101,
+              114,
+              114,
+              111,
+              114,
+              34,
+              58,
+              123,
+              34,
+              99,
+              111,
+              100,
+              101,
+              34,
+              58,
+              34,
+              86,
+              65,
+              76,
+              73,
+              68,
+              65,
+              84,
+              73,
+              79,
+              78,
+              95,
+              69,
+              82,
+              82,
+              79,
+              82,
+              34,
+              44,
+              34,
+              109,
+              101,
+              115,
+              115,
+              97,
+              103,
+              101,
+              34,
+              58,
+              34,
+              83,
+              99,
+              111,
+              114,
+              101,
+              32,
+              109,
+              117,
+              115,
+              116,
+              32,
+              98,
+              101,
+              32,
+              98,
+              101,
+              116,
+              119,
+              101,
+              101,
+              110,
+              32,
+              45,
+              49,
+              46,
+              48,
+              32,
+              97,
+              110,
+              100,
+              32,
+              49,
+              46,
+              48,
+              34,
+              125,
+              125
+            ]
+          },
+          "cookie": [],
+          "responseTime": 7,
+          "responseSize": 100
+        },
+        "id": "162658cf-751f-4a84-a887-d724ef5676af",
+        "assertions": [
+          {
+            "assertion": "Status code is 400",
+            "skipped": false
+          }
+        ]
+      },
+      {
+        "cursor": {
+          "ref": "ddee978d-b871-419a-af51-8d575847ff75",
+          "length": 3,
+          "cycles": 1,
+          "position": 2,
+          "iteration": 0,
+          "httpRequestId": "a192872a-abcf-4912-b142-6d3cff939248"
+        },
+        "item": {
+          "id": "f67f5ff9-9a37-4b2f-87fa-bce3a146328e",
+          "name": "Get Article (Verify Score Unchanged)",
+          "request": {
+            "url": {
+              "path": [
+                "api",
+                "articles",
+                "{{articleId_TC3}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "method": "GET"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "id": "98f9bb20-767e-4671-803b-ba402557209d",
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Score unchanged (not -2.0)\", function () {",
+                  "    pm.expect(json.score).not.eql(-2.0);",
+                  "});"
+                ],
+                "_lastExecutionId": "56e919a8-1e8a-4255-99d4-9bf34b9527e6"
+              }
+            }
+          ]
+        },
+        "request": {
+          "url": {
+            "protocol": "http",
+            "port": "8080",
+            "path": [
+              "api",
+              "articles",
+              "1777"
+            ],
+            "host": [
+              "localhost"
+            ],
+            "query": [],
+            "variable": []
+          },
+          "header": [
+            {
+              "key": "User-Agent",
+              "value": "PostmanRuntime/7.39.1",
+              "system": true
+            },
+            {
+              "key": "Accept",
+              "value": "*/*",
+              "system": true
+            },
+            {
+              "key": "Cache-Control",
+              "value": "no-cache",
+              "system": true
+            },
+            {
+              "key": "Postman-Token",
+              "value": "73ef1c28-7982-4733-aa9d-925c34e624e4",
+              "system": true
+            },
+            {
+              "key": "Host",
+              "value": "localhost:8080",
+              "system": true
+            },
+            {
+              "key": "Accept-Encoding",
+              "value": "gzip, deflate, br",
+              "system": true
+            },
+            {
+              "key": "Connection",
+              "value": "keep-alive",
+              "system": true
+            }
+          ],
+          "method": "GET"
+        },
+        "response": {
+          "id": "5b97766e-3bfd-4051-abff-bd5148b65506",
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            },
+            {
+              "key": "Date",
+              "value": "Mon, 14 Apr 2025 08:41:42 GMT"
+            },
+            {
+              "key": "Content-Length",
+              "value": "402"
+            }
+          ],
+          "stream": {
+            "type": "Buffer",
+            "data": [
+              123,
+              34,
+              115,
+              117,
+              99,
+              99,
+              101,
+              115,
+              115,
+              34,
+              58,
+              116,
+              114,
+              117,
+              101,
+              44,
+              34,
+              100,
+              97,
+              116,
+              97,
+              34,
+              58,
+              123,
+              34,
+              97,
+              114,
+              116,
+              105,
+              99,
+              108,
+              101,
+              34,
+              58,
+              123,
+              34,
+              73,
+              68,
+              34,
+              58,
+              49,
+              55,
+              55,
+              55,
+              44,
+              34,
+              83,
+              111,
+              117,
+              114,
+              99,
+              101,
+              34,
+              58,
+              34,
+              116,
+              101,
+              115,
+              116,
+              34,
+              44,
+              34,
+              80,
+              117,
+              98,
+              68,
+              97,
+              116,
+              101,
+              34,
+              58,
+              34,
+              50,
+              48,
+              50,
+              53,
+              45,
+              48,
+              52,
+              45,
+              49,
+              52,
+              84,
+              48,
+              56,
+              58,
+              52,
+              49,
+              58,
+              52,
+              50,
+              46,
+              53,
+              54,
+              49,
+              90,
+              34,
+              44,
+              34,
+              85,
+              82,
+              76,
+              34,
+              58,
+              34,
+              104,
+              116,
+              116,
+              112,
+              115,
+              58,
+              47,
+              47,
+              101,
+              120,
+              97,
+              109,
+              112,
+              108,
+              101,
+              46,
+              99,
+              111,
+              109,
+              47,
+              116,
+              99,
+              51,
+              45,
+              49,
+              55,
+              52,
+              52,
+              54,
+              50,
+              48,
+              49,
+              48,
+              51,
+              34,
+              44,
+              34,
+              84,
+              105,
+              116,
+              108,
+              101,
+              34,
+              58,
+              34,
+              84,
+              101,
+              115,
+              116,
+              32,
+              65,
+              114,
+              116,
+              105,
+              99,
+              108,
+              101,
+              32,
+              84,
+              67,
+              51,
+              34,
+              44,
+              34,
+              67,
+              111,
+              110,
+              116,
+              101,
+              110,
+              116,
+              34,
+              58,
+              34,
+              84,
+              104,
+              105,
+              115,
+              32,
+              105,
+              115,
+              32,
+              97,
+              32,
+              116,
+              101,
+              115,
+              116,
+              32,
+              97,
+              114,
+              116,
+              105,
+              99,
+              108,
+              101,
+              32,
+              102,
+              111,
+              114,
+              32,
+              84,
+              67,
+              51,
+              46,
+              34,
+              44,
+              34,
+              67,
+              114,
+              101,
+              97,
+              116,
+              101,
+              100,
+              65,
+              116,
+              34,
+              58,
+              34,
+              50,
+              48,
+              50,
+              53,
+              45,
+              48,
+              52,
+              45,
+              49,
+              52,
+              84,
+              48,
+              56,
+              58,
+              52,
+              49,
+              58,
+              52,
+              50,
+              90,
+              34,
+              44,
+              34,
+              67,
+              111,
+              109,
+              112,
+              111,
+              115,
+              105,
+              116,
+              101,
+              83,
+              99,
+              111,
+              114,
+              101,
+              34,
+              58,
+              48,
+              44,
+              34,
+              67,
+              111,
+              110,
+              102,
+              105,
+              100,
+              101,
+              110,
+              99,
+              101,
+              34,
+              58,
+              48,
+              44,
+              34,
+              83,
+              116,
+              97,
+              116,
+              117,
+              115,
+              34,
+              58,
+              34,
+              112,
+              101,
+              110,
+              100,
+              105,
+              110,
+              103,
+              34,
+              44,
+              34,
+              70,
+              97,
+              105,
+              108,
+              67,
+              111,
+              117,
+              110,
+              116,
+              34,
+              58,
+              48,
+              44,
+              34,
+              76,
+              97,
+              115,
+              116,
+              65,
+              116,
+              116,
+              101,
+              109,
+              112,
+              116,
+              34,
+              58,
+              110,
+              117,
+              108,
+              108,
+              44,
+              34,
+              69,
+              115,
+              99,
+              97,
+              108,
+              97,
+              116,
+              101,
+              100,
+              34,
+              58,
+              102,
+              97,
+              108,
+              115,
+              101,
+              125,
+              44,
+              34,
+              99,
+              111,
+              109,
+              112,
+              111,
+              115,
+              105,
+              116,
+              101,
+              95,
+              115,
+              99,
+              111,
+              114,
+              101,
+              34,
+              58,
+              49,
+              44,
+              34,
+              99,
+              111,
+              110,
+              102,
+              105,
+              100,
+              101,
+              110,
+              99,
+              101,
+              34,
+              58,
+              48,
+              44,
+              34,
+              115,
+              99,
+              111,
+              114,
+              101,
+              115,
+              34,
+              58,
+              110,
+              117,
+              108,
+              108,
+              125,
+              125
+            ]
+          },
+          "cookie": [],
+          "responseTime": 3,
+          "responseSize": 402
+        },
+        "id": "f67f5ff9-9a37-4b2f-87fa-bce3a146328e",
+        "assertions": [
+          {
+            "assertion": "Status code is 200",
+            "skipped": false
+          },
+          {
+            "assertion": "Score unchanged (not -2.0)",
+            "skipped": false
+          }
+        ]
+      }
+    ],
+    "transfers": {
+      "responseTotal": 564
+    },
+    "failures": [],
+    "error": null
+  }
+}

@@ -1,0 +1,458 @@
+{
+  "info": {
+    "name": "Backend Fixes Tests",
+    "description": "Tests for the fixed backend functionality",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Article Creation Validation Tests",
+      "item": [
+        {
+          "name": "Create Article - Missing Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article\",\n  \"content\": \"This is a test article.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for missing fields\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error about missing fields\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error_message).to.include('Missing required fields');",
+                  "    pm.expect(json.error_message).to.include('source');",
+                  "    pm.expect(json.error_message).to.include('url');",
+                  "    pm.expect(json.error_message).to.include('pub_date');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Article - Invalid URL Format",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article\",\n  \"content\": \"This is a test article.\",\n  \"source\": \"test\",\n  \"url\": \"invalid-url\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for invalid URL\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error about invalid URL\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error_message).to.include('Invalid URL format');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Article - Valid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article\",\n  \"content\": \"This is a test article.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId\", json.data.article_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Article - Duplicate URL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article Duplicate\",\n  \"content\": \"This is a duplicate test article.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 409 for duplicate URL\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error about duplicate URL\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error_message).to.include('already exists');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Feedback Handler Tests",
+      "item": [
+        {
+          "name": "Submit Feedback - Missing Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for missing fields\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error about missing fields\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error_message).to.include('Missing required fields');",
+                  "    pm.expect(json.error_message).to.include('feedback_text');",
+                  "    pm.expect(json.error_message).to.include('user_id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Feedback - Invalid Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"This is a test feedback.\",\n  \"category\": \"invalid-category\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for invalid category\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error about invalid category\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error_message).to.include('Invalid category');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Feedback - Valid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"This is a test feedback.\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 for valid feedback\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Get Articles Handler Tests",
+      "item": [
+        {
+          "name": "Get Articles - Default Parameters",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains articles\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test(\"Articles have composite_score and confidence\", function () {",
+                  "    var json = pm.response.json();",
+                  "    if (json.data && json.data.length > 0) {",
+                  "        pm.expect(json.data[0].composite_score).to.not.be.null;",
+                  "        pm.expect(json.data[0].confidence).to.not.be.null;",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Articles - With Source Filter",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles?source=test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "test"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains articles with correct source\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "    if (json.length > 0) {",
+                  "        pm.expect(json[0].source).to.equal('test');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Articles - Cache Test",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles?source=test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "test"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// This is a second identical request, which should hit the cache",
+                  "// We can't directly test the cache hit, but we can verify the response is consistent",
+                  "pm.test(\"Response contains articles with correct source\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('array');",
+                  "    if (json.length > 0) {",
+                  "        pm.expect(json[0].source).to.equal('test');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Ensemble Details Handler Tests",
+      "item": [
+        {
+          "name": "Get Ensemble Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId}}/ensemble",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId}}", "ensemble"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// This test might return 404 if no ensemble data exists for the article",
+                  "pm.test(\"Status code is 200 or 404\", function () {",
+                  "    pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    pm.test(\"Response contains ensemble data\", function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json).to.have.property('ensembles');",
+                  "        pm.expect(json.ensembles).to.be.an('array');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    }
+  ]
+}

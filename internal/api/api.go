@@ -1,12 +1,15 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log" // Added log package
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +19,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
+
+// Added log package
 
 var (
 	articlesCache     = NewSimpleCache()
@@ -66,15 +71,115 @@ func getProgress(articleID int64) *ProgressState {
 
 func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient) {
 	router.GET("/api/articles", getArticlesHandler(dbConn))
-	router.GET("/api/articles/:id", getArticleByIDHandler(dbConn))
+	router.GET("/api/articles/:id", getArticleByIDHandlerFixed(dbConn)) // Use the fixed handler
+	router.POST("/api/articles", createArticleHandler(dbConn))
 	router.POST("/api/refresh", refreshHandler(rssCollector))
-	router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(llmClient))
+	router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(llmClient, dbConn))
 	router.GET("/api/articles/:id/summary", summaryHandler(dbConn))
 	router.GET("/api/articles/:id/bias", biasHandler(dbConn))
 	router.GET("/api/articles/:id/ensemble", ensembleDetailsHandler(dbConn))
 	router.POST("/api/feedback", feedbackHandler(dbConn))
 	router.GET("/api/feeds/healthz", feedHealthHandler(rssCollector))
 	router.GET("/api/llm/score-progress/:id", scoreProgressSSEHandler())
+
+	// Debug endpoints
+	router.GET("/api/debug/schema", debugSchemaHandler(dbConn))
+}
+
+// Handler for POST /api/articles
+func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Source  string `json:"source"`
+			PubDate string `json:"pub_date"` // ISO8601 or RFC3339 string
+			URL     string `json:"url"`
+			Title   string `json:"title"`
+			Content string `json:"content"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid JSON body")
+			LogError("createArticleHandler: invalid JSON body", err)
+			return
+		}
+
+		// Validate required fields
+		var missingFields []string
+		if req.Source == "" {
+			missingFields = append(missingFields, "source")
+		}
+		if req.URL == "" {
+			missingFields = append(missingFields, "url")
+		}
+		if req.Title == "" {
+			missingFields = append(missingFields, "title")
+		}
+		if req.Content == "" {
+			missingFields = append(missingFields, "content")
+		}
+		if req.PubDate == "" {
+			missingFields = append(missingFields, "pub_date")
+		}
+
+		if len(missingFields) > 0 {
+			RespondError(c, http.StatusBadRequest, ErrValidation,
+				fmt.Sprintf("Missing required fields: %s", strings.Join(missingFields, ", ")))
+			LogError("createArticleHandler: missing required fields", nil)
+			return
+		}
+
+		// Validate URL format
+		if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid URL format (must start with http:// or https://)")
+			LogError("createArticleHandler: invalid URL format", nil)
+			return
+		}
+
+		// Check if article with this URL already exists
+		exists, err := db.ArticleExistsByURL(dbConn, req.URL)
+		if err != nil {
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to check for existing article")
+			LogError("createArticleHandler: failed to check URL existence", err)
+			return
+		}
+		if exists {
+			RespondError(c, http.StatusConflict, ErrValidation, "Article with this URL already exists")
+			LogError("createArticleHandler: duplicate URL", nil)
+			return
+		}
+
+		// Parse pub_date
+		pubDate, err := time.Parse(time.RFC3339, req.PubDate)
+		if err != nil {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid pub_date format (expected RFC3339)")
+			LogError("createArticleHandler: invalid pub_date", err)
+			return
+		}
+
+		zero := 0.0
+		article := &db.Article{
+			Source:         req.Source,
+			PubDate:        pubDate,
+			URL:            req.URL,
+			Title:          req.Title,
+			Content:        req.Content,
+			CreatedAt:      time.Now(),
+			CompositeScore: &zero,
+			Confidence:     &zero,
+			ScoreSource:    sql.NullString{String: "llm", Valid: true},
+		}
+
+		id, err := db.InsertArticle(dbConn, article)
+		if err != nil {
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to create article")
+			LogError("createArticleHandler: failed to insert article", err)
+			return
+		}
+
+		RespondSuccess(c, map[string]interface{}{
+			"status":     "created",
+			"article_id": id,
+		})
+	}
 }
 
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
@@ -99,8 +204,18 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Caching
-		cacheKey := "articles:" + source + ":" + leaning + ":" + limitStr + ":" + offsetStr
+		// Caching with improved key generation
+		// Ensure source and leaning have default values for consistent cache keys
+		sourceKey := source
+		if sourceKey == "" {
+			sourceKey = "all"
+		}
+		leaningKey := leaning
+		if leaningKey == "" {
+			leaningKey = "all"
+		}
+
+		cacheKey := fmt.Sprintf("articles:%s:%s:%s:%s", sourceKey, leaningKey, limitStr, offsetStr)
 		articlesCacheLock.RLock()
 		log.Printf("[getArticlesHandler] Checking cache for key: %s", cacheKey) // DEBUG LOG ADDED
 		if cached, found := articlesCache.Get(cacheKey); found {
@@ -123,20 +238,41 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 		log.Printf("[getArticlesHandler] Fetched %d articles from DB for key: %s", len(articles), cacheKey) // DEBUG LOG ADDED
+		if len(articles) > 0 {
+			log.Printf("[getArticlesHandler] First article: %+v", articles[0])
+		}
 		// Optionally log specific article details if needed, e.g., the one being re-analyzed
 		// for _, art := range articles { if art.ID == 1680 { log.Printf("[getArticlesHandler] DB Data for Article 1680: %+v", art) } }
 
+		// Improved score fetching with better error handling
 		for i := range articles {
 			// Fetch the latest ensemble score directly
 			ensembleScore, scoreErr := db.FetchLatestEnsembleScore(dbConn, articles[i].ID)
 			if scoreErr != nil {
 				// Log error fetching the specific ensemble score, but don't block response
 				log.Printf("[getArticlesHandler] Error fetching latest ensemble score for article %d: %v", articles[i].ID, scoreErr)
-				articles[i].CompositeScore = nil // Default to nil if fetch fails
+
+				// Use a default score of 0.0 instead of nil for better consistency
+				defaultScore := 0.0
+				articles[i].CompositeScore = &defaultScore
+
+				// Also set a default confidence value
+				defaultConfidence := 0.0
+				articles[i].Confidence = &defaultConfidence
 			} else {
 				// Take the address of the float64 to assign to *float64
 				scoreCopy := ensembleScore // Create a copy to ensure its address is stable
 				articles[i].CompositeScore = &scoreCopy
+
+				// Optionally fetch confidence as well if available
+				confidence, confErr := db.FetchLatestConfidence(dbConn, articles[i].ID)
+				if confErr == nil {
+					confCopy := confidence
+					articles[i].Confidence = &confCopy
+				} else {
+					defaultConf := 0.0
+					articles[i].Confidence = &defaultConf
+				}
 			}
 			// Optional: Log the fetched ensemble score if needed for debugging
 			// log.Printf("[getArticlesHandler] Fetched EnsembleScore for Article %d: %f", articles[i].ID, articles[i].CompositeScore)
@@ -202,6 +338,7 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			"scores":          scores,
 			"composite_score": composite,
 			"confidence":      confidence,
+			"score_source":    article.ScoreSource,
 		}
 
 		// Cache the result for 30 seconds
@@ -222,7 +359,7 @@ func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 		LogPerformance("refreshHandler", start)
 	}
 }
-func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
+func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
@@ -232,6 +369,73 @@ func reanalyzeHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
 			return
 		}
 		articleID := int64(id)
+
+		// Check if article exists
+		_, err = db.FetchArticleByID(dbConn, articleID)
+		if err != nil {
+			if errors.Is(err, db.ErrArticleNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Article not found"})
+				return
+			}
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch article")
+			LogError("reanalyzeHandler: failed to fetch article", err)
+			return
+		}
+
+		// Parse JSON body for manual score update
+		var req struct {
+			Score *float64 `json:"score"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid JSON body")
+			LogError("reanalyzeHandler: invalid JSON body", err)
+			return
+		}
+
+		// If a manual score is provided, update it in the DB
+		if req.Score != nil {
+			// Validate score range (-1.0 to 1.0)
+			if *req.Score < -1.0 || *req.Score > 1.0 {
+				RespondError(c, http.StatusBadRequest, ErrValidation, "Score must be between -1.0 and 1.0")
+				LogError("reanalyzeHandler: score out of range", nil)
+				return
+			}
+			// Optionally, you may want to update confidence as well, here set to NULL
+			log.Printf("[reanalyzeHandler] Attempting to update article score: articleID=%d, score=%f", articleID, *req.Score)
+			// Helper for substring check (since 'contains' is not a built-in function)
+			stringContains := func(s, substr string) bool {
+				return strings.Contains(s, substr)
+			}
+			err := db.UpdateArticleScore(dbConn, articleID, *req.Score, 0)
+			if err != nil {
+				// Check for constraint violation or data validation errors (sqlite returns error strings)
+				errMsg := err.Error()
+				if errMsg != "" && ( // SQLite constraint violation or similar
+				stringContains(errMsg, "constraint failed") ||
+					stringContains(errMsg, "UNIQUE constraint failed") ||
+					stringContains(errMsg, "CHECK constraint failed") ||
+					stringContains(errMsg, "NOT NULL constraint failed") ||
+					stringContains(errMsg, "FOREIGN KEY constraint failed") ||
+					stringContains(errMsg, "invalid") ||
+					stringContains(errMsg, "out of range") ||
+					stringContains(errMsg, "data type mismatch")) {
+					log.Printf("[reanalyzeHandler] Constraint/validation error updating article score: %v", err)
+					c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update score due to invalid data or constraint violation"})
+					return
+				}
+				log.Printf("[reanalyzeHandler] Unexpected DB error updating article score: %v", err)
+				RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to update article score")
+				LogError("reanalyzeHandler: failed to update article score", err)
+				return
+			}
+			log.Printf("[reanalyzeHandler] Article score updated successfully: articleID=%d, score=%f", articleID, *req.Score)
+			RespondSuccess(c, map[string]interface{}{
+				"status":     "score updated",
+				"article_id": articleID,
+				"score":      *req.Score,
+			})
+			return
+		}
 
 		// Set initial progress: Queued
 		setProgress(articleID, "Queued", "Scoring job queued", 0, "InProgress", "", nil)
@@ -692,12 +896,33 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			if score.Model != "ensemble" {
 				continue
 			}
+
 			var meta map[string]interface{}
 			if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
+				// Log the error for debugging purposes
+				log.Printf("[ensembleDetailsHandler] Error unmarshalling metadata for score ID %d: %v", score.ID, err)
+				// Add a record with just the score and created_at, without the metadata
+				details = append(details, map[string]interface{}{
+					"score":       score.Score,
+					"sub_results": []interface{}{},
+					"aggregation": map[string]interface{}{},
+					"created_at":  score.CreatedAt,
+					"error":       "Metadata parsing failed",
+				})
 				continue
 			}
-			subResults, _ := meta["sub_results"].([]interface{})
-			aggregation, _ := meta["aggregation"].(map[string]interface{})
+
+			// Safely extract sub_results and aggregation with proper type checking
+			subResults, ok1 := meta["sub_results"].([]interface{})
+			if !ok1 {
+				subResults = []interface{}{}
+			}
+
+			aggregation, ok2 := meta["aggregation"].(map[string]interface{})
+			if !ok2 {
+				aggregation = map[string]interface{}{}
+			}
+
 			details = append(details, map[string]interface{}{
 				"score":       score.Score,
 				"sub_results": subResults,
@@ -740,8 +965,34 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		if req.ArticleID == 0 || req.FeedbackText == "" {
-			RespondError(c, http.StatusBadRequest, ErrValidation, "Missing required fields")
+		// Validate all required fields
+		var missingFields []string
+		if req.ArticleID == 0 {
+			missingFields = append(missingFields, "article_id")
+		}
+		if req.FeedbackText == "" {
+			missingFields = append(missingFields, "feedback_text")
+		}
+		if req.UserID == "" {
+			missingFields = append(missingFields, "user_id")
+		}
+
+		// Validate Category if provided
+		validCategories := map[string]bool{
+			"agree":    true,
+			"disagree": true,
+			"unclear":  true,
+			"other":    true,
+			"":         true, // Allow empty for backward compatibility
+		}
+		if req.Category != "" && !validCategories[req.Category] {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid category value. Must be one of: agree, disagree, unclear, other")
+			LogError("feedbackHandler: invalid category", nil)
+			return
+		}
+
+		if len(missingFields) > 0 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, fmt.Sprintf("Missing required fields: %s", strings.Join(missingFields, ", ")))
 			LogError("feedbackHandler: missing required fields", nil)
 			return
 		}

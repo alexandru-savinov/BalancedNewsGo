@@ -1,0 +1,40 @@
+2025/04/14 13:15:55 Current working directory: C:\Users\user\Documents\dev\news_filter\newbalancer_go
+2025/04/14 13:15:55 <<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>
+2025/04/14 13:15:55 Loaded composite score config with 3 models.
+2025/04/14 13:15:55 [RSS] Scheduler started, fetching every 30 minutes
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (3 handlers)
+[GIN-debug] HEAD   /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (3 handlers)
+[GIN-debug] GET    /healthz                  --> main.main.func1 (3 handlers)
+[GIN-debug] GET    /api/articles             --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.getArticlesHandler.func1 (3 handlers)
+[GIN-debug] GET    /api/articles/:id         --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.getArticleByIDHandlerFixed.func2 (3 handlers)
+[GIN-debug] POST   /api/articles             --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.createArticleHandler.func3 (3 handlers)
+[GIN-debug] POST   /api/refresh              --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.refreshHandler.func4 (3 handlers)
+[GIN-debug] POST   /api/llm/reanalyze/:id    --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.reanalyzeHandler.func5 (3 handlers)
+[GIN-debug] GET    /api/articles/:id/summary --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.summaryHandler.func6 (3 handlers)
+[GIN-debug] GET    /api/articles/:id/bias    --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.biasHandler.func7 (3 handlers)
+[GIN-debug] GET    /api/articles/:id/ensemble --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.ensembleDetailsHandler.func8 (3 handlers)
+[GIN-debug] POST   /api/feedback             --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.feedbackHandler.func9 (3 handlers)
+[GIN-debug] GET    /api/feeds/healthz        --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.feedHealthHandler.func10 (3 handlers)
+[GIN-debug] GET    /api/llm/score-progress/:id --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.scoreProgressSSEHandler.func11 (3 handlers)
+[GIN-debug] GET    /api/debug/schema         --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.debugSchemaHandler.func12 (3 handlers)
+[GIN-debug] GET    /articles                 --> main.main.articlesHandler.func10 (3 handlers)
+[GIN-debug] GET    /article/:id              --> main.main.articleDetailHandler.func11 (3 handlers)
+[GIN-debug] GET    /metrics/validation       --> main.main.func2 (3 handlers)
+[GIN-debug] GET    /metrics/feedback         --> main.main.func3 (3 handlers)
+[GIN-debug] GET    /metrics/uncertainty      --> main.main.func4 (3 handlers)
+[GIN-debug] GET    /metrics/disagreements    --> main.main.func5 (3 handlers)
+[GIN-debug] GET    /metrics/outliers         --> main.main.func6 (3 handlers)
+[GIN-debug] GET    /                         --> main.main.func7 (3 handlers)
+2025/04/14 13:15:55 Server running on :8080
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on :8080
+[GIN-debug] [ERROR] listen tcp :8080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2025/04/14 13:15:55 Failed to start server: listen tcp :8080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+exit status 1

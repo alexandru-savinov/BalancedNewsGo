@@ -1,0 +1,1418 @@
+{
+  "info": {
+    "name": "Extended Article Rescoring Tests",
+    "description": "Comprehensive Postman collection for validating the article manual scoring (rescoring) workflow in the Go backend API. Covers creation, rescoring, retrieval, error handling, and integration with other features.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "TC1 - Rescore Existing Article (Valid Score)",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC1\",\n  \"content\": \"This is a test article for TC1.\",\n  \"url\": \"{{latestNewsUrl}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Fetch a real news article URL from NewsAPI and set it as latestNewsUrl",
+                  "pm.sendRequest({",
+                  "    url: 'https://newsapi.org/v2/top-headlines?country=us&pageSize=1&apiKey=4b07b82ea0ef463db6edd5d6d0ea9a38',",
+                  "    method: 'GET'",
+                  "}, function (err, res) {",
+                  "    if (!err && res.code === 200) {",
+                  "        var articles = res.json().articles;",
+                  "        if (articles && articles.length > 0 && articles[0].url) {",
+                  "            pm.environment.set(\"latestNewsUrl\", articles[0].url);",
+                  "        } else {",
+                  "            pm.environment.unset(\"latestNewsUrl\");",
+                  "        }",
+                  "    } else {",
+                  "        pm.environment.unset(\"latestNewsUrl\");",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC1\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC1\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Valid Score)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC1}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC1}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 0.5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article (Verify Score)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC1}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC1}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Score updated to 0.5\", function () {",
+                  "    pm.expect(json.composite_score).to.eql(0.5);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC2 - Rescore Non-existent Article",
+      "item": [
+        {
+          "name": "Rescore Non-existent Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "999999"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 0.5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC3 - Rescore with Invalid Score (Out of Range)",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC3\",\n  \"content\": \"This is a test article for TC3.\",\n  \"url\": \"https://example.com/tc3-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC3\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC3\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Invalid Score -2.0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC3}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC3}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": -2.0\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article (Verify Score Unchanged)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC3}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC3}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Score unchanged (not -2.0)\", function () {",
+                  "    pm.expect(json.composite_score).not.eql(-2.0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC4 - Rescore with Upper Boundary Score (1.0)",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC4\",\n  \"content\": \"This is a test article for TC4 - testing upper boundary score.\",\n  \"url\": \"https://example.com/tc4-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC4\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC4\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Upper Boundary 1.0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC4}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC4}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 1.0\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article (Verify Upper Boundary Score)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC4}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC4}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Score updated to 1.0\", function () {",
+                  "    pm.expect(json.composite_score).to.eql(1.0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC5 - Rescore with Lower Boundary Score (-1.0)",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC5\",\n  \"content\": \"This is a test article for TC5 - testing lower boundary score.\",\n  \"url\": \"https://example.com/tc5-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC5\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC5\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Lower Boundary -1.0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC5}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC5}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": -1.0\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article (Verify Lower Boundary Score)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC5}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC5}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Score updated to -1.0\", function () {",
+                  "    pm.expect(json.composite_score).to.eql(-1.0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC6 - Rescore with Invalid Score (Above Range)",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC6\",\n  \"content\": \"This is a test article for TC6 - testing score above range.\",\n  \"url\": \"https://example.com/tc6-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC6\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC6\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Above Range 1.1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC6}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC6}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 1.1\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article (Verify Score Unchanged)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC6}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC6}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Score unchanged (not 1.1)\", function () {",
+                  "    pm.expect(json.composite_score).not.eql(1.1);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC7 - Rescore with Null Score",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC7\",\n  \"content\": \"This is a test article for TC7 - testing null score.\",\n  \"url\": \"https://example.com/tc7-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC7\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC7\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Empty JSON)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC7}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC7}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Score Progress",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/score-progress/{{articleId_TC7}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "score-progress", "{{articleId_TC7}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC8 - Rescore with Non-Numeric Score",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC8\",\n  \"content\": \"This is a test article for TC8 - testing non-numeric score.\",\n  \"url\": \"https://example.com/tc8-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC8\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC8\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Non-Numeric Score)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC8}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC8}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": \"not-a-number\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article (Verify Score Unchanged)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC8}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC8}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Score is not 'not-a-number'\", function () {",
+                  "    pm.expect(typeof json.composite_score).to.not.eql('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC10 - Feedback Submission for Rescored Article",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC10\",\n  \"content\": \"This is a test article for TC10 - testing feedback after rescoring.\",\n  \"url\": \"https://example.com/tc10-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC10\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC10\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC10}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC10}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 0.75\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Feedback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId_TC10}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"This article seems correctly scored at 0.75\",\n  \"category\": \"score_feedback\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Response indicates feedback received\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"feedback received\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC11 - Ensemble Details After Rescoring",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC11\",\n  \"content\": \"This is a test article for TC11 - testing ensemble details after rescoring.\",\n  \"url\": \"https://example.com/tc11-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC11\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC11\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC11}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC11}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 0.25\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Ensemble Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC11}}/ensemble",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC11}}", "ensemble"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Ensemble score reflects manual score\", function () {",
+                  "    pm.expect(json.composite_score).to.eql(0.25);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC12 - Bias Information After Rescoring",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC12\",\n  \"content\": \"This is a test article for TC12 - testing bias information after rescoring.\",\n  \"url\": \"https://example.com/tc12-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC12\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC12\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC12}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC12}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": -0.5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Bias Information",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC12}}/bias",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC12}}", "bias"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Bias information reflects manual score\", function () {",
+                  "    pm.expect(json.composite_score).to.eql(-0.5);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC14 - Rescoring with Malformed JSON",
+      "item": [
+        {
+          "name": "Create Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC14\",\n  \"content\": \"This is a test article for TC14 - testing malformed JSON.\",\n  \"url\": \"https://example.com/tc14-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC14\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC14\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article (Malformed JSON)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC14}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC14}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 0.5,\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article (Verify Score Unchanged)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId_TC14}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId_TC14}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TC17 - Rescoring Effect on Article Listing",
+      "item": [
+        {
+          "name": "Create Article 1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC17-1\",\n  \"content\": \"This is test article 1 for TC17 - testing article listing.\",\n  \"url\": \"https://example.com/tc17-1-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC17_1\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC17_1\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Article 2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article TC17-2\",\n  \"content\": \"This is test article 2 for TC17 - testing article listing.\",\n  \"url\": \"https://example.com/tc17-2-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"articleId_TC17_2\", json.data.article_id);",
+                  "} else {",
+                  "    pm.environment.unset(\"articleId_TC17_2\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rescore Article 1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/reanalyze/{{articleId_TC17_1}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "reanalyze", "{{articleId_TC17_1}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"score\": 0.9\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Articles Listing",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles?source=test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"],
+              "query": [
+                {
+                  "key": "source",
+                  "value": "test"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "pm.test(\"Articles listing contains test articles\", function () {",
+                  "    var found = false;",
+                  "    for (var i = 0; i < json.length; i++) {",
+                  "        if (json[i].id == pm.environment.get(\"articleId_TC17_1\")) {",
+                  "            found = true;",
+                  "            pm.expect(json[i].composite_score).to.eql(0.9);",
+                  "        }",
+                  "    }",
+                  "    pm.expect(found).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    }
+  ]
+}

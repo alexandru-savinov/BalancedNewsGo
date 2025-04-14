@@ -1,0 +1,282 @@
+{
+  "info": {
+    "name": "Debug Collection",
+    "description": "Collection for debugging API errors",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Debug Feedback Handler",
+      "item": [
+        {
+          "name": "Get Database Schema",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/debug/schema",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "debug", "schema"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains schema information\", function () {",
+                  "    var json = pm.response.json();",
+                  "    console.log(JSON.stringify(json, null, 2));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Feedback - Debug",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Debug",
+                "value": "true"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": 1,\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"This is a test feedback for debugging.\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Response received\", function () {",
+                  "    console.log('Status code:', pm.response.code);",
+                  "    console.log('Response body:', pm.response.text());",
+                  "});",
+                  "",
+                  "try {",
+                  "    var json = pm.response.json();",
+                  "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
+                  "} catch (e) {",
+                  "    console.log('Error parsing JSON:', e.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Debug Article Creation",
+      "item": [
+        {
+          "name": "Create Article - Debug",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Debug",
+                "value": "true"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Debug Test Article\",\n  \"content\": \"This is a test article for debugging.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/debug-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Response received\", function () {",
+                  "    console.log('Status code:', pm.response.code);",
+                  "    console.log('Response body:', pm.response.text());",
+                  "});",
+                  "",
+                  "try {",
+                  "    var json = pm.response.json();",
+                  "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
+                  "    if (json.data && json.data.article_id) {",
+                  "        pm.environment.set(\"debugArticleId\", json.data.article_id);",
+                  "        console.log('Set debugArticleId to:', json.data.article_id);",
+                  "    }",
+                  "} catch (e) {",
+                  "    console.log('Error parsing JSON:', e.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Article - Debug",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{debugArticleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{debugArticleId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Response received\", function () {",
+                  "    console.log('Status code:', pm.response.code);",
+                  "    console.log('Response body:', pm.response.text());",
+                  "});",
+                  "",
+                  "try {",
+                  "    var json = pm.response.json();",
+                  "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
+                  "} catch (e) {",
+                  "    console.log('Error parsing JSON:', e.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Debug Get Articles",
+      "item": [
+        {
+          "name": "Get Articles - Debug",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles?debug=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"],
+              "query": [
+                {
+                  "key": "debug",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Response received\", function () {",
+                  "    console.log('Status code:', pm.response.code);",
+                  "    console.log('Response headers:', pm.response.headers.all());",
+                  "});",
+                  "",
+                  "try {",
+                  "    var json = pm.response.json();",
+                  "    console.log('Response structure:', Object.keys(json));",
+                  "    if (json.data && Array.isArray(json.data)) {",
+                  "        console.log('Number of articles:', json.data.length);",
+                  "        if (json.data.length > 0) {",
+                  "            console.log('First article structure:', Object.keys(json.data[0]));",
+                  "            console.log('First article sample:', {",
+                  "                id: json.data[0].id,",
+                  "                title: json.data[0].title,",
+                  "                source: json.data[0].source,",
+                  "                composite_score: json.data[0].composite_score,",
+                  "                confidence: json.data[0].confidence",
+                  "            });",
+                  "        }",
+                  "    }",
+                  "} catch (e) {",
+                  "    console.log('Error parsing JSON:', e.message);",
+                  "    console.log('Raw response:', pm.response.text().substring(0, 500) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Debug Ensemble Details",
+      "item": [
+        {
+          "name": "Get Ensemble Details - Debug",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{debugArticleId}}/ensemble?debug=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{debugArticleId}}", "ensemble"],
+              "query": [
+                {
+                  "key": "debug",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Response received\", function () {",
+                  "    console.log('Status code:', pm.response.code);",
+                  "    console.log('Response body:', pm.response.text());",
+                  "});",
+                  "",
+                  "try {",
+                  "    var json = pm.response.json();",
+                  "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
+                  "} catch (e) {",
+                  "    console.log('Error parsing JSON:', e.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    }
+  ]
+}

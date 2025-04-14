@@ -1,29 +1,53 @@
 package db
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"database/sql"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
 
-type Article struct {
-	ID             int64     `db:"id"`
-	Source         string    `db:"source"`
-	PubDate        time.Time `db:"pub_date"`
-	URL            string    `db:"url"`
-	Title          string    `db:"title"`
-	Content        string    `db:"content"`
-	CreatedAt      time.Time `db:"created_at"`
-	CompositeScore *float64  `db:"composite_score"` // Use pointer for nullable
-	Confidence     *float64  `db:"confidence"`      // Use pointer for nullable
+var ErrArticleNotFound = errors.New("db: article not found")
 
-	Status      string     `db:"status"`
-	FailCount   int        `db:"fail_count"`
-	LastAttempt *time.Time `db:"last_attempt"`
-	Escalated   bool       `db:"escalated"`
+type Article struct {
+	ID             int64          `db:"id" json:"id"`
+	Source         string         `db:"source" json:"source"`
+	PubDate        time.Time      `db:"pub_date" json:"pub_date"`
+	URL            string         `db:"url" json:"url"`
+	Title          string         `db:"title" json:"title"`
+	Content        string         `db:"content" json:"content"`
+	CreatedAt      time.Time      `db:"created_at" json:"created_at"`
+	CompositeScore *float64       `db:"composite_score" json:"composite_score"` // Use pointer for nullable
+	Confidence     *float64       `db:"confidence" json:"confidence"`           // Use pointer for nullable
+	ScoreSource    sql.NullString `db:"score_source" json:"score_source"`       // "llm" or "manual", now nullable
+
+	Status      string     `db:"status" json:"status"`
+	FailCount   int        `db:"fail_count" json:"fail_count"`
+	LastAttempt *time.Time `db:"last_attempt" json:"last_attempt"`
+	Escalated   bool       `db:"escalated" json:"escalated"`
+}
+
+// Custom JSON marshaling for Article to handle sql.NullString for ScoreSource
+func (a Article) MarshalJSON() ([]byte, error) {
+	type Alias Article
+	return json.Marshal(&struct {
+		ScoreSource string `json:"score_source"`
+		*Alias
+	}{
+		ScoreSource: func() string {
+			if a.ScoreSource.Valid {
+				return a.ScoreSource.String
+			}
+			return ""
+		}(),
+		Alias: (*Alias)(&a),
+	})
 }
 
 type LLMScore struct {
@@ -94,6 +118,9 @@ CREATE TABLE IF NOT EXISTS feedback (
 	article_id INTEGER,
 	user_id TEXT,
 	feedback_text TEXT NOT NULL,
+	category TEXT,
+	ensemble_output_id INTEGER,
+	source TEXT,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	FOREIGN KEY(article_id) REFERENCES articles(id)
 );
@@ -119,8 +146,12 @@ CREATE TABLE IF NOT EXISTS labels (
 		"ALTER TABLE articles ADD COLUMN fail_count INTEGER DEFAULT 0;",
 		"ALTER TABLE articles ADD COLUMN last_attempt DATETIME;",
 		"ALTER TABLE articles ADD COLUMN escalated BOOLEAN DEFAULT 0;",
-		"ALTER TABLE articles ADD COLUMN composite_score REAL;", // ADDED Migration
-		"ALTER TABLE articles ADD COLUMN confidence REAL;",      // ADDED Migration
+		"ALTER TABLE articles ADD COLUMN composite_score REAL;",       // ADDED Migration
+		"ALTER TABLE articles ADD COLUMN confidence REAL;",            // ADDED Migration
+		"ALTER TABLE articles ADD COLUMN score_source TEXT;",          // ADDED Migration for score_source
+		"ALTER TABLE feedback ADD COLUMN category TEXT;",              // ADDED Migration for feedback category
+		"ALTER TABLE feedback ADD COLUMN source TEXT;",                // ADDED Migration for feedback source
+		"ALTER TABLE feedback ADD COLUMN ensemble_output_id INTEGER;", // ADDED Migration for feedback ensemble_output_id
 	}
 
 	for _, stmt := range alterStatements {
@@ -143,8 +174,8 @@ func isDuplicateColumnError(err error) bool {
 }
 
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
-	res, err := db.NamedExec(`INSERT INTO articles (source, pub_date, url, title, content) 
-	VALUES (:source, :pub_date, :url, :title, :content)`, article)
+	res, err := db.NamedExec(`INSERT INTO articles (source, pub_date, url, title, content, composite_score, confidence, score_source)
+	VALUES (:source, :pub_date, :url, :title, :content, :composite_score, :confidence, :score_source)`, article)
 	if err != nil {
 		return 0, err
 	}
@@ -161,8 +192,23 @@ func InsertLabel(db *sqlx.DB, label *Label) (int64, error) {
 }
 
 func InsertFeedback(db *sqlx.DB, feedback *Feedback) (int64, error) {
-	res, err := db.NamedExec(`INSERT INTO feedback (article_id, user_id, feedback_text)
-		VALUES (:article_id, :user_id, :feedback_text)`, feedback)
+	res, err := db.NamedExec(`INSERT INTO feedback (
+		article_id, 
+		user_id, 
+		feedback_text, 
+		category, 
+		ensemble_output_id, 
+		source,
+		created_at
+	) VALUES (
+		:article_id, 
+		:user_id, 
+		:feedback_text, 
+		:category, 
+		:ensemble_output_id, 
+		:source,
+		CURRENT_TIMESTAMP
+	)`, feedback)
 	if err != nil {
 		return 0, err
 	}
@@ -200,13 +246,19 @@ func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
 }
 
 func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
-	_, err := db.Exec(`UPDATE articles SET composite_score = ?, confidence = ? WHERE id = ?`, score, confidence, articleID)
+	_, err := db.Exec(`UPDATE articles SET composite_score = ?, confidence = ?, score_source = 'manual' WHERE id = ?`, score, confidence, articleID)
+	return err
+}
+
+// UpdateArticleScoreLLM sets the score and score_source to 'llm'
+func UpdateArticleScoreLLM(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
+	_, err := db.Exec(`UPDATE articles SET composite_score = ?, confidence = ?, score_source = 'llm' WHERE id = ?`, score, confidence, articleID)
 	return err
 }
 
 // FetchArticles with optional filters and pagination.
 func FetchArticles(db *sqlx.DB, source, leaning string, limit, offset int) ([]Article, error) {
-	query := "SELECT * FROM articles WHERE 1=1"
+	query := "SELECT id, source, pub_date, url, title, content, created_at, composite_score, confidence, COALESCE(score_source, '') AS score_source, status, fail_count, last_attempt, escalated FROM articles WHERE 1=1"
 	args := make([]interface{}, 0, 3)
 
 	if source != "" {
@@ -230,8 +282,13 @@ func FetchArticles(db *sqlx.DB, source, leaning string, limit, offset int) ([]Ar
 func FetchArticleByID(db *sqlx.DB, id int64) (Article, error) {
 	var article Article
 	err := db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
-
-	return article, err
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Article{}, ErrArticleNotFound
+		}
+		return Article{}, err
+	}
+	return article, nil
 }
 
 // FetchLLMScores returns all LLM scores for an article.
@@ -257,4 +314,35 @@ func FetchLatestEnsembleScore(db *sqlx.DB, articleID int64) (float64, error) {
 		return 0.0, err
 	}
 	return score, nil
+}
+
+// FetchLatestConfidence returns the confidence value from metadata of the most recent 'ensemble' score record for an article.
+// Returns 0.0 and nil error if no ensemble score is found or if metadata doesn't contain confidence.
+func FetchLatestConfidence(db *sqlx.DB, articleID int64) (float64, error) {
+	var metadata string
+	// Query for the metadata field of the latest record matching article_id and model='ensemble'
+	err := db.Get(&metadata, "SELECT metadata FROM llm_scores WHERE article_id = ? AND model = 'ensemble' ORDER BY created_at DESC LIMIT 1", articleID)
+	if err != nil {
+		// If no rows are found, it's not a fatal error, just means no ensemble score exists yet.
+		if err.Error() == "sql: no rows in result set" { // Check specifically for no rows error
+			return 0.0, nil // Return 0.0 confidence, no error
+		}
+		// For other potential errors (DB connection issues, etc.), return the error.
+		return 0.0, err
+	}
+
+	// Parse metadata JSON to extract confidence
+	var meta map[string]interface{}
+	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
+		// If metadata can't be parsed, return a default confidence but no error
+		return 0.0, nil
+	}
+
+	// Try to extract confidence from metadata
+	if conf, ok := meta["confidence"].(float64); ok {
+		return conf, nil
+	}
+
+	// If confidence not found in metadata, return default
+	return 0.0, nil
 }

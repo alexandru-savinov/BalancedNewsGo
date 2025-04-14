@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -26,6 +27,8 @@ type ErrorDetail struct {
 
 // Helper to send a standardized success response
 func RespondSuccess(c *gin.Context, data interface{}) {
+	jsonBytes, _ := json.Marshal(SuccessResponse{Success: true, Data: data})
+	log.Printf("[RespondSuccess] JSON response: %s", string(jsonBytes))
 	c.JSON(http.StatusOK, SuccessResponse{
 		Success: true,
 		Data:    data,

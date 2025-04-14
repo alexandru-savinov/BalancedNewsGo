@@ -52,3 +52,5 @@ _Reference: [score_data_flow_analysis.md](../score_data_flow_analysis.md)_
 [2025-04-12 18:41:45] - UMB: Updated models in config, added secondary API key. New JSON parsing error (markdown backticks) identified with tokyotech-llm model. Debug task cancelled by user; decided to ignore parsing error for now.
 [2025-04-12 19:28:30] - Fixed score display issue: Modified getArticlesHandler in internal/api/api.go to use stored ensemble score instead of recalculating.
 [2025-04-12 19:28:30] - Fixed score display issue: Modified getArticlesHandler in internal/api/api.go to use stored ensemble score instead of recalculating.
+
+[2025-04-13 17:23:23] - Added and documented a comprehensive Postman-based rescoring workflow test plan (see memory-bank/postman_rescoring_test_plan.md). Plan covers test case design, environment setup, data preparation, request sequencing, response validation, edge case handling, expected outcomes, and automation for regression testing.

@@ -2,5 +2,6 @@
     "sonarlint.connectedMode.project": {
         "connectionId": "alexandru-savinov",
         "projectKey": "alexandru-savinov_BalancedNewsGo"
-    }
+    },
+    "zencoder.enableRepoIndexing": true
 }

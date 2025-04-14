@@ -1,0 +1,128 @@
+2025/04/14 13:15:55 Current working directory: C:\Users\user\Documents\dev\news_filter\newbalancer_go
+2025/04/14 13:15:55 <<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>
+2025/04/14 13:15:55 Loaded composite score config with 3 models.
+2025/04/14 13:15:55 [RSS] Scheduler started, fetching every 30 minutes
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (3 handlers)
+[GIN-debug] HEAD   /static/*filepath         --> github.com/gin-gonic/gin.(*RouterGroup).createStaticHandler.func1 (3 handlers)
+[GIN-debug] GET    /healthz                  --> main.main.func1 (3 handlers)
+[GIN-debug] GET    /api/articles             --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.getArticlesHandler.func1 (3 handlers)
+[GIN-debug] GET    /api/articles/:id         --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.getArticleByIDHandlerFixed.func2 (3 handlers)
+[GIN-debug] POST   /api/articles             --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.createArticleHandler.func3 (3 handlers)
+[GIN-debug] POST   /api/refresh              --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.refreshHandler.func4 (3 handlers)
+[GIN-debug] POST   /api/llm/reanalyze/:id    --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.reanalyzeHandler.func5 (3 handlers)
+[GIN-debug] GET    /api/articles/:id/summary --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.summaryHandler.func6 (3 handlers)
+[GIN-debug] GET    /api/articles/:id/bias    --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.biasHandler.func7 (3 handlers)
+[GIN-debug] GET    /api/articles/:id/ensemble --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.ensembleDetailsHandler.func8 (3 handlers)
+[GIN-debug] POST   /api/feedback             --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.feedbackHandler.func9 (3 handlers)
+[GIN-debug] GET    /api/feeds/healthz        --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.feedHealthHandler.func10 (3 handlers)
+[GIN-debug] GET    /api/llm/score-progress/:id --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.scoreProgressSSEHandler.func11 (3 handlers)
+[GIN-debug] GET    /api/debug/schema         --> github.com/alexandru-savinov/BalancedNewsGo/internal/api.RegisterRoutes.debugSchemaHandler.func12 (3 handlers)
+[GIN-debug] GET    /articles                 --> main.main.articlesHandler.func10 (3 handlers)
+[GIN-debug] GET    /article/:id              --> main.main.articleDetailHandler.func11 (3 handlers)
+[GIN-debug] GET    /metrics/validation       --> main.main.func2 (3 handlers)
+[GIN-debug] GET    /metrics/feedback         --> main.main.func3 (3 handlers)
+[GIN-debug] GET    /metrics/uncertainty      --> main.main.func4 (3 handlers)
+[GIN-debug] GET    /metrics/disagreements    --> main.main.func5 (3 handlers)
+[GIN-debug] GET    /metrics/outliers         --> main.main.func6 (3 handlers)
+[GIN-debug] GET    /                         --> main.main.func7 (3 handlers)
+2025/04/14 13:15:55 Server running on :8080
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on :8080
+2025/04/14 13:45:55 [RSS] Scheduled fetch started
+2025/04/14 13:45:55 [RSS] Fetching feed: https://www.huffpost.com/section/front-page/feed
+2025/04/14 13:45:55 [RSS] Failed to parse feed https://www.huffpost.com/section/front-page/feed: Get "https://www.huffpost.com/section/front-page/feed": dial tcp: lookup www.huffpost.com: no such host
+2025/04/14 13:45:55 [RSS] Fetching feed: https://www.theguardian.com/world/rss
+2025/04/14 13:45:55 [RSS] Failed to parse feed https://www.theguardian.com/world/rss: Get "https://www.theguardian.com/world/rss": dial tcp: lookup www.theguardian.com: no such host
+2025/04/14 13:45:55 [RSS] Fetching feed: http://www.msnbc.com/feeds/latest
+2025/04/14 13:45:55 [RSS] Failed to parse feed http://www.msnbc.com/feeds/latest: Get "http://www.msnbc.com/feeds/latest": dial tcp: lookup www.msnbc.com: no such host
+2025/04/14 14:15:55 [RSS] Scheduled fetch started
+2025/04/14 14:15:55 [RSS] Fetching feed: https://www.huffpost.com/section/front-page/feed
+2025/04/14 14:15:55 [RSS] Fetching feed: https://www.theguardian.com/world/rss
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/sudans-rsf-kills-civilians-in-attacks-on-darfur-refugee-camps
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/11/coup-leader-brice-nguema-favourite-in-presidential-race-as-gabon-goes-to-the-polls
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/11/zimbabwe-starts-compensating-white-farmers-25-years-after-land-seizures
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/environment/2025/apr/11/weather-tracker-early-heatwave-sweeps-northern-india
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/global-development/2025/apr/11/bobi-wine-president-campaign-uganda-2026-election-yoweri-museveni-regime
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/09/uk-to-co-host-global-conference-with-aim-of-resolving-sudans-civil-war
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/14/ecuador-presidential-election-daniel-noboa
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/us-news/2025/apr/13/us-deportations-el-salvador-marco-rubio
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/ecuador-presidential-runoff-election-noboa-gonzalez
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/us-news/2025/apr/12/kilmar-abrego-garcia-wrongly-deported
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/music/2025/apr/12/jamaican-reggae-artist-max-romeo-dies-aged-80
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/film/2025/apr/12/ted-kotcheff-director-of-first-blood-weekend-at-bernies-and-wake-in-fright-dies-aged-94
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/14/no-winners-in-a-trade-war-proclaims-chinas-xi-as-he-heads-to-vietnam-on-charm-offensive
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/business/2025/apr/14/the-sky-wont-fall-china-plays-down-trump-tariff-risks
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/politics/2025/apr/14/uk-mp-wera-hobhouse-refused-entry-hong-china-blacklist-human-rights
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/14/china-taiwan-military-drills-trump-barges-asia-pacific-security
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/uk-news/2025/apr/13/uk-could-target-parts-of-chinese-state-under-new-foreign-influence-rules
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/xi-jinping-seeks-to-strengthen-economic-ties-during-tour-of-south-east-asia
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/australia-news/2025/apr/14/anthony-albanese-liberal-campaign-cost-of-living-diss-track-reaction
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/business/2025/apr/14/sony-hikes-playstation-5-price-by-25-as-trump-tariffs-bite
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/australia-news/2025/apr/14/a-diss-track-and-harry-dutton-campaign-cameo-the-coalition-wants-to-show-it-gets-it
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/australia-news/live/2025/apr/14/australia-federal-election-2025-live-anthony-albanese-peter-dutton-housing-tax-cost-of-living-labor-coalition-greens-ntwnfb
+2025/04/14 14:15:55 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/australia-news/2025/apr/14/i-shouldve-done-the-elbow-bump-plibersek-and-albanese-brush-off-awkward-greeting-at-labor-election-campaign-launch
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/australia-news/2025/apr/14/economists-criticise-labor-coalition-housing-policies-anthony-albanese-peter-dutton-property-prices
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/live/2025/apr/14/ukraine-russia-war-zelenskyy-trump-putin-europe-latest-live-news
+2025/04/14 14:15:56 [RSS] Inserted new article: https://www.theguardian.com/environment/2025/apr/14/weather-tracker-north-west-italy-braces-for-thunderstorms-and-snow
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/14/hungary-poised-to-adopt-constitutional-amendment-to-ban-lgbtq-gatherings
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/ukraine-civilian-deaths-sumy-attack-russia-us-talks-trump-putin-analysis
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/russian-missile-strike-kills-injured-ukraine-sumy
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/artanddesign/2025/apr/13/utoya-island-national-memorial-to-22-july-attacks-matias-faldbakken-upholding-norway-oslo
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/palestinian-medic-assad-al-nsasrah-attacked-gaza-detained-israel-says-icrc
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/gaza-city-hospital-hit-ahli-baptist-civil-defence-agency-israel-intensifies-military-operations-katz
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/labour-mps-pressure-foreign-office-to-recognise-palestinian-statehood
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/12/erdogan-lambasts-israel-for-undermining-stability-in-syria
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/12/iran-foreign-minister-oman-us-nuclear-programme-talks
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/12/idf-unit-killing-palestinian-paramedics-golani-brigade
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/13/tulip-siddiq-uk-mp-arrest-warrant-issued-bangladesh
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/10/peter-barbie-reynolds-british-couple-interrogated-taliban-since-imprisonment
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/10/mumbai-attacks-tahawwur-hussain-rana
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/technology/2025/apr/10/apple-flying-iphones-india-us-avoid-trump-tariffs
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/04/eu-urged-to-put-human-rights-centre-stage-at-first-central-asia-summit
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/world/2025/apr/03/us-tourist-arrested-for-landing-on-forbidden-indian-tribal-island
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/politics/live/2025/apr/14/scunthorpe-british-steelworks-keir-starmer-tariffs-uk-politics-live
+2025/04/14 14:15:56 [RSS] Inserted new article: https://www.theguardian.com/uk-news/2025/apr/14/gambling-commission-charges-15-over-bets-into-timing-of-2024-general-election
+2025/04/14 14:15:56 [RSS] Inserted new article: https://www.theguardian.com/uk-news/2025/apr/14/stop-brexit-man-steve-bray-cleared-flouting-ban-music-outside-parliament
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/business/2025/apr/14/ageas-belgian-insurer-buys-sheilas-wheels-owner-esure-deal
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/culture/2025/apr/14/white-lotus-star-aimee-lou-wood-snl-mean-unfunny-sketch-skit
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/business/2025/apr/13/no-guarantee-british-steel-plant-will-be-able-to-continue-says-business-secretary
+2025/04/14 14:15:56 [RSS] Inserted new article: https://www.theguardian.com/us-news/2025/apr/14/us-military-extremism-the-base
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/us-news/live/2025/apr/14/donald-trump-tariffs-china-smartphones-computers-semiconductors-immigration-us-politics-live-updates
+2025/04/14 14:15:56 [RSS] Inserted new article: https://www.theguardian.com/us-news/2025/apr/14/paper-receipt-chemical-bisphenol-s
+2025/04/14 14:15:56 [RSS] Inserted new article: https://www.theguardian.com/us-news/2025/apr/14/critics-slam-deregulation-of-crypto-as-trump-family-expands-its-footprint-in-industry
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/us-news/2025/apr/14/tortoise-reunited-family-mississippi-tornadoes
+2025/04/14 14:15:56 [RSS] Duplicate article by URL skipped: https://www.theguardian.com/us-news/2025/apr/13/trump-pete-marocco-leaves-state-department
+2025/04/14 14:15:56 [RSS] Fetching feed: http://www.msnbc.com/feeds/latest
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/trump-impeachment-democrats-congress-operation-anti-king-rcna200920
+2025/04/14 14:15:57 [RSS] Inserted new article: https://www.msnbc.com/morning-joe/watch/-more-uncertainty-more-mixed-messaging-wh-can-t-seem-to-get-story-straight-on-tariffs-237294661921
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/meghan-markles-podcast-post-partum-preeclampsia-backlash-rcna201013
+2025/04/14 14:15:57 [RSS] Inserted new article: https://www.msnbc.com/opinion/msnbc-opinion/pam-bondi-justice-department-punish-lawyers-rcna200220
+2025/04/14 14:15:57 [RSS] Inserted new article: https://www.msnbc.com/morning-joe/watch/suspect-in-custody-after-overnight-arson-at-pennsylvania-gov-josh-shapiro-s-residence-237293637630
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/us-china-tariffs-trump-conflict-rcna200851
+2025/04/14 14:15:57 [RSS] Inserted new article: https://www.msnbc.com/way-too-early/watch/aoc-bernie-sanders-hold-los-angeles-rally-over-weekend-237293637659
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/trump-tariffs-pause-bond-market-rcna200659
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/north-carolina-supreme-court-election-allison-riggs-jefferson-griffin-rcna200998
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/trump-masculinity-white-house-elon-musk-rcna200819
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/trump-musk-doge-defund-kids-national-history-day-rcna200892
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/trump-cognitive-test-physical-exam-annual-2025-rcna200983
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/alina-habba-new-jersey-phil-murphy-matthew-platkin-immigration-rcna200902
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/deadline-white-house/deadline-legal-blog/supreme-court-trump-immunity-ruling-ask-jordan-rcna200839
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/mahmoud-khalil-deportation-hearing-immigration-judge-rcna200869
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/greenland-base-commander-fired-jd-vance-rcna200820
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/trump-tariffs-trade-economy-stock-market-rcna200416
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/trump-punishing-law-firms-rewriting-election-history-rcna200923
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/trump-tariffs-pause-bond-market-rcna200659
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/supreme-court-amy-coney-barrett-elon-musk-trump-rcna200324
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/luigi-mangione-death-penalty-pam-bondi-federal-case-political-stunt-rcna200990
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/warfare-movie-review-navy-seal-mendoza-garland-criticism-rcna200676
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/opinion/msnbc-opinion/nevada-18-states-are-suing-trump-election-executive-order-rcna200427
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/save-act-house-voting-rights-married-women-last-name-rcna200948
+2025/04/14 14:15:57 [RSS] Duplicate article by URL skipped: https://www.msnbc.com/top-stories/latest/immigrants-social-security-numbers-deleted-trump-rcna200911
+exit status 0xc000013a

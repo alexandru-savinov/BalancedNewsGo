@@ -1,0 +1,21 @@
+{
+  "id": "debug-env",
+  "name": "Debug Environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "enabled": true
+    },
+    {
+      "key": "articleId",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "debug",
+      "value": "true",
+      "enabled": true
+    }
+  ]
+}
