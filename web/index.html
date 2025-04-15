@@ -92,17 +92,26 @@
 
     <!-- Score Article Section -->
     <div class="score-article-section">
-        <button type="button" class="score-article-btn" onclick="startScoring(this)" data-article-id="${articleId}">
-            <span class="score-btn-label">Score this article</span>
-            <span class="score-btn-spinner" style="display:none;">⏳</span>
+        <!-- Manual Scoring Input and Button -->
+        <label for="manual-score-input-${articleId}">Manual Score:</label>
+        <input type="number" id="manual-score-input-${articleId}" name="manual-score-input" min="-1" max="1" step="0.01" placeholder="Enter score (-1 to 1)" />
+        <button type="button" class="manual-score-btn" onclick="manualScoreArticle(this)" data-article-id="${articleId}">
+            Submit Manual Score
         </button>
-        <div class="score-progress-container" style="display:none;">
+        <div class="manual-score-error-message" style="color:red;display:none;margin-top:0.5em;"></div>
+
+        <!-- LLM Rescoring Button -->
+        <button type="button" class="llm-rescore-btn" onclick="llmRescoreArticle(this)" data-article-id="${articleId}">
+            LLM Rescore Article
+            <span class="llm-rescore-spinner" style="display:none;">⏳</span>
+        </button>
+        <div class="llm-rescore-progress-container" style="display:none;">
             <div class="score-progress-bar-bg">
                 <div class="score-progress-bar"></div>
             </div>
             <ul class="score-progress-messages"></ul>
         </div>
-        <div class="score-error-message" style="color:red;display:none;margin-top:0.5em;"></div>
+        <div class="llm-rescore-error-message" style="color:red;display:none;margin-top:0.5em;"></div>
     </div>
 
     <!-- Advanced View -->
@@ -792,52 +801,50 @@
         }
     </script>
 <script>
-    // Function to start scoring an article
-    function startScoring(btn) {
-        const article = btn.closest('article[data-article-id]');
-        const articleId = article.getAttribute('data-article-id');
-        const progressSection = article.querySelector('.score-article-section');
-        const progressBar = progressSection.querySelector('.score-progress-bar');
-        const progressContainer = progressSection.querySelector('.score-progress-container');
-        const progressMessages = progressSection.querySelector('.score-progress-messages');
-        const errorMessage = progressSection.querySelector('.score-error-message');
-        const btnLabel = btn.querySelector('.score-btn-label');
-        const btnSpinner = btn.querySelector('.score-btn-spinner');
-
-        // Reset UI
-        btn.disabled = true;
-        btnLabel.style.display = 'none';
-        btnSpinner.style.display = '';
-        progressContainer.style.display = '';
-        progressBar.style.width = '0%';
-        progressMessages.innerHTML = '';
-        errorMessage.style.display = 'none';
-        errorMessage.textContent = '';
-
-        // Start scoring with a default score of 0 (neutral)
-        fetch(`/api/llm/reanalyze/${articleId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ score: 0 })
-        })
-        .then(resp => {
-            if (!resp.ok) {
-                return resp.json().then(data => {
-                    throw new Error(data.error?.message || `HTTP error ${resp.status}`);
-                });
-            }
-            return resp.json();
-        })
-        .then(data => {
-            // Open SSE connection to monitor progress
-            const evtSource = new EventSource(`/api/llm/score-progress/${articleId}`);
-            
-            evtSource.onmessage = function(event) {
-                try {
-                    const progress = JSON.parse(event.data);
-                    console.log("SSE Progress:", progress);
+        // Function to start LLM rescoring an article
+        function llmRescoreArticle(btn) {
+            const article = btn.closest('article[data-article-id]');
+            const articleId = article.getAttribute('data-article-id');
+            const progressSection = article.querySelector('.score-article-section');
+            const progressBar = progressSection.querySelector('.score-progress-bar');
+            const progressContainer = progressSection.querySelector('.llm-rescore-progress-container');
+            const progressMessages = progressSection.querySelector('.score-progress-messages');
+            const errorMessage = progressSection.querySelector('.llm-rescore-error-message');
+            const btnSpinner = btn.querySelector('.llm-rescore-spinner');
+    
+            // Reset UI
+            btn.disabled = true;
+            btnSpinner.style.display = '';
+            progressContainer.style.display = '';
+            progressBar.style.width = '0%';
+            progressMessages.innerHTML = '';
+            errorMessage.style.display = 'none';
+            errorMessage.textContent = '';
+    
+            // Start LLM rescoring
+            fetch(`/api/llm/reanalyze/${articleId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: '{}'
+            })
+            .then(resp => {
+                if (!resp.ok) {
+                    return resp.json().then(data => {
+                        throw new Error(data.error?.message || `HTTP error ${resp.status}`);
+                    });
+                }
+                return resp.json();
+            })
+            .then(data => {
+                // Open SSE connection to monitor progress
+                const evtSource = new EventSource(`/api/llm/score-progress/${articleId}`);
+                
+                evtSource.onmessage = function(event) {
+                    try {
+                        const progress = JSON.parse(event.data);
+                        console.log("SSE Progress:", progress);
 
                     // Update progress bar and messages based on status
                     if (progress.status === "in_progress" || progress.status === "pending") {
@@ -855,7 +862,7 @@
                                 progressMessages.appendChild(li);
                             }
                         }
-                    } 
+                    }
                     else if (progress.status === "completed") {
                         // Scoring completed successfully
                         progressBar.style.width = '100%';

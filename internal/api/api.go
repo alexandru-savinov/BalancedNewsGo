@@ -75,6 +75,7 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	router.POST("/api/articles", createArticleHandler(dbConn))
 	router.POST("/api/refresh", refreshHandler(rssCollector))
 	router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(llmClient, dbConn))
+	router.POST("/api/manual-score/:id", manualScoreHandler(dbConn))
 	router.GET("/api/articles/:id/summary", summaryHandler(dbConn))
 	router.GET("/api/articles/:id/bias", biasHandler(dbConn))
 	router.GET("/api/articles/:id/ensemble", ensembleDetailsHandler(dbConn))
@@ -371,7 +372,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 		articleID := int64(id)
 
 		// Check if article exists
-		_, err = db.FetchArticleByID(dbConn, articleID)
+		article, err := db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Article not found"})
@@ -382,58 +383,47 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 			return
 		}
 
-		// Parse JSON body for manual score update
-		var req struct {
-			Score *float64 `json:"score"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
+		// Parse raw JSON body to check for forbidden fields
+		var raw map[string]interface{}
+		if err := c.ShouldBindJSON(&raw); err != nil {
 			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid JSON body")
 			LogError("reanalyzeHandler: invalid JSON body", err)
 			return
 		}
+		if _, hasScore := raw["score"]; hasScore {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Payload must not contain 'score' field")
+			LogError("reanalyzeHandler: payload contains forbidden 'score' field", nil)
+			return
+		}
 
-		// If a manual score is provided, update it in the DB
-		if req.Score != nil {
-			// Validate score range (-1.0 to 1.0)
-			if *req.Score < -1.0 || *req.Score > 1.0 {
-				RespondError(c, http.StatusBadRequest, ErrValidation, "Score must be between -1.0 and 1.0")
-				LogError("reanalyzeHandler: score out of range", nil)
+		// API-first: Pre-flight LLM provider check (fail fast if unavailable)
+		// Use the first model from config for a dry-run health check
+		cfg, cfgErr := llm.LoadCompositeScoreConfig()
+		if cfgErr != nil || len(cfg.Models) == 0 {
+			RespondError(c, http.StatusServiceUnavailable, ErrInternal, "LLM provider configuration unavailable")
+			LogError("reanalyzeHandler: LLM config unavailable", cfgErr)
+			return
+		}
+		modelName := cfg.Models[0].ModelName
+		// Set a short timeout for the pre-flight check
+		originalTimeout := 10 * time.Second // Default/fallback
+		llmClient.SetHTTPLLMTimeout(2 * time.Second)
+		_, healthErr := llmClient.ScoreWithModel(article, modelName)
+		llmClient.SetHTTPLLMTimeout(originalTimeout)
+		if healthErr != nil {
+			errMsg := healthErr.Error()
+			if strings.Contains(errMsg, "503") || strings.Contains(errMsg, "Service Unavailable") {
+				RespondError(c, http.StatusServiceUnavailable, ErrInternal, "LLM provider unavailable (503)")
+				LogError("reanalyzeHandler: LLM provider unavailable (503)", healthErr)
 				return
 			}
-			// Optionally, you may want to update confidence as well, here set to NULL
-			log.Printf("[reanalyzeHandler] Attempting to update article score: articleID=%d, score=%f", articleID, *req.Score)
-			// Helper for substring check (since 'contains' is not a built-in function)
-			stringContains := func(s, substr string) bool {
-				return strings.Contains(s, substr)
-			}
-			err := db.UpdateArticleScore(dbConn, articleID, *req.Score, 0)
-			if err != nil {
-				// Check for constraint violation or data validation errors (sqlite returns error strings)
-				errMsg := err.Error()
-				if errMsg != "" && ( // SQLite constraint violation or similar
-				stringContains(errMsg, "constraint failed") ||
-					stringContains(errMsg, "UNIQUE constraint failed") ||
-					stringContains(errMsg, "CHECK constraint failed") ||
-					stringContains(errMsg, "NOT NULL constraint failed") ||
-					stringContains(errMsg, "FOREIGN KEY constraint failed") ||
-					stringContains(errMsg, "invalid") ||
-					stringContains(errMsg, "out of range") ||
-					stringContains(errMsg, "data type mismatch")) {
-					log.Printf("[reanalyzeHandler] Constraint/validation error updating article score: %v", err)
-					c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update score due to invalid data or constraint violation"})
-					return
-				}
-				log.Printf("[reanalyzeHandler] Unexpected DB error updating article score: %v", err)
-				RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to update article score")
-				LogError("reanalyzeHandler: failed to update article score", err)
+			if strings.Contains(errMsg, "rate limit") {
+				RespondError(c, http.StatusTooManyRequests, ErrInternal, "LLM provider rate limited")
+				LogError("reanalyzeHandler: LLM provider rate limited", healthErr)
 				return
 			}
-			log.Printf("[reanalyzeHandler] Article score updated successfully: articleID=%d, score=%f", articleID, *req.Score)
-			RespondSuccess(c, map[string]interface{}{
-				"status":     "score updated",
-				"article_id": articleID,
-				"score":      *req.Score,
-			})
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "LLM provider error: "+errMsg)
+			LogError("reanalyzeHandler: LLM provider error", healthErr)
 			return
 		}
 
@@ -1015,5 +1005,90 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		RespondSuccess(c, map[string]string{"status": "feedback received"})
 		LogPerformance("feedbackHandler", start)
+	}
+}
+
+// --- Manual Score Handler ---
+func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil || id < 1 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			LogError("manualScoreHandler: invalid id", err)
+			return
+		}
+		articleID := int64(id)
+
+		// Read raw body for strict validation
+		var raw map[string]interface{}
+		if err := c.ShouldBindJSON(&raw); err != nil {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid JSON body")
+			LogError("manualScoreHandler: invalid JSON body", err)
+			return
+		}
+		// Only "score" is allowed
+		if len(raw) != 1 || raw["score"] == nil {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Payload must contain only 'score' field")
+			LogError("manualScoreHandler: payload missing or has extra fields", nil)
+			return
+		}
+		// Validate score type and range
+		scoreVal, ok := raw["score"].(float64)
+		if !ok {
+			// Accept integer as well
+			if intVal, okInt := raw["score"].(int); okInt {
+				scoreVal = float64(intVal)
+			} else {
+				RespondError(c, http.StatusBadRequest, ErrValidation, "'score' must be a number")
+				LogError("manualScoreHandler: score not a number", nil)
+				return
+			}
+		}
+		if scoreVal < -1.0 || scoreVal > 1.0 {
+			RespondError(c, http.StatusBadRequest, ErrValidation, "Score must be between -1.0 and 1.0")
+			LogError("manualScoreHandler: score out of range", nil)
+			return
+		}
+
+		// Check if article exists
+		_, err = db.FetchArticleByID(dbConn, articleID)
+		if err != nil {
+			if errors.Is(err, db.ErrArticleNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Article not found"})
+				return
+			}
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch article")
+			LogError("manualScoreHandler: failed to fetch article", err)
+			return
+		}
+
+		// Update score in DB
+		err = db.UpdateArticleScore(dbConn, articleID, scoreVal, 0)
+		if err != nil {
+			errMsg := err.Error()
+			if errMsg != "" && (strings.Contains(errMsg, "constraint failed") ||
+				strings.Contains(errMsg, "UNIQUE constraint failed") ||
+				strings.Contains(errMsg, "CHECK constraint failed") ||
+				strings.Contains(errMsg, "NOT NULL constraint failed") ||
+				strings.Contains(errMsg, "FOREIGN KEY constraint failed") ||
+				strings.Contains(errMsg, "invalid") ||
+				strings.Contains(errMsg, "out of range") ||
+				strings.Contains(errMsg, "data type mismatch")) {
+				log.Printf("[manualScoreHandler] Constraint/validation error updating article score: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update score due to invalid data or constraint violation"})
+				return
+			}
+			log.Printf("[manualScoreHandler] Unexpected DB error updating article score: %v", err)
+			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to update article score")
+			LogError("manualScoreHandler: failed to update article score", err)
+			return
+		}
+		log.Printf("[manualScoreHandler] Article score updated successfully: articleID=%d, score=%f", articleID, scoreVal)
+		RespondSuccess(c, map[string]interface{}{
+			"status":     "score updated",
+			"article_id": articleID,
+			"score":      scoreVal,
+		})
 	}
 }
