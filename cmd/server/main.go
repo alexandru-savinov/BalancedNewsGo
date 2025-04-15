@@ -16,6 +16,7 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/middleware"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 )
@@ -29,8 +30,17 @@ func main() {
 	// Initialize services
 	dbConn, llmClient, rssCollector := initServices()
 
-	// Initialize Gin
-	router := gin.Default()
+	// Initialize Gin with custom middleware
+	router := gin.New()
+
+	// Apply custom middleware for enhanced error handling
+	router.Use(gin.Recovery())
+	router.Use(middleware.ErrorHandlingMiddleware())
+	router.Use(middleware.RequestLoggingMiddleware())
+	router.Use(middleware.CORSMiddleware())
+
+	// Apply rate limiting to API endpoints
+	apiRateLimiter := middleware.RateLimitMiddleware(100, 60) // 100 requests per minute
 
 	// Serve static files from ./web
 	router.Static("/static", "./web")
@@ -40,8 +50,12 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Register API routes
-	api.RegisterRoutes(router, dbConn, rssCollector, llmClient)
+	// Create API group with rate limiting
+	apiGroup := router.Group("/api")
+	apiGroup.Use(apiRateLimiter)
+
+	// Register API routes with the rate-limited group
+	api.RegisterRoutes(apiGroup, dbConn, rssCollector, llmClient)
 
 	// htmx endpoint for articles list with filters
 	router.GET("/articles", articlesHandler(dbConn))
@@ -49,50 +63,57 @@ func main() {
 	// htmx endpoint for article detail
 	router.GET("/article/:id", articleDetailHandler(dbConn))
 
-	// Metrics endpoints
-	router.GET("/metrics/validation", func(c *gin.Context) {
+	// Metrics endpoints with enhanced error handling
+	metricsGroup := router.Group("/metrics")
+
+	metricsGroup.GET("/validation", func(c *gin.Context) {
 		metrics, err := metrics.GetValidationMetrics(dbConn)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			api.LogError("GetValidationMetrics", err)
+			api.RespondError(c, api.StatusInternalServerError, "Failed to retrieve validation metrics")
 			return
 		}
-		c.JSON(200, metrics)
+		api.RespondSuccess(c, metrics)
 	})
 
-	router.GET("/metrics/feedback", func(c *gin.Context) {
+	metricsGroup.GET("/feedback", func(c *gin.Context) {
 		summary, err := metrics.GetFeedbackSummary(dbConn)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			api.LogError("GetFeedbackSummary", err)
+			api.RespondError(c, api.StatusInternalServerError, "Failed to retrieve feedback summary")
 			return
 		}
-		c.JSON(200, summary)
+		api.RespondSuccess(c, summary)
 	})
 
-	router.GET("/metrics/uncertainty", func(c *gin.Context) {
+	metricsGroup.GET("/uncertainty", func(c *gin.Context) {
 		rates, err := metrics.GetUncertaintyRates(dbConn)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			api.LogError("GetUncertaintyRates", err)
+			api.RespondError(c, api.StatusInternalServerError, "Failed to retrieve uncertainty rates")
 			return
 		}
-		c.JSON(200, rates)
+		api.RespondSuccess(c, rates)
 	})
 
-	router.GET("/metrics/disagreements", func(c *gin.Context) {
+	metricsGroup.GET("/disagreements", func(c *gin.Context) {
 		disagreements, err := metrics.GetDisagreements(dbConn)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			api.LogError("GetDisagreements", err)
+			api.RespondError(c, api.StatusInternalServerError, "Failed to retrieve disagreements data")
 			return
 		}
-		c.JSON(200, disagreements)
+		api.RespondSuccess(c, disagreements)
 	})
 
-	router.GET("/metrics/outliers", func(c *gin.Context) {
+	metricsGroup.GET("/outliers", func(c *gin.Context) {
 		outliers, err := metrics.GetOutlierScores(dbConn)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
+			api.LogError("GetOutlierScores", err)
+			api.RespondError(c, api.StatusInternalServerError, "Failed to retrieve outlier scores")
 			return
 		}
-		c.JSON(200, outliers)
+		api.RespondSuccess(c, outliers)
 	})
 
 	// Root welcome endpoint
@@ -189,7 +210,14 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
 	}
 
 	// Initialize LLM client
+	// Create both standard and enhanced LLM clients
 	llmClient := llm.NewLLMClient(dbConn)
+
+	// Also create the enhanced client for use with enhanced handlers
+	enhancedLLMClient := llm.NewEnhancedLLMClient(dbConn)
+
+	// Store the enhanced client in a global variable for use with enhanced handlers
+	api.SetEnhancedLLMClient(enhancedLLMClient)
 
 	// Initialize RSS collector from external config
 	type FeedSource struct {
@@ -229,15 +257,24 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		offset := 0
 		if o := c.Query("offset"); o != "" {
 			if _, err := fmt.Sscanf(o, "%d", &offset); err != nil {
+				api.LogWarning("ArticlesHandler", "Invalid offset parameter: "+o)
 				offset = 0
 			}
 		}
 
+		// Start performance tracking
+		start := time.Now()
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		if err != nil {
-			c.String(500, "Error fetching articles")
+			api.LogError("FetchArticles", err)
+			c.Header("Content-Type", "text/html")
+			c.String(500, "<div class='error'>Error fetching articles. Please try again later.</div>")
 			return
 		}
+		api.LogPerformance("FetchArticles", start)
+
+		// Track if any scores failed to load
+		var warnings []api.WarningInfo
 
 		html := ""
 		for _, a := range articles {
@@ -245,13 +282,23 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			scores, err := db.FetchLLMScores(dbConn, a.ID)
 			var compositeScore float64
 			var avgConfidence float64
-			if err == nil && len(scores) > 0 {
+
+			if err != nil {
+				api.LogWarning("FetchLLMScores", fmt.Sprintf("Error fetching scores for article %d: %v", a.ID, err))
+				warnings = append(warnings, api.WarningInfo{
+					Code:    api.WarnPartialData,
+					Message: fmt.Sprintf("Could not load scores for some articles"),
+				})
+			} else if len(scores) > 0 {
 				var weightedSum, sumWeights float64
 				for _, s := range scores {
 					var meta struct {
 						Confidence float64 `json:"confidence"`
 					}
-					_ = json.Unmarshal([]byte(s.Metadata), &meta)
+					if jsonErr := json.Unmarshal([]byte(s.Metadata), &meta); jsonErr != nil {
+						api.LogWarning("ParseMetadata", fmt.Sprintf("Error parsing metadata for score %d: %v", s.ID, jsonErr))
+						continue
+					}
 					weightedSum += s.Score * meta.Confidence
 					sumWeights += meta.Confidence
 				}
@@ -272,6 +319,11 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			</div>`
 		}
 
+		// If there were warnings, log them but still return the HTML
+		if len(warnings) > 0 {
+			log.Printf("[WARNING] Articles handler had %d warnings", len(warnings))
+		}
+
 		c.Header("Content-Type", "text/html")
 		c.String(200, html)
 	}
@@ -283,22 +335,47 @@ func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		articleID, err := strconv.ParseInt(id, 10, 64)
 		if err != nil {
-			c.String(400, "Invalid article ID")
+			api.LogWarning("ArticleDetailHandler", "Invalid article ID: "+id)
+			c.Header("Content-Type", "text/html")
+			c.String(400, "<div class='error'>Invalid article ID</div>")
 			return
 		}
 
 		article, err := db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
-			c.String(404, "Article not found")
+			api.LogError("FetchArticleByID", fmt.Errorf("article ID %d: %w", articleID, err))
+			c.Header("Content-Type", "text/html")
+			c.String(404, "<div class='error'>Article not found</div>")
 			return
 		}
 
-		scores, _ := db.FetchLLMScores(dbConn, articleID)
+		// Track if scores failed to load
+		var warnings []api.WarningInfo
+
+		scores, err := db.FetchLLMScores(dbConn, articleID)
+		if err != nil {
+			api.LogWarning("FetchLLMScores", fmt.Sprintf("Error fetching scores for article %d: %v", articleID, err))
+			warnings = append(warnings, api.WarningInfo{
+				Code:    api.WarnPartialData,
+				Message: "Could not load scores for this article",
+			})
+		}
+
 		html := "<h2>" + article.Title + "</h2><p>" + article.Source + " | " +
 			article.PubDate.Format("2006-01-02") + "</p><p>" + article.Content + "</p>"
 
-		for _, s := range scores {
-			html += "<p>" + s.Model + ": " + fmt.Sprintf("%.2f", s.Score) + "</p>"
+		if len(scores) > 0 {
+			html += "<h3>Scores</h3>"
+			for _, s := range scores {
+				html += "<p>" + s.Model + ": " + fmt.Sprintf("%.2f", s.Score) + "</p>"
+			}
+		} else {
+			html += "<p>No scores available for this article.</p>"
+		}
+
+		// If there were warnings, log them but still return the HTML
+		if len(warnings) > 0 {
+			log.Printf("[WARNING] Article detail handler had %d warnings for article %d", len(warnings), articleID)
 		}
 
 		c.Header("Content-Type", "text/html")

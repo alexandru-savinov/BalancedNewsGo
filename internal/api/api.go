@@ -74,7 +74,11 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	router.GET("/api/articles/:id", getArticleByIDHandlerFixed(dbConn)) // Use the fixed handler
 	router.POST("/api/articles", createArticleHandler(dbConn))
 	router.POST("/api/refresh", refreshHandler(rssCollector))
+
+	// Use both standard and enhanced reanalyze handlers
 	router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(llmClient, dbConn))
+	router.POST("/api/llm/enhanced-reanalyze/:id", EnhancedReanalyzeHandler(enhancedLLMClient, dbConn))
+
 	router.POST("/api/manual-score/:id", manualScoreHandler(dbConn))
 	router.GET("/api/articles/:id/summary", summaryHandler(dbConn))
 	router.GET("/api/articles/:id/bias", biasHandler(dbConn))

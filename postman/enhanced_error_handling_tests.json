@@ -1,0 +1,443 @@
+{
+  "info": {
+    "name": "Enhanced Error Handling Tests",
+    "description": "Comprehensive test suite for the News Filter backend API with enhanced error handling. This collection tests the improved error handling system that follows industry best practices, including structured error responses, appropriate HTTP status codes, and detailed error metadata for better debugging and user experience.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Error Structure Tests",
+      "item": [
+        {
+          "name": "1.1 Standard Error Format Test",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/invalid-id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "invalid-id"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for invalid ID\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response follows standard error structure\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.false;",
+                  "    pm.expect(json.error).to.be.an('object');",
+                  "    pm.expect(json.error.code).to.be.a('number');",
+                  "    pm.expect(json.error.message).to.be.a('string');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Error with Metadata Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article with Potentially Flagged Content\",\n  \"content\": \"This is a test article with content that might be flagged by content moderation.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// This test checks if the error response includes metadata when appropriate",
+                  "// The actual status code may vary depending on whether content is actually flagged",
+                  "if (pm.response.code !== 200 && pm.response.code !== 201) {",
+                  "    pm.test(\"Error response includes proper structure\", function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.success).to.be.false;",
+                  "        pm.expect(json.error).to.be.an('object');",
+                  "        pm.expect(json.error.code).to.be.a('number');",
+                  "        pm.expect(json.error.message).to.be.a('string');",
+                  "        ",
+                  "        // If there's metadata, check its structure",
+                  "        if (json.error.metadata) {",
+                  "            pm.expect(json.error.metadata).to.be.an('object');",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. HTTP Status Code Tests",
+      "item": [
+        {
+          "name": "2.1 Bad Request (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article\"\n  \"content\": \"This JSON is malformed.\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for malformed JSON\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code matches HTTP status\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error.code).to.equal(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 Not Found (404)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/99999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "99999999"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404 for non-existent resource\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error code matches HTTP status\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error.code).to.equal(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.3 Conflict (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Article Duplicate\",\n  \"content\": \"This is a duplicate test article.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/test-duplicate\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// First request might succeed, subsequent should fail with 409",
+                  "if (pm.response.code === 409) {",
+                  "    pm.test(\"Error code matches HTTP status for conflict\", function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.error.code).to.equal(409);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.4 Too Many Requests (429)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/rate-limit-test",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "rate-limit-test"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// This test is for documentation purposes - actual rate limiting would require multiple rapid requests",
+                  "if (pm.response.code === 429) {",
+                  "    pm.test(\"Rate limit response has correct structure\", function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.error.code).to.equal(429);",
+                  "        pm.expect(json.error.message).to.include('rate limit');",
+                  "        ",
+                  "        // Check for rate limit metadata if present",
+                  "        if (json.error.metadata && json.error.metadata.headers) {",
+                  "            pm.expect(json.error.metadata.headers).to.be.an('object');",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Graceful Degradation Tests",
+      "item": [
+        {
+          "name": "3.1 Partial Success with Warnings",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles?include_metadata=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"],
+              "query": [
+                {
+                  "key": "include_metadata",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 even with partial data\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response may include warnings field\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    ",
+                  "    // If warnings exist, check their structure",
+                  "    if (json.warnings) {",
+                  "        pm.expect(json.warnings).to.be.an('array');",
+                  "        if (json.warnings.length > 0) {",
+                  "            pm.expect(json.warnings[0]).to.have.property('code');",
+                  "            pm.expect(json.warnings[0]).to.have.property('message');",
+                  "        }",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Fallback Mechanism Test",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{articleId}}/score?fallback=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{articleId}}", "score"],
+              "query": [
+                {
+                  "key": "fallback",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 with fallback data\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates fallback was used\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    ",
+                  "    // Check for fallback indicator",
+                  "    if (json.data && json.data.fallback_used) {",
+                  "        pm.expect(json.data.fallback_used).to.be.true;",
+                  "    }",
+                  "    ",
+                  "    // Or check for warnings about fallback",
+                  "    if (json.warnings) {",
+                  "        const hasFallbackWarning = json.warnings.some(w => ",
+                  "            w.message && w.message.toLowerCase().includes('fallback')",
+                  "        );",
+                  "        pm.expect(hasFallbackWarning).to.be.true;",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Detailed Error Information Tests",
+      "item": [
+        {
+          "name": "4.1 Validation Error Details",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"\",\n  \"content\": \"This article has an empty title.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/test-{{$timestamp}}\",\n  \"pub_date\": \"invalid-date-format\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for validation errors\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains detailed validation errors\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.error.code).to.equal(400);",
+                  "    ",
+                  "    // Check for validation details in metadata",
+                  "    if (json.error.metadata && json.error.metadata.validation_errors) {",
+                  "        pm.expect(json.error.metadata.validation_errors).to.be.an('array');",
+                  "        ",
+                  "        // Should have at least one validation error",
+                  "        if (json.error.metadata.validation_errors.length > 0) {",
+                  "            const firstError = json.error.metadata.validation_errors[0];",
+                  "            pm.expect(firstError).to.have.property('field');",
+                  "            pm.expect(firstError).to.have.property('error');",
+                  "        }",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 LLM Provider Error Details",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/llm/analyze",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "llm", "analyze"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId}},\n  \"force_provider\": \"test-provider\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// This test checks for proper error handling with LLM provider errors",
+                  "// The status code may vary depending on the specific error",
+                  "if (pm.response.code !== 200) {",
+                  "    pm.test(\"LLM provider error has detailed information\", function () {",
+                  "        var json = pm.response.json();",
+                  "        pm.expect(json.success).to.be.false;",
+                  "        pm.expect(json.error).to.be.an('object');",
+                  "        ",
+                  "        // Check for provider-specific metadata",
+                  "        if (json.error.metadata) {",
+                  "            if (json.error.metadata.provider_name) {",
+                  "                pm.expect(json.error.metadata.provider_name).to.be.a('string');",
+                  "            }",
+                  "            ",
+                  "            // If raw provider error is included",
+                  "            if (json.error.metadata.raw) {",
+                  "                pm.expect(json.error.metadata.raw).to.exist;",
+                  "            }",
+                  "        }",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Error Handling Demo</title>
+    <link rel="stylesheet" href="css/notifications.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        
+        .card {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        
+        .button:hover {
+            background-color: #2980b9;
+        }
+        
+        .button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        
+        .button-error {
+            background-color: #e74c3c;
+        }
+        
+        .button-error:hover {
+            background-color: #c0392b;
+        }
+        
+        .progress-container {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        
+        .progress-bar {
+            height: 20px;
+            background-color: #2ecc71;
+            width: 0%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        .progress-bar.error {
+            background-color: #e74c3c;
+        }
+        
+        .progress-info {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .progress-step {
+            font-weight: bold;
+        }
+        
+        .progress-message {
+            color: #7f8c8d;
+        }
+        
+        .progress-percent {
+            font-weight: bold;
+        }
+        
+        .article-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .article-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background-color: #fff;
+        }
+        
+        .article-title {
+            font-size: 18px;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .article-meta {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .article-score {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
+        .score-value {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .score-bar {
+            flex-grow: 1;
+            height: 8px;
+            background-color: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .score-fill {
+            position: absolute;
+            height: 100%;
+            background-color: #3498db;
+            border-radius: 4px;
+        }
+        
+        /* Notification container */
+        #notifications {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+    <h1>Enhanced Error Handling Demo</h1>
+    
+    <div class="card">
+        <h2>Error Handling Test</h2>
+        <p>Test the enhanced error handling system with different scenarios:</p>
+        
+        <div>
+            <button id="testValidationError" class="button">Test Validation Error</button>
+            <button id="testRateLimitError" class="button">Test Rate Limit Error</button>
+            <button id="testProviderError" class="button">Test Provider Error</button>
+            <button id="testNetworkError" class="button button-error">Test Network Error</button>
+        </div>
+        
+        <div class="progress-container" id="progressContainer" style="display: none;">
+            <div class="progress-bar" id="progressBar"></div>
+            <div class="progress-info">
+                <div>
+                    <div class="progress-step" id="progressStep">Starting</div>
+                    <div class="progress-message" id="progressMessage">Initializing...</div>
+                </div>
+                <div class="progress-percent" id="progressPercent">0%</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <h2>Articles</h2>
+        <div class="article-list" id="articleList">
+            <!-- Articles will be loaded here -->
+            <div class="article-card">
+                <h3 class="article-title">Sample Article 1</h3>
+                <div class="article-meta">Source: Example News | 2025-04-15</div>
+                <div class="article-score">
+                    <div class="score-value">0.75</div>
+                    <div class="score-bar">
+                        <div class="score-fill" style="width: 75%;"></div>
+                    </div>
+                </div>
+                <button class="button" data-article-id="1">Reanalyze</button>
+            </div>
+            
+            <div class="article-card">
+                <h3 class="article-title">Sample Article 2</h3>
+                <div class="article-meta">Source: Test Media | 2025-04-14</div>
+                <div class="article-score">
+                    <div class="score-value">0.42</div>
+                    <div class="score-bar">
+                        <div class="score-fill" style="width: 42%;"></div>
+                    </div>
+                </div>
+                <button class="button" data-article-id="2">Reanalyze</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Notification container -->
+    <div id="notifications"></div>
+    
+    <!-- Scripts -->
+    <script src="js/error-handler.js"></script>
+    <script src="js/enhanced-article-scoring.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize error handler
+            const errorHandler = window.errorHandler;
+            
+            // Initialize article scorer
+            const scorer = window.articleScorer;
+            
+            // Progress elements
+            const progressContainer = document.getElementById('progressContainer');
+            const progressBar = document.getElementById('progressBar');
+            const progressStep = document.getElementById('progressStep');
+            const progressMessage = document.getElementById('progressMessage');
+            const progressPercent = document.getElementById('progressPercent');
+            
+            // Test buttons
+            document.getElementById('testValidationError').addEventListener('click', function() {
+                errorHandler.showNotification({
+                    type: 'validation',
+                    message: 'Validation failed',
+                    details: 'title: Title cannot be empty<br>pub_date: Invalid date format',
+                    code: 'VALIDATION_ERROR'
+                });
+            });
+            
+            document.getElementById('testRateLimitError').addEventListener('click', function() {
+                errorHandler.showNotification({
+                    type: 'rate-limit',
+                    message: 'Rate limit exceeded',
+                    details: 'Rate limit will reset at: ' + new Date(Date.now() + 3600000).toLocaleTimeString(),
+                    code: 'RATE_LIMIT'
+                });
+            });
+            
+            document.getElementById('testProviderError').addEventListener('click', function() {
+                errorHandler.showNotification({
+                    type: 'provider',
+                    message: 'Error communicating with LLM provider',
+                    details: 'Provider: openai<br>Error type: server_error',
+                    code: 'PROVIDER_ERROR'
+                });
+            });
+            
+            document.getElementById('testNetworkError').addEventListener('click', function() {
+                errorHandler.showNotification({
+                    type: 'error',
+                    message: 'Network error',
+                    details: 'Failed to connect to server. Please check your internet connection.',
+                    code: 'NETWORK_ERROR'
+                });
+            });
+            
+            // Reanalyze buttons
+            const reanalyzeButtons = document.querySelectorAll('[data-article-id]');
+            reanalyzeButtons.forEach(button => {
+                button.addEventListener('click', async function() {
+                    const articleId = this.getAttribute('data-article-id');
+                    
+                    // Disable button
+                    this.disabled = true;
+                    
+                    // Show progress
+                    progressContainer.style.display = 'block';
+                    updateProgress({
+                        step: 'Starting',
+                        message: 'Initializing...',
+                        percent: 0,
+                        status: 'InProgress'
+                    });
+                    
+                    try {
+                        // Start scoring
+                        await scorer.startScoring(articleId);
+                        
+                        // Add progress listener
+                        scorer.addProgressListener(articleId, updateProgress);
+                    } catch (error) {
+                        // Handle error
+                        console.error('Error starting scoring:', error);
+                        updateProgress({
+                            step: 'Error',
+                            message: error.message || 'Failed to start scoring',
+                            percent: 0,
+                            status: 'Error',
+                            error: error.message
+                        });
+                        
+                        // Re-enable button
+                        this.disabled = false;
+                    }
+                });
+            });
+            
+            // Update progress UI
+            function updateProgress(data) {
+                progressStep.textContent = data.step;
+                progressMessage.textContent = data.message;
+                progressPercent.textContent = data.percent + '%';
+                progressBar.style.width = data.percent + '%';
+                
+                // Handle error state
+                if (data.status === 'Error') {
+                    progressBar.classList.add('error');
+                    
+                    // Re-enable buttons after a delay
+                    setTimeout(() => {
+                        reanalyzeButtons.forEach(button => {
+                            button.disabled = false;
+                        });
+                    }, 2000);
+                } else {
+                    progressBar.classList.remove('error');
+                }
+                
+                // Handle success state
+                if (data.status === 'Success') {
+                    // Update score if available
+                    if (data.finalScore !== null) {
+                        const articleId = data.articleId;
+                        const scoreValue = parseFloat(data.finalScore).toFixed(2);
+                        const scorePercent = Math.round(scoreValue * 100);
+                        
+                        // Find the article card
+                        const articleCard = document.querySelector(`[data-article-id="${articleId}"]`).closest('.article-card');
+                        if (articleCard) {
+                            const scoreValueEl = articleCard.querySelector('.score-value');
+                            const scoreFillEl = articleCard.querySelector('.score-fill');
+                            
+                            if (scoreValueEl) scoreValueEl.textContent = scoreValue;
+                            if (scoreFillEl) scoreFillEl.style.width = scorePercent + '%';
+                        }
+                    }
+                    
+                    // Re-enable buttons after a delay
+                    setTimeout(() => {
+                        reanalyzeButtons.forEach(button => {
+                            button.disabled = false;
+                        });
+                    }, 2000);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
