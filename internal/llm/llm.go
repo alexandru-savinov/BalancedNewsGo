@@ -870,14 +870,6 @@ type LLMClient struct {
 	config     *CompositeScoreConfig // Added field to hold ensemble config
 }
 
-// SetHTTPLLMTimeout sets the timeout for the underlying HTTPLLMService's resty.Client, if present.
-func (c *LLMClient) SetHTTPLLMTimeout(timeout time.Duration) {
-	httpService, ok := c.llmService.(*HTTPLLMService)
-	if ok && httpService != nil && httpService.client != nil {
-		httpService.client.SetTimeout(timeout)
-	}
-}
-
 func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	client := resty.New()
 	cache := NewCache()
