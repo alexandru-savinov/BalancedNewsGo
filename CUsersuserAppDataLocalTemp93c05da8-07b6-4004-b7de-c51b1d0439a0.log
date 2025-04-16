@@ -1,8 +1,0 @@
-total 50
-drwxr-xr-x 1 user 197609    0 Apr 11 15:20 ./
-drwxr-xr-x 1 user 197609    0 Apr 14 21:08 ../
--rw-r--r-- 1 user 197609   44 Apr  7 19:05 .gitkeep
--rw-r--r-- 1 user 197609   21 Apr  9 20:45 bias_config.json
--rw-r--r-- 1 user 197609  781 Apr 12 18:26 composite_score_config.json
--rw-r--r-- 1 user 197609  322 Apr 12 15:45 feed_sources.json
--rw-r--r-- 1 user 197609 3071 Apr 10 14:43 prompt_template.txt

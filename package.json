@@ -27,12 +27,12 @@
   "homepage": "https://github.com/alexandru-savinov/BalancedNewsGo#readme",
   "description": "",
   "devDependencies": {
-    "cypress": "^14.3.0"
+    "cypress": "^14.3.0",
+    "newman": "^6.2.1"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
     "node-fetch": "^3.3.2",
-    "newman": "^5.3.2",
     "xml2js": "^0.6.2"
   }
 }

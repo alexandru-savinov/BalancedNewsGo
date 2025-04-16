@@ -15,12 +15,12 @@
   "models": [
     {
       "perspective": "left",
-      "modelName": "tokyotech-llm/llama-3.1-swallow-8b-instruct-v0.3",
+      "modelName": "mistralai/ministral-8b",
       "url": "https://openrouter.ai/api/v1"
     },
     {
       "perspective": "center",
-      "modelName": "mistralai/mistral-small-3.1-24b-instruct",
+      "modelName": "openai/gpt-4.1-nano",
       "url": "https://openrouter.ai/api/v1"
     },
     {

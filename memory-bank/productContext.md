@@ -48,8 +48,3 @@ To ensure model reliability and accelerate iteration, the UI now prioritizes **t
 
 These features enable developers and testers to **quickly identify issues, understand model outputs, and iterate on prompts, parsing, and aggregation logic** with minimal friction.
 
----
-
-## [2025-04-13 17:22:55] - Added comprehensive Postman-based rescoring workflow test plan
-
-A detailed Postman testing strategy for the article manual scoring (rescoring) workflow has been developed and saved to `memory-bank/postman_rescoring_test_plan.md`. This plan covers test case design, environment setup, data preparation, request sequencing, response validation, edge case handling, expected outcomes, and automation. It enables robust, repeatable, and automated validation of the rescoring workflow for the Go backend API.

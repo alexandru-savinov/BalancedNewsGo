@@ -714,6 +714,52 @@
                 ensembleContainer.innerHTML = `<p class="error-message">Failed to load ensemble details: ${error.message}</p>`;
             }
         }
+
+        async function updateArticleDetails(articleId) {
+            try {
+                const response = await fetch(`/api/articles/${articleId}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch article details: ${response.statusText}`);
+                }
+                const responseData = await response.json();
+                if (!responseData.success || !responseData.data) {
+                    throw new Error('Invalid article data received');
+                }
+                const article = responseData.data;
+                const articleElement = document.querySelector(`article[data-article-id="${articleId}"]`);
+                if (!articleElement) return;
+
+                // Update composite score and confidence
+                const compositeScore = article.composite_score !== undefined ? article.composite_score : null;
+                const confidence = article.confidence !== undefined ? article.confidence : null;
+                
+                const metadataSection = articleElement.querySelector('.metadata');
+                if (metadataSection) {
+                    const confidenceElement = metadataSection.querySelector('.confidence');
+                    const compositeScoreElement = metadataSection.querySelector('.composite-score');
+                    const biasLabelElement = metadataSection.querySelector('.bias-label');
+                    const biasSlider = articleElement.querySelector('.bias-slider');
+                    const compositeIndicator = biasSlider?.querySelector('.composite-indicator');
+                    
+                    if (confidenceElement) {
+                        confidenceElement.innerHTML = confidence !== null ?
+                            `<span class="confidence-indicator" style="background:${getConfidenceColor(confidence)}"></span>Confidence: ${Math.round(confidence * 100)}%` :
+                            'Confidence: --';
+                    }
+                    if (compositeScoreElement) {
+                        compositeScoreElement.textContent = compositeScore !== null ? `Score: ${compositeScore.toFixed(2)}` : 'Score: --';
+                    }
+                    if (biasLabelElement) {
+                        biasLabelElement.textContent = `Composite: ${getScoreLabel(compositeScore)}`;
+                    }
+                    if (compositeIndicator && compositeScore !== null) {
+                        compositeIndicator.style.left = `${((compositeScore + 1) / 2) * 100}%`;
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating article details:', error);
+            }
+        }
         
         // Show feedback form
         function showFeedbackForm(button, articleId) {
@@ -870,7 +916,8 @@
                         li.textContent = "Scoring complete!";
                         progressMessages.appendChild(li);
                         
-                        // Refresh article data
+                        // Refresh all article data
+                        updateArticleDetails(articleId);
                         loadEnsembleDetails(articleId);
                         
                         // Reset UI

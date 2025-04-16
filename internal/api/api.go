@@ -71,10 +71,10 @@ func getProgress(articleID int64) *ProgressState {
 
 func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient) {
 	router.GET("/api/articles", getArticlesHandler(dbConn))
-	router.GET("/api/articles/:id", getArticleByIDHandlerFixed(dbConn)) // Use the fixed handler
+	router.GET("/api/articles/:id", getArticleByIDHandler(dbConn))
 	router.POST("/api/articles", createArticleHandler(dbConn))
 	router.POST("/api/refresh", refreshHandler(rssCollector))
-	router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(llmClient, dbConn))
+	router.POST("/api/llm/reanalyze/:id", reanalyzeHandlerFixed(llmClient, dbConn)) // Using fixed handler from api_fix.go
 	router.POST("/api/manual-score/:id", manualScoreHandler(dbConn))
 	router.GET("/api/articles/:id/summary", summaryHandler(dbConn))
 	router.GET("/api/articles/:id/bias", biasHandler(dbConn))
