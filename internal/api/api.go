@@ -1011,14 +1011,14 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		if err == nil {
 			// Calculate new composite score and confidence
 			compositeScore, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
-			
+
 			// Adjust confidence based on feedback category
 			if req.Category == "agree" {
-				confidence = math.Min(1.0, confidence + 0.1) // Increase confidence on agreement
+				confidence = math.Min(1.0, confidence+0.1) // Increase confidence on agreement
 			} else if req.Category == "disagree" {
-				confidence = math.Max(0.0, confidence - 0.1) // Decrease confidence on disagreement
+				confidence = math.Max(0.0, confidence-0.1) // Decrease confidence on disagreement
 			}
-			
+
 			// Update article with new confidence
 			err = db.UpdateArticleScore(dbConn, req.ArticleID, compositeScore, confidence)
 			if err != nil {
