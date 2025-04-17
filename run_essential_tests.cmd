@@ -11,7 +11,7 @@ timeout /t 5
 
 REM Run the tests
 echo Running tests...
-npx newman run memory-bank/essential_rescoring_tests.json --reporters cli,json --reporter-json-export test-results/essential_rescoring_tests.json
+npx newman run postman/backup/essential_rescoring_tests.json --reporters cli,json --reporter-json-export test-results/essential_rescoring_tests.json
 
 REM Capture the exit code
 set TEST_EXIT_CODE=%ERRORLEVEL%

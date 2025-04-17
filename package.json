@@ -27,7 +27,10 @@
   "homepage": "https://github.com/alexandru-savinov/BalancedNewsGo#readme",
   "description": "",
   "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "@types/eventsource": "^1.1.15",
     "cypress": "^14.3.0",
+    "eventsource": "^3.0.6",
     "newman": "^6.2.1"
   },
   "dependencies": {

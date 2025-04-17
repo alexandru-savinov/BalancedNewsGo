@@ -156,29 +156,31 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 			stepNum++
 
 			// Step 2: Score with each model
+			var anySuccess bool
 			for _, m := range cfg.Models {
 				label := fmt.Sprintf("Scoring with %s", m.ModelName)
 				setProgress(articleID, label, label, percent(stepNum, totalSteps), "InProgress", "", nil)
 
-				_, scoreErr := llmClient.ScoreWithModel(article, m.ModelName) // Renamed err to scoreErr for clarity
+				_, scoreErr := llmClient.ScoreWithModel(article, m.ModelName)
 				log.Printf("[reanalyzeHandler %d] Model %s scoring result: err=%v", articleID, m.ModelName, scoreErr)
 
 				if scoreErr != nil {
 					log.Printf("[reanalyzeHandler %d] Actual error received from ScoreWithModel for model %s: (%T) %v", articleID, m.ModelName, scoreErr, scoreErr)
-					log.Printf("[reanalyzeHandler %d] Error scoring with model %s, stopping analysis: %v", articleID, m.ModelName, scoreErr)
-
-					errorMsg := scoreErr.Error()
-					userMsg := fmt.Sprintf("Error scoring with %s", m.ModelName)
-					if scoreErr == llm.ErrBothLLMKeysRateLimited {
-						userMsg = llm.LLMRateLimitErrorMessage // Use specific user message for rate limit
-						errorMsg = userMsg                     // Log the user message as the error too
-					}
-					setProgress(articleID, "Error", userMsg, percent(stepNum, totalSteps), "Error", errorMsg, nil)
-					return // Exit the goroutine on first model error
+					log.Printf("[reanalyzeHandler %d] Error scoring with model %s, continuing with available models: %v", articleID, m.ModelName, scoreErr)
+					// Do not return, just log and continue
+				} else {
+					anySuccess = true
 				}
 				stepNum++
 			}
-			log.Printf("[reanalyzeHandler %d] Scoring loop finished successfully.", articleID)
+			if !anySuccess {
+				// If all models failed, abort
+				errMsg := "All LLM models failed to score the article. No scores available."
+				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
+				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
+				return
+			}
+			log.Printf("[reanalyzeHandler %d] Scoring loop finished (at least one model succeeded).", articleID)
 
 			// Step 3: Fetch scores and Calculate Final Composite Score
 			setProgress(articleID, "Calculating", "Fetching scores for final calculation", percent(stepNum, totalSteps), "InProgress", "", nil)

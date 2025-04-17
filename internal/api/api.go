@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -994,13 +995,35 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			Category:         req.Category,
 			EnsembleOutputID: req.EnsembleOutputID,
 			Source:           req.Source,
+			CreatedAt:        time.Now(),
 		}
 
+		// Insert feedback
 		_, err := db.InsertFeedback(dbConn, feedback)
 		if err != nil {
 			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to save feedback")
 			LogError("feedbackHandler: insert", err)
 			return
+		}
+
+		// Update article confidence based on feedback
+		scores, err := db.FetchLLMScores(dbConn, req.ArticleID)
+		if err == nil {
+			// Calculate new composite score and confidence
+			compositeScore, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
+			
+			// Adjust confidence based on feedback category
+			if req.Category == "agree" {
+				confidence = math.Min(1.0, confidence + 0.1) // Increase confidence on agreement
+			} else if req.Category == "disagree" {
+				confidence = math.Max(0.0, confidence - 0.1) // Decrease confidence on disagreement
+			}
+			
+			// Update article with new confidence
+			err = db.UpdateArticleScore(dbConn, req.ArticleID, compositeScore, confidence)
+			if err != nil {
+				log.Printf("Warning: Failed to update article confidence after feedback: %v", err)
+			}
 		}
 
 		RespondSuccess(c, map[string]string{"status": "feedback received"})

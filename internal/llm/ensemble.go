@@ -242,8 +242,8 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 	perModelResults := make(map[string][]SubResult)
 	perModelAgg := make(map[string]map[string]float64)
 
-	const minValid = 5
-	const maxAttempts = 20
+	const minValid = 1
+	const maxAttempts = 6
 	const confidenceThreshold = 0.5
 
 	for _, model := range models {
@@ -252,22 +252,24 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 	outer:
 		for attempts < maxAttempts && len(validResponses) < minValid {
 			for _, pv := range promptVariants {
-				attempts++
-				score, explanation, confidence, rawResp, err := c.callLLM(articleID, model, pv, content)
-				if err != nil {
-					continue
-				}
-				sub := SubResult{
-					Model: model, PromptVariant: pv.ID,
-					Score: score, Explanation: explanation,
-					Confidence: confidence, RawResponse: rawResp,
-				}
-				allSubResults = append(allSubResults, sub)
-				if confidence >= confidenceThreshold {
-					validResponses = append(validResponses, sub)
-				}
-				if len(validResponses) >= minValid || attempts >= maxAttempts {
-					break outer
+				for retry := 0; retry < 2 && attempts < maxAttempts && len(validResponses) < minValid; retry++ {
+					attempts++
+					score, explanation, confidence, rawResp, err := c.callLLM(articleID, model, pv, content)
+					if err != nil {
+						continue
+					}
+					sub := SubResult{
+						Model: model, PromptVariant: pv.ID,
+						Score: score, Explanation: explanation,
+						Confidence: confidence, RawResponse: rawResp,
+					}
+					allSubResults = append(allSubResults, sub)
+					if confidence >= confidenceThreshold {
+						validResponses = append(validResponses, sub)
+					}
+					if len(validResponses) >= minValid || attempts >= maxAttempts {
+						break outer
+					}
 				}
 			}
 		}

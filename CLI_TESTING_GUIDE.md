@@ -87,6 +87,24 @@ npm run test:report
 
 This will generate an HTML report of all test results in the `test-results` directory.
 
+## Running Essential Rescoring Tests (Critical Path)
+
+To run the most important backend rescoring tests (including all boundary and edge cases), use the following script:
+
+```
+run_essential_tests.cmd
+```
+
+This will:
+- Start the backend server (if not already running)
+- Run the essential Postman collection for rescoring
+- Save results to `test-results/essential_rescoring_tests.json`
+- Exit with the test result code (0 = all pass)
+
+## Troubleshooting
+- Ensure you use unique article titles/URLs in your tests to avoid data collisions.
+- Test results are saved in the `test-results/` directory for review and analysis.
+
 ## Test Result Analysis
 
 The test analyzer provides a powerful way to examine test results without opening Postman:

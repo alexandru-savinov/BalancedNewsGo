@@ -7,6 +7,11 @@ echo Running all Postman tests...
 echo 1. Running Backend Fixes Tests...
 call run_backend_tests.cmd
 
+REM === Run Node.js SSE backend progress validation ===
+REM Automatically extract articleId from test results
+node test_sse_progress.js
+REM Optionally, parse output or fail the script if SSE status is not Success
+
 echo 2. Running Rescoring Tests...
 start /b cmd /c "go run cmd/server/main.go"
 timeout /t 5 /nobreak > nul

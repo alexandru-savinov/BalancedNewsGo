@@ -13,7 +13,7 @@ run_backend_tests() {
     sleep 5
     
     echo "Running backend fixes tests..."
-    npx newman run postman/backend_fixes_tests_updated.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/backend_fixes_tests.json
+    npx newman run postman/backup/backend_fixes_tests.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/backend_fixes_tests.json
     
     echo "Stopping the server..."
     kill $SERVER_PID
@@ -30,21 +30,21 @@ run_all_tests() {
     go run cmd/server/main.go > test-results/server_rescoring.log 2>&1 &
     SERVER_PID=$!
     sleep 5
-    npx newman run memory-bank/postman_rescoring_collection.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/postman_rescoring_collection.json
+    npx newman run postman/backup/postman_rescoring_collection.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/postman_rescoring_collection.json
     kill $SERVER_PID
     
     echo "Running essential rescoring tests..."
     go run cmd/server/main.go > test-results/server_essential.log 2>&1 &
     SERVER_PID=$!
     sleep 5
-    npx newman run memory-bank/essential_rescoring_tests.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/essential_rescoring_tests.json
+    npx newman run postman/backup/essential_rescoring_tests.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/essential_rescoring_tests.json
     kill $SERVER_PID
     
     echo "Running extended rescoring tests..."
     go run cmd/server/main.go > test-results/server_extended.log 2>&1 &
     SERVER_PID=$!
     sleep 5
-    npx newman run memory-bank/extended_rescoring_collection.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/extended_rescoring_collection.json
+    npx newman run postman/backup/extended_rescoring_collection.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/extended_rescoring_collection.json
     kill $SERVER_PID
     
     echo "All tests completed."
@@ -66,6 +66,21 @@ run_debug_tests() {
     kill $SERVER_PID
     
     echo "Debug tests completed."
+}
+
+# Function to run confidence tests
+run_confidence_tests() {
+    echo "Running confidence validation tests..."
+    go run cmd/server/main.go > test-results/server_confidence.log 2>&1 &
+    SERVER_PID=$!
+    sleep 5
+    
+    npx newman run postman/backup/confidence_validation_tests.json -e postman/local_environment.json --reporters cli,json --reporter-json-export test-results/confidence_tests.json
+    
+    echo "Stopping the server..."
+    kill $SERVER_PID
+    
+    echo "Confidence tests completed."
 }
 
 # Function to generate report
@@ -100,6 +115,9 @@ case $COMMAND in
     "debug")
         run_debug_tests
         ;;
+    "confidence")
+        run_confidence_tests
+        ;;
     "report")
         generate_report
         ;;
@@ -124,6 +142,7 @@ case $COMMAND in
         echo "  ./test.sh backend        - Run backend fixes tests"
         echo "  ./test.sh all            - Run all tests"
         echo "  ./test.sh debug          - Run debug tests"
+        echo "  ./test.sh confidence     - Run confidence validation tests"
         echo "  ./test.sh report         - Generate HTML test report"
         echo "  ./test.sh analyze        - Analyze test results"
         echo "  ./test.sh list           - List test result files"

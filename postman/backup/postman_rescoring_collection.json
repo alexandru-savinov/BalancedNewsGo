@@ -25,46 +25,20 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Test Article TC1\",\n  \"content\": \"This is a test article for TC1.\",\n  \"url\": \"{{latestNewsUrl}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+              "raw": "{\n  \"title\": \"Test Article TC1\",\n  \"content\": \"This is a test article for TC1.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/tc1-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
             }
           },
           "event": [
             {
-              "listen": "prerequest",
-              "script": {
-                "exec": [
-                  "// Fetch a real news article URL from NewsAPI and set it as latestNewsUrl",
-                  "pm.sendRequest({",
-                  "    url: 'https://newsapi.org/v2/top-headlines?country=us&pageSize=1&apiKey=4b07b82ea0ef463db6edd5d6d0ea9a38',",
-                  "    method: 'GET'",
-                  "}, function (err, res) {",
-                  "    if (!err && res.code === 200) {",
-                  "        var articles = res.json().articles;",
-                  "        if (articles && articles.length > 0 && articles[0].url) {",
-                  "            pm.environment.set(\"latestNewsUrl\", articles[0].url);",
-                  "        } else {",
-                  "            pm.environment.unset(\"latestNewsUrl\");",
-                  "        }",
-                  "    } else {",
-                  "        pm.environment.unset(\"latestNewsUrl\");",
-                  "    }",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            },
-            {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test(\"Status code is 201\", function () {",
-                  "    pm.response.to.have.status(201);",
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
                   "});",
-                  "if (pm.response.code === 201) {",
+                  "if (pm.response.code === 200) {",
                   "    var json = pm.response.json();",
-                  "    pm.environment.set(\"articleId_TC1\", json.id);",
-                  "} else {",
-                  "    pm.environment.unset(\"articleId_TC1\");",
+                  "    pm.environment.set(\"articleId_TC1\", json.data.article_id);",
                   "}"
                 ],
                 "type": "text/javascript"
@@ -89,7 +63,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"score\": 5\n}"
+              "raw": "{\n  \"score\": 0.5\n}"
             }
           },
           "event": [
@@ -124,9 +98,9 @@
                   "pm.test(\"Status code is 200\", function () {",
                   "    pm.response.to.have.status(200);",
                   "});",
-                  "var json = pm.response.json();",
-                  "pm.test(\"Score updated to 5\", function () {",
-                  "    pm.expect(json.score).to.eql(5);",
+                  "pm.test(\"Score updated to 0.5\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.data.article.composite_score).to.equal(0.5);",
                   "});"
                 ],
                 "type": "text/javascript"
