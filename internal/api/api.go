@@ -14,12 +14,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 )
 
 var (
@@ -69,13 +69,13 @@ func getProgress(articleID int64) *ProgressState {
 // RegisterRoutes sets up all API routes and returns the configured router
 func RegisterRoutes(db *sqlx.DB, collector *rss.Collector, llmClient *llm.LLMClient) *gin.Engine {
 	router := gin.Default()
-	
+
 	// Load HTML templates
 	router.LoadHTMLGlob("web/*.html")
-	
+
 	// Serve static files from ./web
 	router.Static("/static", "./web")
-	
+
 	// API routes
 	router.GET("/api/articles", getArticlesHandler(db))
 	router.GET("/api/articles/:id", getArticleByIDHandler(db))
@@ -89,10 +89,10 @@ func RegisterRoutes(db *sqlx.DB, collector *rss.Collector, llmClient *llm.LLMCli
 	router.POST("/api/feedback", feedbackHandler(db))
 	router.GET("/api/feeds/healthz", feedHealthHandler(collector))
 	router.GET("/api/llm/score-progress/:id", scoreProgressSSEHandler())
-	
+
 	// Debug endpoints
 	router.GET("/api/debug/schema", debugSchemaHandler(db))
-	
+
 	return router
 }
 

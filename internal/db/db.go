@@ -202,7 +202,7 @@ func InsertFeedback(db *sqlx.DB, feedback *Feedback) (int64, error) {
 	if err != nil {
 		return 0, handleError(err, "failed to insert feedback")
 	}
-	
+
 	id, err := result.LastInsertId()
 	if err != nil {
 		return 0, handleError(err, "failed to get inserted feedback ID")
