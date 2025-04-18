@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors" // Fixed import
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
 		if err != nil || id < 1 {
-			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			RespondError(c, apperrors.New("Invalid article ID", ErrValidation))
 			LogError("reanalyzeHandler: invalid id", err)
 			return
 		}
@@ -34,7 +35,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 				c.JSON(http.StatusNotFound, gin.H{"error": "Article not found"})
 				return
 			}
-			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch article")
+			RespondError(c, apperrors.New("Failed to fetch article", ErrInternal))
 			LogError("reanalyzeHandler: failed to fetch article", err)
 			return
 		}
@@ -42,7 +43,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 		// Parse raw JSON body to check for score field
 		var raw map[string]interface{}
 		if err := c.ShouldBindJSON(&raw); err != nil {
-			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid JSON body")
+			RespondError(c, apperrors.New("Invalid JSON body", ErrValidation))
 			LogError("reanalyzeHandler: invalid JSON body", err)
 			return
 		}
@@ -52,7 +53,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 			// Validate the score is within range
 			scoreFloat, ok := scoreVal.(float64)
 			if !ok || scoreFloat < -1.0 || scoreFloat > 1.0 {
-				RespondError(c, http.StatusBadRequest, ErrValidation, "Score must be a number between -1.0 and 1.0")
+				RespondError(c, apperrors.New("Score must be a number between -1.0 and 1.0", ErrValidation))
 				LogError("reanalyzeHandler: invalid score value", nil)
 				return
 			}
@@ -61,7 +62,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 			confidence := 1.0 // Use maximum confidence for direct score updates
 			err = db.UpdateArticleScoreLLM(dbConn, articleID, scoreFloat, confidence)
 			if err != nil {
-				RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to update article score")
+				RespondError(c, apperrors.New("Failed to update article score", ErrInternal))
 				LogError("reanalyzeHandler: failed to update article score", err)
 				return
 			}
@@ -79,7 +80,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 		// Use the first model from config for a dry-run health check
 		cfg, cfgErr := llm.LoadCompositeScoreConfig()
 		if cfgErr != nil || len(cfg.Models) == 0 {
-			RespondError(c, http.StatusServiceUnavailable, ErrInternal, "LLM provider configuration unavailable")
+			RespondError(c, apperrors.New("LLM provider configuration unavailable", ErrInternal))
 			LogError("reanalyzeHandler: LLM config unavailable", cfgErr)
 			return
 		}
@@ -87,21 +88,21 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 		// Set a short timeout for the pre-flight check
 		originalTimeout := 10 * time.Second // Default/fallback
 		llmClient.SetHTTPLLMTimeout(2 * time.Second)
-		_, healthErr := llmClient.ScoreWithModel(article, modelName)
+		_, healthErr := llmClient.ScoreWithModel(article, modelName) // Corrected: pass article directly (it's already a pointer)
 		llmClient.SetHTTPLLMTimeout(originalTimeout)
 		if healthErr != nil {
 			errMsg := healthErr.Error()
 			if strings.Contains(errMsg, "503") || strings.Contains(errMsg, "Service Unavailable") {
-				RespondError(c, http.StatusServiceUnavailable, ErrInternal, "LLM provider unavailable (503)")
+				RespondError(c, apperrors.New("LLM provider unavailable (503)", ErrInternal))
 				LogError("reanalyzeHandler: LLM provider unavailable (503)", healthErr)
 				return
 			}
 			if strings.Contains(errMsg, "rate limit") {
-				RespondError(c, http.StatusTooManyRequests, ErrInternal, "LLM provider rate limited")
+				RespondError(c, apperrors.New("LLM provider rate limited", ErrInternal))
 				LogError("reanalyzeHandler: LLM provider rate limited", healthErr)
 				return
 			}
-			RespondError(c, http.StatusInternalServerError, ErrInternal, "LLM provider error: "+errMsg)
+			RespondError(c, apperrors.New("LLM provider error: "+errMsg, ErrInternal))
 			LogError("reanalyzeHandler: LLM provider error", healthErr)
 			return
 		}
@@ -161,7 +162,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 				label := fmt.Sprintf("Scoring with %s", m.ModelName)
 				setProgress(articleID, label, label, percent(stepNum, totalSteps), "InProgress", "", nil)
 
-				_, scoreErr := llmClient.ScoreWithModel(article, m.ModelName)
+				_, scoreErr := llmClient.ScoreWithModel(&article, m.ModelName)
 				log.Printf("[reanalyzeHandler %d] Model %s scoring result: err=%v", articleID, m.ModelName, scoreErr)
 
 				if scoreErr != nil {
@@ -191,7 +192,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
 				return
 			}
-			finalScoreValue, _, calcErr := llm.ComputeCompositeScoreWithConfidence(scores)
+			finalScoreValue, _, calcErr := llm.ComputeCompositeScoreWithConfidenceFixed(scores)
 			if calcErr != nil {
 				errMsg := fmt.Sprintf("Failed to calculate final score: %v", calcErr)
 				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)
@@ -205,7 +206,7 @@ func reanalyzeHandlerFixed(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.Handle
 			// Assuming StoreEnsembleScore implicitly uses the latest scores from DB or updates the article object passed to it.
 			// If StoreEnsembleScore needs the calculated value explicitly, the call needs modification.
 			log.Printf("[reanalyzeHandler %d] Attempting to store ensemble score.", articleID)
-			actualFinalScore, storeErr := llmClient.StoreEnsembleScore(article) // Capture both return values
+			actualFinalScore, storeErr := llmClient.StoreEnsembleScore(&article) // Capture both return values
 			if storeErr != nil {
 				errMsg := fmt.Sprintf("Error storing ensemble score: %v", storeErr)
 				log.Printf("[reanalyzeHandler %d] %s", articleID, errMsg)

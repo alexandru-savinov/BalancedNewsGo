@@ -32,6 +32,9 @@ func main() {
 	// Initialize Gin
 	router := gin.Default()
 
+	// Load HTML templates
+	router.LoadHTMLGlob("web/*.html")
+
 	// Serve static files from ./web
 	router.Static("/static", "./web")
 
@@ -294,14 +297,60 @@ func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		scores, _ := db.FetchLLMScores(dbConn, articleID)
-		html := "<h2>" + article.Title + "</h2><p>" + article.Source + " | " +
-			article.PubDate.Format("2006-01-02") + "</p><p>" + article.Content + "</p>"
+		composite, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
 
-		for _, s := range scores {
-			html += "<p>" + s.Model + ": " + fmt.Sprintf("%.2f", s.Score) + "</p>"
+		// Calculate bias label and confidence colors
+		var biasLabel string
+		if composite < -0.5 {
+			biasLabel = "Left"
+		} else if composite < -0.1 {
+			biasLabel = "Slightly Left"
+		} else if composite > 0.5 {
+			biasLabel = "Right"
+		} else if composite > 0.1 {
+			biasLabel = "Slightly Right"
+		} else {
+			biasLabel = "Center"
 		}
 
-		c.Header("Content-Type", "text/html")
-		c.String(200, html)
+		var confidenceColor string
+		if confidence >= 0.8 {
+			confidenceColor = "var(--confidence-high)"
+		} else if confidence >= 0.5 {
+			confidenceColor = "var(--confidence-medium)"
+		} else {
+			confidenceColor = "var(--confidence-low)"
+		}
+
+		// Calculate model indicators for the bias slider
+		var modelIndicators []map[string]interface{}
+		for _, s := range scores {
+			var meta struct {
+				Confidence float64 `json:"confidence"`
+			}
+			_ = json.Unmarshal([]byte(s.Metadata), &meta)
+
+			modelIndicators = append(modelIndicators, map[string]interface{}{
+				"Position": ((s.Score + 1) / 2) * 100,
+				"Title":    fmt.Sprintf("%s: %.2f (Confidence: %.0f%%)", s.Model, s.Score, meta.Confidence*100),
+			})
+		}
+
+		// Render HTML template
+		c.HTML(200, "article.html", gin.H{
+			"ID":                article.ID,
+			"Title":             article.Title,
+			"Content":           article.Content,
+			"Source":            article.Source,
+			"PubDate":           article.PubDate.Format("2006-01-02 15:04:05"),
+			"CreatedAt":         article.CreatedAt.Format("2006-01-02 15:04:05"),
+			"CompositeScore":    fmt.Sprintf("%.2f", composite),
+			"BiasLabel":         biasLabel,
+			"ConfidencePercent": fmt.Sprintf("%.0f", confidence*100),
+			"ConfidenceColor":   confidenceColor,
+			"SliderPosition":    ((composite + 1) / 2) * 100,
+			"ModelIndicators":   modelIndicators,
+			"Explanation":       "Analysis based on multiple machine learning models evaluating political bias.",
+		})
 	}
 }

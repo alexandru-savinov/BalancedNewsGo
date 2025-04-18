@@ -71,6 +71,7 @@ test.describe('Backend API E2E', () => {
     const ensembleRes = await request.get(`/api/articles/${article.id}/ensemble`);
     expect(ensembleRes.ok()).toBeTruthy();
     const ensemble = await ensembleRes.json();
-    expect(ensemble).toHaveProperty('scores');
+    expect(ensemble).toHaveProperty('data');
+    expect(ensemble.data).toHaveProperty('ensembles');
   });
 });

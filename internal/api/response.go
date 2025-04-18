@@ -1,102 +1,72 @@
 package api
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/gin-gonic/gin"
 )
 
-// Standard response schema
-type SuccessResponse struct {
-	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
-}
-
-type ErrorResponse struct {
-	Success bool        `json:"success"`
-	Error   ErrorDetail `json:"error"`
-}
-
-type ErrorDetail struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-// Helper to send a standardized success response
+// RespondSuccess sends a standardized success response
 func RespondSuccess(c *gin.Context, data interface{}) {
-	jsonBytes, _ := json.Marshal(SuccessResponse{Success: true, Data: data})
-	log.Printf("[RespondSuccess] JSON response: %s", string(jsonBytes))
-	c.JSON(http.StatusOK, SuccessResponse{
-		Success: true,
-		Data:    data,
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"data":    data,
 	})
 }
 
-// Helper to send a standardized error response
-func RespondError(c *gin.Context, status int, code, message string) {
-	c.JSON(status, ErrorResponse{
-		Success: false,
-		Error: ErrorDetail{
-			Code:    code,
-			Message: message,
+// RespondError handles application errors with standardized responses
+func RespondError(c *gin.Context, err *apperrors.AppError) {
+	if err == nil {
+		err = NewAppError(ErrInternal, "Unknown error occurred")
+	}
+
+	// Map error codes to HTTP status codes
+	status := getHTTPStatus(err.Code)
+	c.JSON(status, gin.H{
+		"success": false,
+		"error": gin.H{
+			"code":    err.Code,
+			"message": err.Message,
 		},
 	})
 }
 
-// Logging helpers
-func LogError(context string, err error) {
-	log.Printf("[ERROR] %s: %v", context, err)
-}
-
-func LogPerformance(context string, start time.Time) {
-	elapsed := time.Since(start)
-	log.Printf("[PERF] %s took %s", context, elapsed)
-}
-
-// Simple in-memory cache for demonstration
-type CacheItem struct {
-	Value      interface{}
-	Expiration int64
-}
-
-type SimpleCache struct {
-	items map[string]CacheItem
-}
-
-func NewSimpleCache() *SimpleCache {
-	return &SimpleCache{
-		items: make(map[string]CacheItem),
+// LogError logs errors with context, using structured format
+func LogError(operation string, err error) {
+	if err != nil {
+		if appErr, ok := err.(*apperrors.AppError); ok {
+			log.Printf("[ERROR] Operation=%s Code=%s Message=%s",
+				operation, appErr.Code, appErr.Message)
+		} else {
+			log.Printf("[ERROR] Operation=%s Message=%v",
+				operation, err)
+		}
 	}
 }
 
-func (c *SimpleCache) Set(key string, value interface{}, duration time.Duration) {
-	c.items[key] = CacheItem{
-		Value:      value,
-		Expiration: time.Now().Add(duration).UnixNano(),
-	}
+// LogPerformance logs performance metrics in a structured format
+func LogPerformance(operation string, start time.Time) {
+	duration := time.Since(start)
+	log.Printf("[PERF] Operation=%s Duration=%v", operation, duration)
 }
 
-func (c *SimpleCache) Get(key string) (interface{}, bool) {
-	item, found := c.items[key]
-	if !found {
-		return nil, false
+// getHTTPStatus maps error codes to HTTP status codes
+func getHTTPStatus(code string) int {
+	switch code {
+	case ErrValidation:
+		return http.StatusBadRequest
+	case ErrNotFound:
+		return http.StatusNotFound
+	case ErrRateLimit:
+		return http.StatusTooManyRequests
+	case ErrLLMService:
+		return http.StatusServiceUnavailable
+	case ErrConflict:
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
 	}
-	if time.Now().UnixNano() > item.Expiration {
-		delete(c.items, key)
-		return nil, false
-	}
-	return item.Value, true
 }
-
-// Error codes
-const (
-	ErrInvalidArticleID = "INVALID_ARTICLE_ID"
-	ErrNotFound         = "NOT_FOUND"
-	ErrInternal         = "INTERNAL_ERROR"
-	ErrValidation       = "VALIDATION_ERROR"
-	ErrCacheMiss        = "CACHE_MISS"
-	ErrBadRequest       = "BAD_REQUEST"
-)

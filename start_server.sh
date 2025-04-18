@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Clean and rebuild the application
+echo "Cleaning and rebuilding..."
+go clean
+go build -o newbalancer_server.exe cmd/server/main.go
+
 # Start the server
 echo "Starting the server..."
-go run cmd/server/main.go
+./newbalancer_server.exe

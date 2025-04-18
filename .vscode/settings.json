@@ -3,5 +3,6 @@
         "connectionId": "alexandru-savinov",
         "projectKey": "alexandru-savinov_BalancedNewsGo"
     },
-    "zencoder.enableRepoIndexing": true
+    "zencoder.enableRepoIndexing": true,
+    "cline.mcpMarketplace.enabled": false
 }

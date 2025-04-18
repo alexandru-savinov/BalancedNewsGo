@@ -66,9 +66,7 @@
         <span><strong>Fetched:</strong> ${createdAt}</span>
         <span class="bias-label" aria-label="Composite Bias">Composite: ${getScoreLabel(compositeScore)}</span>
         <span class="confidence" aria-label="Composite Confidence">
-            ${confidence !== null ? 
-              `<span class="confidence-indicator" style="background:${getConfidenceColor(confidence)}"></span>Confidence: ${Math.round(confidence * 100)}%` : 
-              'Confidence: --'}
+            <span class="confidence-indicator" style="background: ${confidence !== null ? getConfidenceColor(confidence) : '#ccc'}"></span>Confidence: ${confidence !== null ? Math.round(confidence * 100) : '--'}%
         </span>
         <span class="composite-score" aria-label="Composite Score">
             ${compositeScore !== null ? `Score: ${compositeScore.toFixed(2)}` : 'Score: --'}
@@ -653,38 +651,65 @@
                 
                 const data = await response.json();
                 
-                if (!data.success || !data.data || !data.data.ensembles) {
-                    ensembleContainer.innerHTML = '<p>Invalid ensemble data received.</p>';
+                if (!data.success || !data.scores || !Array.isArray(data.scores) || data.scores.length === 0) {
+                    ensembleContainer.innerHTML = '<p>No ensemble data available for this article.</p>';
                     return;
                 }
                 
-                const ensembles = data.data.ensembles;
+                // Get the latest ensemble score (should be the first one)
+                const latestEnsemble = data.scores[0];
+                
+                // Parse sub_results from the ensemble metadata
+                let subResults = [];
+                let aggregation = {};
+                
+                if (latestEnsemble.sub_results && Array.isArray(latestEnsemble.sub_results)) {
+                    subResults = latestEnsemble.sub_results;
+                }
+                
+                if (latestEnsemble.aggregation) {
+                    aggregation = latestEnsemble.aggregation;
+                }
+                
+                // Generate HTML for ensemble details
                 let ensemblesHtml = '<ul class="ensemble-list">';
                 
-                ensembles.forEach(ensemble => {
+                // Add individual model results
+                subResults.forEach(result => {
+                    const modelName = result.model || 'Unknown Model';
+                    const score = result.score !== undefined ? result.score.toFixed(2) : 'N/A';
+                    const confidence = result.confidence !== undefined ? 
+                        `${(result.confidence * 100).toFixed(0)}%` : 'N/A';
+                    const explanation = result.explanation || '';
+                    
                     ensemblesHtml += `
                         <li>
-                            <strong>${ensemble.model || 'Unknown Model'}</strong>: 
-                            Score: ${ensemble.score !== undefined ? ensemble.score.toFixed(2) : 'N/A'}, 
-                            Confidence: ${ensemble.confidence !== undefined ? (ensemble.confidence * 100).toFixed(0) + '%' : 'N/A'}
-                            ${ensemble.explanation ? `<br><em>Explanation: ${ensemble.explanation}</em>` : ''}
+                            <strong>${modelName}</strong>: 
+                            Score: ${score}, 
+                            Confidence: ${confidence}
+                            ${explanation ? `<br><em>Explanation: ${explanation}</em>` : ''}
                         </li>
                     `;
                     
                     // Update the explanation if we have ensemble data
-                    if (explanationElement && ensemble.explanation) {
-                        explanationElement.textContent = ensemble.explanation;
+                    if (explanationElement && explanation && !explanationElement.textContent.includes('Loading')) {
+                        explanationElement.textContent = explanation;
                     }
                 });
                 
                 ensemblesHtml += '</ul>';
                 
                 // Add aggregation stats if available
-                if (data.data.stats) {
+                if (Object.keys(aggregation).length > 0) {
+                    const mean = aggregation.weighted_mean !== undefined ? 
+                        aggregation.weighted_mean.toFixed(2) : 'N/A';
+                    const variance = aggregation.variance !== undefined ? 
+                        aggregation.variance.toFixed(2) : 'N/A';
+                    
                     ensemblesHtml += `
                         <p><strong>Aggregation Stats:</strong> 
-                        Mean: ${data.data.stats.mean !== undefined ? data.data.stats.mean.toFixed(2) : 'N/A'}, 
-                        StdDev: ${data.data.stats.std_dev !== undefined ? data.data.stats.std_dev.toFixed(2) : 'N/A'}
+                        Weighted Mean: ${mean}, 
+                        Variance: ${variance}
                         </p>
                     `;
                 }
@@ -697,13 +722,13 @@
                     // Remove any existing model indicators
                     slider.querySelectorAll('.model-indicator').forEach(el => el.remove());
                     
-                    // Add new model indicators
-                    ensembles.forEach(ensemble => {
-                        if (ensemble.score !== undefined) {
+                    // Add new model indicators for each sub-result
+                    subResults.forEach(result => {
+                        if (result.score !== undefined) {
                             const indicator = document.createElement('div');
                             indicator.className = 'bias-indicator model-indicator';
-                            indicator.style.left = `${((ensemble.score + 1) / 2) * 100}%`;
-                            indicator.title = `${ensemble.model || 'Model'}: ${ensemble.score.toFixed(2)}`;
+                            indicator.style.left = `${((result.score + 1) / 2) * 100}%`;
+                            indicator.title = `${result.model || 'Model'}: ${result.score.toFixed(2)}`;
                             slider.appendChild(indicator);
                         }
                     });
@@ -744,7 +769,7 @@
                     if (confidenceElement) {
                         confidenceElement.innerHTML = confidence !== null ?
                             `<span class="confidence-indicator" style="background:${getConfidenceColor(confidence)}"></span>Confidence: ${Math.round(confidence * 100)}%` :
-                            'Confidence: --';
+                            '<span class="confidence-indicator" style="background: #ccc"></span>Confidence: --';
                     }
                     if (compositeScoreElement) {
                         compositeScoreElement.textContent = compositeScore !== null ? `Score: ${compositeScore.toFixed(2)}` : 'Score: --';
@@ -847,6 +872,72 @@
         }
     </script>
 <script>
+        // Function to manually score an article
+        function manualScoreArticle(btn) {
+            const article = btn.closest('article[data-article-id]');
+            const articleId = article.getAttribute('data-article-id');
+            const inputElement = document.getElementById(`manual-score-input-${articleId}`);
+            const errorMessageElement = article.querySelector('.manual-score-error-message');
+            
+            // Reset error message
+            errorMessageElement.style.display = 'none';
+            errorMessageElement.textContent = '';
+            
+            // Validate input
+            const scoreValue = parseFloat(inputElement.value);
+            if (isNaN(scoreValue) || scoreValue < -1 || scoreValue > 1) {
+                errorMessageElement.textContent = 'Please enter a valid score between -1 and 1';
+                errorMessageElement.style.display = 'block';
+                return;
+            }
+            
+            // Disable button during request
+            btn.disabled = true;
+            
+            // Send score to backend
+            fetch(`/api/manual-score/${articleId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ score: scoreValue })
+            })
+            .then(resp => {
+                if (!resp.ok) {
+                    return resp.json().then(data => {
+                        throw new Error(data.error?.message || `HTTP error ${resp.status}`);
+                    });
+                }
+                return resp.json();
+            })
+            .then(data => {
+                // Update UI with new score
+                updateArticleDetails(articleId);
+                
+                // Clear input field
+                inputElement.value = '';
+                
+                // Show success message
+                errorMessageElement.textContent = 'Score updated successfully!';
+                errorMessageElement.style.color = 'green';
+                errorMessageElement.style.display = 'block';
+                
+                // Hide success message after 3 seconds
+                setTimeout(() => {
+                    errorMessageElement.style.display = 'none';
+                    errorMessageElement.style.color = 'red'; // Reset color
+                }, 3000);
+                
+                // Re-enable button
+                btn.disabled = false;
+            })
+            .catch(err => {
+                errorMessageElement.textContent = `Error: ${err.message}`;
+                errorMessageElement.style.display = 'block';
+                btn.disabled = false;
+            });
+        }
+
         // Function to start LLM rescoring an article
         function llmRescoreArticle(btn) {
             const article = btn.closest('article[data-article-id]');
@@ -860,8 +951,8 @@
     
             // Reset UI
             btn.disabled = true;
-            btnSpinner.style.display = '';
-            progressContainer.style.display = '';
+            btnSpinner.style.display = 'inline-block';
+            progressContainer.style.display = 'block';
             progressBar.style.width = '0%';
             progressMessages.innerHTML = '';
             errorMessage.style.display = 'none';
@@ -892,74 +983,68 @@
                         const progress = JSON.parse(event.data);
                         console.log("SSE Progress:", progress);
 
-                    // Update progress bar and messages based on status
-                    if (progress.status === "in_progress" || progress.status === "pending") {
-                        // Update progress bar if percent is available
-                        if (progress.progress !== undefined) {
-                            progressBar.style.width = `${progress.progress * 100}%`;
-                        }
-                        
-                        // Add message if available
-                        if (progress.message) {
-                            const li = document.createElement('li');
-                            li.textContent = progress.message;
-                            // Avoid duplicate messages
-                            if (!progressMessages.lastChild || progressMessages.lastChild.textContent !== progress.message) {
-                                progressMessages.appendChild(li);
+                        // Update progress bar and messages based on status
+                        if (progress.status === "InProgress") {
+                            // Update progress bar if percent is available
+                            if (progress.percent !== undefined) {
+                                progressBar.style.width = `${progress.percent}%`;
+                            }
+                            
+                            // Add message if available
+                            if (progress.message) {
+                                const li = document.createElement('li');
+                                li.textContent = progress.message;
+                                // Avoid duplicate messages
+                                if (!progressMessages.lastChild || progressMessages.lastChild.textContent !== progress.message) {
+                                    progressMessages.appendChild(li);
+                                }
                             }
                         }
+                        else if (progress.status === "Success") {
+                            // Scoring completed successfully
+                            progressBar.style.width = '100%';
+                            const li = document.createElement('li');
+                            li.textContent = "Scoring complete!";
+                            progressMessages.appendChild(li);
+                            
+                            // Refresh all article data
+                            updateArticleDetails(articleId);
+                            loadEnsembleDetails(articleId);
+                            
+                            // Reset UI
+                            btn.disabled = false;
+                            btnSpinner.style.display = 'none';
+                            evtSource.close();
+                        } 
+                        else if (progress.status === "Error") {
+                            // Scoring failed
+                            errorMessage.textContent = "Error: " + (progress.error || "Unknown error occurred");
+                            errorMessage.style.display = 'block';
+                            progressBar.style.backgroundColor = 'red';
+                            btn.disabled = false;
+                            btnSpinner.style.display = 'none';
+                            evtSource.close();
+                        }
+                    } catch (e) {
+                        console.error("Error parsing SSE message:", e);
                     }
-                    else if (progress.status === "completed") {
-                        // Scoring completed successfully
-                        progressBar.style.width = '100%';
-                        const li = document.createElement('li');
-                        li.textContent = "Scoring complete!";
-                        progressMessages.appendChild(li);
-                        
-                        // Refresh all article data
-                        updateArticleDetails(articleId);
-                        loadEnsembleDetails(articleId);
-                        
-                        // Reset UI
-                        btn.disabled = false;
-                        btnLabel.textContent = "Rescore article";
-                        btnLabel.style.display = '';
-                        btnSpinner.style.display = 'none';
-                        evtSource.close();
-                    } 
-                    else if (progress.status === "failed") {
-                        // Scoring failed
-                        errorMessage.textContent = "Error: " + (progress.error || "Unknown error occurred");
-                        errorMessage.style.display = '';
-                        progressBar.style.backgroundColor = 'red';
-                        btn.disabled = false;
-                        btnLabel.textContent = "Retry Score";
-                        btnLabel.style.display = '';
-                        btnSpinner.style.display = 'none';
-                        evtSource.close();
-                    }
-                } catch (e) {
-                    console.error("Error parsing SSE message:", e);
-                }
-            };
-            
-            evtSource.onerror = function() {
-                errorMessage.textContent = "Connection lost. Please try again.";
-                errorMessage.style.display = '';
+                };
+                
+                evtSource.onerror = function() {
+                    errorMessage.textContent = "Connection lost. Please try again.";
+                    errorMessage.style.display = 'block';
+                    btn.disabled = false;
+                    btnSpinner.style.display = 'none';
+                    evtSource.close();
+                };
+            })
+            .catch(err => {
+                errorMessage.textContent = "Failed to start scoring: " + err.message;
+                errorMessage.style.display = 'block';
                 btn.disabled = false;
-                btnLabel.style.display = '';
                 btnSpinner.style.display = 'none';
-                evtSource.close();
-            };
-        })
-        .catch(err => {
-            errorMessage.textContent = "Failed to start scoring: " + err.message;
-            errorMessage.style.display = '';
-            btn.disabled = false;
-            btnLabel.style.display = '';
-            btnSpinner.style.display = 'none';
-        });
-    }
+            });
+        }
 
     // Run simple frontend tests on load
     window.addEventListener('load', () => {
