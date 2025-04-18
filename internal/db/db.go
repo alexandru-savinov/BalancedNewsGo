@@ -181,48 +181,55 @@ func handleError(err error, msg string) error {
 	}
 }
 
-// InsertLabel creates a new label entry
+// InsertLabel inserts a new label record
 func InsertLabel(db *sqlx.DB, label *Label) error {
-	_, err := db.NamedExec(`
-		INSERT INTO labels (data, label, source, date_labeled, labeler, confidence, created_at)
-		VALUES (:data, :label, :source, :date_labeled, :labeler, :confidence, :created_at)`,
+	result, err := db.NamedExec(`
+        INSERT INTO labels (data, label, source, date_labeled, labeler, confidence, created_at)
+        VALUES (:data, :label, :source, :date_labeled, :labeler, :confidence, :created_at)`,
 		label)
 	if err != nil {
 		return handleError(err, "failed to insert label")
 	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return handleError(err, "failed to get inserted label ID")
+	}
+	label.ID = id
 	return nil
 }
 
-// InsertFeedback creates a new feedback entry
-func InsertFeedback(db *sqlx.DB, feedback *Feedback) (int64, error) {
+// InsertFeedback stores user feedback for an article
+func InsertFeedback(db *sqlx.DB, feedback *Feedback) error {
 	result, err := db.NamedExec(`
-		INSERT INTO feedback (article_id, user_id, feedback_text, category, ensemble_output_id, source, created_at)
-		VALUES (:article_id, :user_id, :feedback_text, :category, :ensemble_output_id, :source, :created_at)`,
+        INSERT INTO feedback (article_id, user_id, feedback_text, category, ensemble_output_id, source, created_at)
+        VALUES (:article_id, :user_id, :feedback_text, :category, :ensemble_output_id, :source, :created_at)`,
 		feedback)
 	if err != nil {
-		return 0, handleError(err, "failed to insert feedback")
+		return handleError(err, "failed to insert feedback")
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		return 0, handleError(err, "failed to get inserted feedback ID")
+		return handleError(err, "failed to get inserted feedback ID")
 	}
-	return id, nil
+	feedback.ID = id
+	return nil
 }
 
 // FetchLatestEnsembleScore gets the most recent ensemble score for an article
 func FetchLatestEnsembleScore(db *sqlx.DB, articleID int64) (float64, error) {
 	var score float64
 	err := db.Get(&score, `
-		SELECT score FROM llm_scores 
-		WHERE article_id = ? AND model = 'ensemble'
-		ORDER BY created_at DESC LIMIT 1`,
+        SELECT score FROM llm_scores 
+        WHERE article_id = ? AND model = 'ensemble'
+        ORDER BY created_at DESC LIMIT 1`,
 		articleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return 0, nil // Return 0 if no score found
+			return 0.0, nil // Return 0 if no score exists
 		}
-		return 0, handleError(err, "failed to fetch latest ensemble score")
+		return 0.0, handleError(err, "failed to fetch latest ensemble score")
 	}
 	return score, nil
 }
@@ -231,40 +238,36 @@ func FetchLatestEnsembleScore(db *sqlx.DB, articleID int64) (float64, error) {
 func FetchLatestConfidence(db *sqlx.DB, articleID int64) (float64, error) {
 	var confidence float64
 	err := db.Get(&confidence, `
-		SELECT json_extract(metadata, '$.confidence') as confidence 
-		FROM llm_scores 
-		WHERE article_id = ? AND model = 'ensemble'
-		ORDER BY created_at DESC LIMIT 1`,
+        SELECT confidence FROM articles WHERE id = ?`,
 		articleID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return 0, nil // Return 0 if no confidence found
+			return 0.0, nil // Return 0 if no confidence exists
 		}
-		return 0, handleError(err, "failed to fetch latest confidence")
+		return 0.0, handleError(err, "failed to fetch latest confidence score")
 	}
 	return confidence, nil
 }
 
 // ArticleExistsBySimilarTitle checks if an article with a similar title exists
 func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
-	// Normalize the title by converting to lowercase and removing punctuation
-	normalized := strings.ToLower(title)
-	normalized = strings.Map(func(r rune) rune {
-		if strings.ContainsRune(",.!?:;\"'()[]{}", r) {
-			return -1
-		}
-		return r
-	}, normalized)
+	// Use SQLite's LIKE operator with wildcards to find similar titles
+	// Remove common punctuation and spaces for comparison
+	cleanTitle := strings.TrimSpace(strings.ToLower(title))
+	cleanTitle = strings.ReplaceAll(cleanTitle, "'", "")
+	cleanTitle = strings.ReplaceAll(cleanTitle, "\"", "")
 
 	var exists bool
-	query := `
-		SELECT EXISTS (
-			SELECT 1 FROM articles 
-			WHERE lower(replace(replace(replace(title, '.', ''), ',', ''), ':', '')) LIKE ?
-		)`
-	err := db.Get(&exists, query, "%"+normalized+"%")
+	err := db.Get(&exists, `
+        SELECT EXISTS(
+            SELECT 1 FROM articles 
+            WHERE LOWER(REPLACE(REPLACE(REPLACE(title, "'", ""), '"', ""), ' ', '')) 
+            LIKE '%' || ? || '%'
+        )`,
+		strings.ReplaceAll(cleanTitle, " ", ""))
+
 	if err != nil {
-		return false, handleError(err, "failed to check article existence by title")
+		return false, handleError(err, "failed to check for similar title")
 	}
 	return exists, nil
 }

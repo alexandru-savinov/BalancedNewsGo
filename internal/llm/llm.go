@@ -571,10 +571,11 @@ func (c *LLMClient) FetchScores(articleID int64) ([]db.LLMScore, error) {
 	return db.FetchLLMScores(c.db, articleID)
 }
 
+// ScoreWithModel uses a single model to score content
 func (c *LLMClient) ScoreWithModel(article *db.Article, modelName string) (float64, error) {
 	score, _, _, _, err := c.callLLM(article.ID, modelName, DefaultPromptVariant, article.Content)
 	if err != nil {
-		if strings.Contains(err.Error(), "rate limit") {
+		if errors.Is(err, ErrBothLLMKeysRateLimited) {
 			return 0, ErrBothLLMKeysRateLimited
 		}
 		if strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "Service Unavailable") {
@@ -625,76 +626,6 @@ func (c *LLMClient) StoreEnsembleScore(article *db.Article) (float64, error) {
 	}
 
 	return finalScore, nil
-}
-
-func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant PromptVariant, content string) (float64, string, float64, string, error) {
-	contentHash := hashContent(content)
-	if cached, ok := c.cache.Get(contentHash, modelName); ok {
-		var meta struct {
-			Explanation string  `json:"explanation"`
-			Confidence  float64 `json:"confidence"`
-		}
-		if err := json.Unmarshal([]byte(cached.Metadata), &meta); err == nil {
-			return cached.Score, meta.Explanation, meta.Confidence, cached.Metadata, nil
-		}
-	}
-
-	prompt := fmt.Sprintf("%s\n\nArticle: %s", promptVariant.Template, content)
-
-	var lastErr error
-	var rawResp string
-
-	for i := 0; i < 3; i++ { // Maximum 3 retries
-		apiResp, err := c.llmService.(*HTTPLLMService).callLLMAPIWithKey(modelName, prompt)
-		if err != nil {
-			lastErr = err
-			if apiResp != nil {
-				rawResp = apiResp.String()
-			}
-			continue
-		}
-		rawResp = apiResp.String()
-
-		response, err := parseLLMAPIResponse([]byte(rawResp))
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		// Parse JSON response
-		var result struct {
-			Score       float64 `json:"score"`
-			Explanation string  `json:"explanation"`
-			Confidence  float64 `json:"confidence"`
-		}
-
-		if err := json.Unmarshal([]byte(response), &result); err != nil {
-			lastErr = apperrors.HandleError(err, "failed to parse LLM response")
-			continue
-		}
-
-		// Validate score range
-		if result.Score < -1.0 || result.Score > 1.0 {
-			lastErr = apperrors.New("score out of valid range (-1.0 to 1.0)", apperrors.ErrInvalidInput)
-			continue
-		}
-
-		// Create metadata
-		metadata := fmt.Sprintf(`{"explanation": %q, "confidence": %.3f}`, result.Explanation, result.Confidence)
-
-		// Cache the result
-		c.cache.Set(contentHash, modelName, &db.LLMScore{
-			ArticleID: articleID,
-			Model:     modelName,
-			Score:     result.Score,
-			Metadata:  metadata,
-			CreatedAt: time.Now(),
-		})
-
-		return result.Score, result.Explanation, result.Confidence, metadata, nil
-	}
-
-	return 0, "", 0, "", lastErr
 }
 
 func hashContent(content string) string {
