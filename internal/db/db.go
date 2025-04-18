@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"time"
 
@@ -21,9 +22,37 @@ const (
 
 // Pre-defined database errors
 var (
-	ErrDuplicateURL = apperrors.New("Article with this URL already exists", "conflict")
-	ErrInvalidScore = apperrors.New("Invalid score value", "validation_error")
+	ErrDuplicateURL    = apperrors.New("Article with this URL already exists", "conflict")
+	ErrInvalidScore    = apperrors.New("Invalid score value", "validation_error")
+	ErrArticleNotFound = errors.New("not found")
 )
+
+type Article struct {
+	ID             int64     `db:"id"`
+	Source         string    `db:"source"`
+	PubDate        time.Time `db:"pub_date"`
+	URL            string    `db:"url"`
+	Title          string    `db:"title"`
+	Content        string    `db:"content"`
+	CompositeScore *float64  `db:"composite_score"`
+	Confidence     *float64  `db:"confidence"`
+	CreatedAt      time.Time `db:"created_at"`
+	Status         string    `db:"status"`
+	FailCount      int       `db:"fail_count"`
+	LastAttempt    time.Time `db:"last_attempt"`
+	Escalated      bool      `db:"escalated"`
+	ScoreSource    string    `db:"score_source"`
+}
+
+type LLMScore struct {
+	ID        int64     `db:"id"`
+	ArticleID int64     `db:"article_id"`
+	Model     string    `db:"model"`
+	Score     float64   `db:"score"`
+	Metadata  string    `db:"metadata"`
+	Version   int       `db:"version"`
+	CreatedAt time.Time `db:"created_at"`
+}
 
 type Feedback struct {
 	ID               int64     `db:"id"`
@@ -268,6 +297,107 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
 
 	if err != nil {
 		return false, handleError(err, "failed to check for similar title")
+	}
+	return exists, nil
+}
+
+// InsertArticle creates a new article record
+func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
+	result, err := db.NamedExec(`
+        INSERT INTO articles (source, pub_date, url, title, content, created_at)
+        VALUES (:source, :pub_date, :url, :title, :content, :created_at)`,
+		article)
+	if err != nil {
+		return 0, handleError(err, "failed to insert article")
+	}
+	return result.LastInsertId()
+}
+
+// InsertLLMScore creates a new LLM score record
+func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
+	result, err := db.NamedExec(`
+        INSERT INTO llm_scores (article_id, model, score, metadata, version, created_at)
+        VALUES (:article_id, :model, :score, :metadata, :version, :created_at)`,
+		score)
+	if err != nil {
+		return 0, handleError(err, "failed to insert LLM score")
+	}
+	return result.LastInsertId()
+}
+
+// FetchArticles retrieves articles with optional filters
+func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset int) ([]Article, error) {
+	query := `SELECT * FROM articles WHERE 1=1`
+	var args []interface{}
+
+	if source != "" {
+		query += " AND source = ?"
+		args = append(args, source)
+	}
+	if leaning != "" {
+		switch leaning {
+		case "left":
+			query += " AND composite_score < -0.1"
+		case "right":
+			query += " AND composite_score > 0.1"
+		case "center":
+			query += " AND composite_score BETWEEN -0.1 AND 0.1"
+		}
+	}
+
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	var articles []Article
+	err := db.Select(&articles, query, args...)
+	if err != nil {
+		return nil, handleError(err, "failed to fetch articles")
+	}
+	return articles, nil
+}
+
+// FetchArticleByID retrieves a single article by ID
+func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
+	var article Article
+	err := db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrArticleNotFound
+		}
+		return nil, handleError(err, "failed to fetch article")
+	}
+	return &article, nil
+}
+
+// FetchLLMScores retrieves all LLM scores for an article
+func FetchLLMScores(db *sqlx.DB, articleID int64) ([]LLMScore, error) {
+	var scores []LLMScore
+	err := db.Select(&scores, "SELECT * FROM llm_scores WHERE article_id = ? ORDER BY created_at DESC", articleID)
+	if err != nil {
+		return nil, handleError(err, "failed to fetch LLM scores")
+	}
+	return scores, nil
+}
+
+// UpdateArticleScore updates the composite score for an article
+func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
+	_, err := db.Exec(`
+        UPDATE articles 
+        SET composite_score = ?, confidence = ?, score_source = 'llm'
+        WHERE id = ?`,
+		score, confidence, articleID)
+	if err != nil {
+		return handleError(err, "failed to update article score")
+	}
+	return nil
+}
+
+// ArticleExistsByURL checks if an article exists with the given URL
+func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
+	var exists bool
+	err := db.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", url)
+	if err != nil {
+		return false, handleError(err, "failed to check article URL existence")
 	}
 	return exists, nil
 }
