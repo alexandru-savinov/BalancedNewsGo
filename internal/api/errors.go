@@ -14,6 +14,8 @@ const (
 	ErrConflict   = "conflict_error"
 )
 
+const errInvalidArticleID = "Invalid article ID"
+
 // Pre-defined API errors
 var (
 	ErrInvalidArticleID = &apperrors.AppError{

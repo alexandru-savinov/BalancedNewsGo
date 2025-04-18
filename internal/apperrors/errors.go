@@ -8,6 +8,7 @@ import (
 type AppError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	Cause   error  `json:"-"`
 }
 
 // Error implements the error interface
@@ -28,6 +29,25 @@ func New(message string, code string) *AppError {
 	return &AppError{
 		Code:    code,
 		Message: message,
+	}
+}
+
+// Wrap wraps an error with additional context
+func Wrap(err error, code, msg string) *AppError {
+	if err == nil {
+		return New(msg, code)
+	}
+	if ae, ok := err.(*AppError); ok {
+		return &AppError{
+			Code:    code,
+			Message: msg + ": " + ae.Message,
+			Cause:   ae,
+		}
+	}
+	return &AppError{
+		Code:    code,
+		Message: msg + ": " + err.Error(),
+		Cause:   err,
 	}
 }
 

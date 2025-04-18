@@ -107,7 +107,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			Content string `json:"content"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			RespondError(c, apperrors.New(ErrInvalidPayload))
+			RespondError(c, apperrors.New("Invalid request payload", ErrInvalidPayload))
 			return
 		}
 
@@ -130,14 +130,15 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		if len(missingFields) > 0 {
-			RespondError(c, apperrors.New(ErrValidation,
-				fmt.Sprintf("Missing required fields: %s", strings.Join(missingFields, ", "))))
+			RespondError(c, apperrors.New(
+				fmt.Sprintf("Missing required fields: %s", strings.Join(missingFields, ", ")),
+				ErrValidation))
 			return
 		}
 
 		// Validate URL format
 		if !strings.HasPrefix(req.URL, "http://") && !strings.HasPrefix(req.URL, "https://") {
-			RespondError(c, apperrors.New(ErrValidation, "Invalid URL format (must start with http:// or https://)"))
+			RespondError(c, apperrors.New("Invalid URL format (must start with http:// or https://)", ErrValidation))
 			return
 		}
 
@@ -148,14 +149,14 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 		if exists {
-			RespondError(c, apperrors.New(ErrDuplicateURL))
+			RespondError(c, apperrors.New("Article with this URL already exists", ErrConflict))
 			return
 		}
 
 		// Parse pub_date
 		pubDate, err := time.Parse(time.RFC3339, req.PubDate)
 		if err != nil {
-			RespondError(c, apperrors.New(ErrValidation, "Invalid pub_date format (expected RFC3339)"))
+			RespondError(c, apperrors.New("Invalid pub_date format (expected RFC3339)", ErrValidation))
 			return
 		}
 
@@ -175,7 +176,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		id, err := db.InsertArticle(dbConn, article)
 		if err != nil {
 			if errors.Is(err, db.ErrDuplicateURL) {
-				RespondError(c, apperrors.New(ErrDuplicateURL))
+				RespondError(c, apperrors.New("Article with this URL already exists", ErrConflict))
 				return
 			}
 			RespondError(c, apperrors.Wrap(err, ErrInternal, "Failed to create article"))
@@ -200,13 +201,13 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		// Input validation
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
-			RespondError(c, apperrors.New(ErrValidation, "Invalid 'limit' parameter"))
+			RespondError(c, apperrors.New("Invalid limit parameter", ErrValidation))
 			LogError("getArticlesHandler: invalid limit", err)
 			return
 		}
 		offset, err := strconv.Atoi(offsetStr)
 		if err != nil || offset < 0 {
-			RespondError(c, apperrors.New(ErrValidation, "Invalid 'offset' parameter"))
+			RespondError(c, apperrors.New("Invalid offset parameter", ErrValidation))
 			LogError("getArticlesHandler: invalid offset", err)
 			return
 		}
@@ -240,7 +241,7 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		// Log fetched data *after* potential error check
 		if err != nil {
-			RespondError(c, apperrors.New(ErrInternal, "Failed to fetch articles"))
+			RespondError(c, apperrors.New("Failed to fetch articles", ErrInternal))
 			LogError("getArticlesHandler: fetch articles", err)
 			return
 		}
@@ -315,7 +316,7 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil || id < 1 {
-			RespondError(c, apperrors.New(ErrInvalidArticleID))
+			RespondError(c, apperrors.New(errInvalidArticleID, ErrValidation))
 			return
 		}
 
@@ -333,7 +334,7 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		article, err := db.FetchArticleByID(dbConn, id)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {
-				RespondError(c, apperrors.New(ErrArticleNotFound))
+				RespondError(c, apperrors.New("Article not found", ErrNotFound))
 				return
 			}
 			RespondError(c, apperrors.Wrap(err, ErrInternal, "Failed to fetch article"))
@@ -923,7 +924,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 // Helper function to process ensemble scores
 func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
-	details := make([]map[string]interface{}{}, 0)
+	details := make([]map[string]interface{}, 0) // Fixed illegal make call
 	for _, score := range scores {
 		if score.Model != "ensemble" {
 			continue
