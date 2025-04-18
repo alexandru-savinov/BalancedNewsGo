@@ -44,7 +44,7 @@ func main() {
 	})
 
 	// Register API routes
-	api.RegisterRoutes(router, dbConn, rssCollector, llmClient)
+	router = api.RegisterRoutes(dbConn, rssCollector, llmClient)
 
 	// htmx endpoint for articles list with filters
 	router.GET("/articles", articlesHandler(dbConn))
@@ -142,12 +142,10 @@ func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
 		_, err := llmClient.EnsembleAnalyze(article.ID, article.Content)
 		// Determine success based on the error returned by EnsembleAnalyze
 		success := err == nil
-		if err != nil && !errors.Is(err, llm.ErrBothLLMKeysRateLimited) { // Log errors unless it's just rate limiting
+		if err != nil && !errors.Is(err, llm.ErrRateLimited) { // Updated error type
 			log.Printf("Error during ensemble analysis for article %d: %v", article.ID, err)
-		} else if errors.Is(err, llm.ErrBothLLMKeysRateLimited) {
+		} else if errors.Is(err, llm.ErrRateLimited) {
 			log.Printf("Skipping update for article %d due to rate limiting: %v", article.ID, err)
-			// Optionally continue to next article instead of updating status below
-			// continue
 		}
 
 		now := time.Now()
@@ -170,7 +168,7 @@ func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
 			if err != nil {
 				log.Printf("Error updating failed article %d: %v", article.ID, err)
 			} else {
-				log.Printf("Article %d failed again (fail count: %d)", article.ID, newFailCount)
+				log.Printf("Article %d failed again (fail count: %d)", newFailCount)
 			}
 		}
 	}
