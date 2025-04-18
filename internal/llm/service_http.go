@@ -62,3 +62,17 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 
 	return score, confidence, nil
 }
+
+// callLLMAPIWithKey makes a direct API call to the LLM service
+func (s *HTTPLLMService) callLLMAPIWithKey(modelName string, prompt string, apiKey string) (*resty.Response, error) {
+	return s.client.R().
+		SetAuthToken(apiKey).
+		SetHeader("Content-Type", "application/json").
+		SetBody(map[string]interface{}{
+			"model": modelName,
+			"messages": []map[string]string{
+				{"role": "user", "content": prompt},
+			},
+		}).
+		Post("https://api.openai.com/v1/chat/completions")
+}

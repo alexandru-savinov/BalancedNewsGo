@@ -304,8 +304,8 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
 // InsertArticle creates a new article record
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 	result, err := db.NamedExec(`
-        INSERT INTO articles (source, pub_date, url, title, content, created_at)
-        VALUES (:source, :pub_date, :url, :title, :content, :created_at)`,
+        INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source)
+        VALUES (:source, :pub_date, :url, :title, :content, :created_at, :composite_score, :confidence, :score_source)`,
 		article)
 	if err != nil {
 		return 0, handleError(err, "failed to insert article")
@@ -359,14 +359,38 @@ func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset
 // FetchArticleByID retrieves a single article by ID
 func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 	var article Article
-	err := db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrArticleNotFound
+	
+	// Add retry logic with backoff for recently created articles
+	maxRetries := 3
+	retryDelay := 100 * time.Millisecond
+	
+	var err error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err = db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
+		if err == nil {
+			// Article found, return it
+			return &article, nil
 		}
-		return nil, handleError(err, "failed to fetch article")
+		
+		if err != sql.ErrNoRows {
+			// For errors other than "no rows", don't retry
+			break
+		}
+		
+		// Only for "no rows" error, wait and retry
+		// This helps with timing issues when an article was just created
+		// but the transaction hasn't fully committed yet
+		if attempt < maxRetries-1 {
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		}
 	}
-	return &article, nil
+	
+	// Handle the final error
+	if err == sql.ErrNoRows {
+		return nil, ErrArticleNotFound
+	}
+	return nil, handleError(err, "failed to fetch article")
 }
 
 // FetchLLMScores retrieves all LLM scores for an article

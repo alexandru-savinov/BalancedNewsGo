@@ -4,12 +4,12 @@ import (
 	"context"
 	"log"
 	"os"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/joho/godotenv"
 
-	"strings"
-
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 )
 
@@ -20,54 +20,46 @@ func main() {
 		log.Printf("Warning: .env file not loaded: %v", err)
 	}
 
-	// Check for generic LLM_API_KEY first, then provider-specific fallback
+	// Get API key based on provider
 	provider := os.Getenv("LLM_PROVIDER")
 	if provider == "" {
-		log.Println("Warning: LLM_PROVIDER not set, assuming 'openai' for API key fallback check.")
-		provider = "openai"
+		log.Fatal("LLM_PROVIDER not set")
 	}
+
 	apiKey := os.Getenv("LLM_API_KEY")
 	if apiKey == "" {
-		fallbackKeyName := strings.ToUpper(provider) + "_API_KEY"
-		apiKey = os.Getenv(fallbackKeyName)
-		if apiKey == "" {
-			log.Fatalf("LLM_API_KEY (and fallback %s) not set. Cannot run LLM test.", fallbackKeyName)
-		}
-		log.Printf("Warning: Using fallback API key %s. Set LLM_API_KEY.", fallbackKeyName)
+		log.Fatal("LLM_API_KEY not set")
 	}
 
-	baseURL := os.Getenv("LLM_BASE_URL")
-	if baseURL == "" {
-		log.Fatal("LLM_BASE_URL not set")
-	}
-
-	// TODO: Get models to test from env var or config based on provider?
-	// Example models - adjust based on the configured provider (e.g., OpenRouter might need 'openai/gpt-3.5-turbo')
-	models := []string{"gpt-3.5-turbo", "gpt-4"}
-	if provider == "openrouter" {
-		models = []string{"openai/gpt-3.5-turbo", "openai/gpt-4"} // Example OpenRouter model names
-	}
-	log.Printf("Using LLM Provider: %s", provider)
+	// Create resty client with timeout
 	client := resty.New()
+	client.SetTimeout(30 * time.Second)
 
-	// Create service with base URL
-	svc := llm.NewHTTPLLMService(client, baseURL)
+	// Create service instance
+	svc := llm.NewHTTPLLMService(client, apiKey)
 
-	ctx := context.Background()
-	for _, model := range models {
-		log.Printf("Testing model: %s", model)
-
-		req := &llm.AnalyzeRequest{
-			Content: "Say hello to the world!",
-			Model:   model,
-			Variant: llm.PromptVariantDefault,
-		}
-
-		_, err := svc.Analyze(ctx, req)
-		if err != nil {
-			log.Printf("Model %s test failed: %v", model, err)
-		} else {
-			log.Printf("Model %s test succeeded", model)
-		}
+	// Create test article
+	testArticle := &db.Article{
+		ID:      1,
+		Title:   "Test Article",
+		Content: "This is a test article for LLM analysis.",
 	}
+
+	// Create test prompt variant
+	promptVariant := llm.PromptVariant{
+		ID:       "test",
+		Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'.",
+		Examples: []string{
+			`{"score": 0.0, "explanation": "This is a neutral test article", "confidence": 0.9}`,
+		},
+	}
+
+	// Test the service
+	ctx := context.Background()
+	score, confidence, err := svc.ScoreContent(ctx, promptVariant, testArticle)
+	if err != nil {
+		log.Fatalf("Test failed: %v", err)
+	}
+
+	log.Printf("Test succeeded - Score: %.2f, Confidence: %.2f", score, confidence)
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/go-resty/resty/v2"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -54,6 +55,33 @@ var (
 	compositeScoreConfig     *CompositeScoreConfig
 	compositeScoreConfigOnce sync.Once
 )
+
+// PromptVariant defines a prompt template with few-shot examples
+type PromptVariant struct {
+	ID       string
+	Template string
+	Examples []string
+	Model    string // Model name for this variant
+	URL      string // API endpoint URL
+}
+
+// GeneratePrompt formats the prompt template with content
+func (pv *PromptVariant) FormatPrompt(content string) string {
+	examplesText := strings.Join(pv.Examples, "\n")
+	return fmt.Sprintf("%s\n%s\nArticle:\n%s", pv.Template, examplesText, content)
+}
+
+// DefaultPromptVariant is the standard prompt template for analyzing articles
+var DefaultPromptVariant = PromptVariant{
+	ID: "default",
+	Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) " +
+		"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
+	Examples: []string{
+		`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
+		`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
+		`{"score": 1.0, "explanation": "Strongly right-leaning language", "confidence": 0.9}`,
+	},
+}
 
 func LoadCompositeScoreConfig() (*CompositeScoreConfig, error) {
 	var err error
@@ -306,16 +334,13 @@ type LLMClient struct {
 func (c *LLMClient) SetHTTPLLMTimeout(timeout time.Duration) {
 	httpService, ok := c.llmService.(*HTTPLLMService)
 	if ok && httpService != nil && httpService.client != nil {
-		httpService.client.Timeout = timeout
+		httpService.client.SetTimeout(timeout)
 	}
 }
 
 func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
-	client := &http.Client{}
 	cache := NewCache()
-
 	provider := os.Getenv("LLM_PROVIDER")
-
 	var service LLMService
 
 	config, err := LoadCompositeScoreConfig()
@@ -327,31 +352,29 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	}
 	log.Printf("Loaded composite score config with %d models.", len(config.Models))
 
+	// Create resty client instead of http.Client
+	restyClient := resty.New()
+	restyClient.SetTimeout(defaultLLMTimeout)
+
 	switch provider {
 	case "openai":
 		apiKey := os.Getenv("OPENAI_API_KEY")
 		if apiKey == "" {
 			log.Fatal("ERROR: OPENAI_API_KEY not set, cannot use OpenAI LLM provider")
 		}
-
-		model := os.Getenv("OPENAI_MODEL")
-		if model == "" {
-			model = "gpt-3.5-turbo"
-		}
-
-		service = NewHTTPLLMService(client)
+		service = NewHTTPLLMService(restyClient, apiKey)
 	case "openrouter":
 		apiKey := os.Getenv("LLM_API_KEY")
 		if apiKey == "" {
 			log.Fatal("ERROR: LLM_API_KEY not set, cannot use OpenRouter LLM provider")
 		}
-		service = NewHTTPLLMService(client)
+		service = NewHTTPLLMService(restyClient, apiKey)
 	default:
 		log.Fatalf("ERROR: LLM_PROVIDER '%s' unknown, cannot initialize LLM service", provider)
 	}
 
 	return &LLMClient{
-		client:     client,
+		client:     &http.Client{}, // Keep http.Client for other uses
 		cache:      cache,
 		db:         dbConn,
 		llmService: service,

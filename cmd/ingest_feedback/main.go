@@ -42,7 +42,7 @@ func main() {
 		ensemblePtr = ensembleOutputID
 	}
 
-	feedback := &db.Feedback{
+	feedback := db.Feedback{
 		ArticleID:        *articleID,
 		UserID:           *userID,
 		FeedbackText:     *feedbackText,
@@ -52,7 +52,8 @@ func main() {
 		CreatedAt:        time.Now(),
 	}
 
-	_, err = db.InsertFeedback(dbConn, feedback)
+	// Store the feedback
+	err = db.InsertFeedback(dbConn, &feedback)
 	if err != nil {
 		log.Fatalf("Failed to insert feedback: %v", err)
 	}

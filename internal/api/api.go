@@ -1,13 +1,13 @@
 package api
 
 import (
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -75,23 +75,38 @@ func RegisterRoutes(dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm
 	router.Static("/static", "./web")
 
 	// API routes
-	router.GET("/api/articles", getArticlesHandler(dbConn))
-	router.GET("/api/articles/:id", getArticleByIDHandler(dbConn))
-	router.POST("/api/articles", createArticleHandler(dbConn))
-	router.POST("/api/refresh", refreshHandler(rssCollector))
-	router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(llmClient, dbConn))
-	router.POST("/api/manual-score/:id", manualScoreHandler(dbConn))
-	router.GET("/api/articles/:id/summary", summaryHandler(dbConn))
-	router.GET("/api/articles/:id/bias", biasHandler(dbConn))
-	router.GET("/api/articles/:id/ensemble", ensembleDetailsHandler(dbConn))
-	router.POST("/api/feedback", feedbackHandler(dbConn))
-	router.GET("/api/feeds/healthz", feedHealthHandler(rssCollector))
-	router.GET("/api/llm/score-progress/:id", scoreProgressSSEHandler())
+	router.GET("/api/articles", SafeHandler(getArticlesHandler(dbConn)))
+	router.GET("/api/articles/:id", SafeHandler(getArticleByIDHandler(dbConn)))
+	router.POST("/api/articles", SafeHandler(createArticleHandler(dbConn)))
+	router.POST("/api/refresh", SafeHandler(refreshHandler(rssCollector)))
+	router.POST("/api/llm/reanalyze/:id", SafeHandler(reanalyzeHandler(llmClient, dbConn)))
+	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(dbConn)))
+	router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(dbConn)))
+	router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(dbConn)))
+	router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(dbConn)))
+	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn)))
+	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
+	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler()))
 
 	// Debug endpoints
-	router.GET("/api/debug/schema", debugSchemaHandler(dbConn))
+	router.GET("/api/debug/schema", SafeHandler(debugSchemaHandler(dbConn)))
 
 	return router
+}
+
+// SafeHandler wraps a handler function with panic recovery to prevent server crashes
+func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if r := recover(); r != nil {
+				// Log the panic
+				log.Printf("[PANIC RECOVERED] %v\n%s", r, string(debug.Stack()))
+				// Return an error response
+				RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Internal server error: %v", r)))
+			}
+		}()
+		handler(c)
+	}
 }
 
 // Handler for POST /api/articles
@@ -167,7 +182,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			CreatedAt:      time.Now(),
 			CompositeScore: &zero,
 			Confidence:     &zero,
-			ScoreSource:    sql.NullString{String: "llm", Valid: true},
+			ScoreSource:    "llm",
 		}
 
 		id, err := db.InsertArticle(dbConn, article)
@@ -187,6 +202,21 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// Utility function for handling article array results
+type ArticleResult struct {
+	Article  *db.Article            `json:"article"`
+	Scores   []db.LLMScore          `json:"scores"`
+	Metadata map[string]interface{} `json:"metadata"`
+}
+
+// handleArticleBatch processes a batch of articles
+func handleArticleBatch(dbConn *sqlx.DB, articles []db.Article) ([]*ArticleResult, error) {
+	results := make([]*ArticleResult, 0, len(articles))
+	// ...existing code...
+	return results, nil
+}
+
+// getArticlesHandler handles GET /articles
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -238,7 +268,7 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		// Log fetched data *after* potential error check
 		if err != nil {
-			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch articles")
+			RespondError(c, NewAppError(ErrInternal, "Failed to fetch articles"))
 			LogError("getArticlesHandler: fetch articles", err)
 			return
 		}
@@ -630,22 +660,6 @@ func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		scores, err := db.FetchLLMScores(dbConn, id)
 		if err != nil {
-			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article summary"))
-			return
-		}
-
-		for _, score := range scores {
-			if score.Model == "summarizer" {
-				result := map[string]interface{}{
-					"summary":    score.Metadata,
-					"created_at": score.CreatedAt,
-				}
-				articlesCacheLock.Lock()
-				articlesCache.Set(cacheKey, result, 30*time.Second)
-				articlesCacheLock.Unlock()
-
-				RespondSuccess(c, result)
-				LogPerformance("summaryHandler", start)
 				return
 			}
 		}
@@ -752,7 +766,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		scores, err := db.FetchLLMScores(dbConn, articleID)
 		if err != nil {
-			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch bias data")
+			RespondError(c, NewAppError(ErrInternal, "Failed to fetch bias data"))
 			LogError("biasHandler: fetch scores", err)
 			return
 		}
@@ -921,7 +935,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 // Helper function to process ensemble scores
 func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
-	details := make([]map[string]interface{}{}, 0)
+	details := make([]map[string]interface{}, 0)
 	for _, score := range scores {
 		if score.Model != "ensemble" {
 			continue
@@ -1019,9 +1033,9 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Insert feedback
-		_, err := db.InsertFeedback(dbConn, feedback)
+		err := db.InsertFeedback(dbConn, feedback)
 		if err != nil {
-			RespondError(c, WrapError(err, ErrInternal, "Failed to save feedback"))
+			RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Failed to store feedback: %v", err)))
 			return
 		}
 
@@ -1057,7 +1071,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
 		if err != nil || id < 1 {
-			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid article ID")
+			RespondError(c, NewAppError(ErrValidation, "Invalid article ID"))
 			LogError("manualScoreHandler: invalid id", err)
 			return
 		}
@@ -1066,13 +1080,13 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		// Read raw body for strict validation
 		var raw map[string]interface{}
 		if err := c.ShouldBindJSON(&raw); err != nil {
-			RespondError(c, http.StatusBadRequest, ErrValidation, "Invalid JSON body")
+			RespondError(c, NewAppError(ErrValidation, "Invalid JSON body"))
 			LogError("manualScoreHandler: invalid JSON body", err)
 			return
 		}
 		// Only "score" is allowed
 		if len(raw) != 1 || raw["score"] == nil {
-			RespondError(c, http.StatusBadRequest, ErrValidation, "Payload must contain only 'score' field")
+			RespondError(c, NewAppError(ErrValidation, "Payload must contain only 'score' field"))
 			LogError("manualScoreHandler: payload missing or has extra fields", nil)
 			return
 		}
@@ -1083,13 +1097,13 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			if intVal, okInt := raw["score"].(int); okInt {
 				scoreVal = float64(intVal)
 			} else {
-				RespondError(c, http.StatusBadRequest, ErrValidation, "'score' must be a number")
+				RespondError(c, NewAppError(ErrValidation, "'score' must be a number"))
 				LogError("manualScoreHandler: score not a number", nil)
 				return
 			}
 		}
 		if scoreVal < -1.0 || scoreVal > 1.0 {
-			RespondError(c, http.StatusBadRequest, ErrValidation, "Score must be between -1.0 and 1.0")
+			RespondError(c, NewAppError(ErrValidation, "Score must be between -1.0 and 1.0"))
 			LogError("manualScoreHandler: score out of range", nil)
 			return
 		}
@@ -1098,10 +1112,10 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		_, err = db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {
-				c.JSON(http.StatusNotFound, gin.H{"error": "Article not found"})
+				RespondError(c, NewAppError(ErrNotFound, "Article not found"))
 				return
 			}
-			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to fetch article")
+			RespondError(c, NewAppError(ErrInternal, "Failed to fetch article"))
 			LogError("manualScoreHandler: failed to fetch article", err)
 			return
 		}
@@ -1119,11 +1133,11 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 				strings.Contains(errMsg, "out of range") ||
 				strings.Contains(errMsg, "data type mismatch")) {
 				log.Printf("[manualScoreHandler] Constraint/validation error updating article score: %v", err)
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to update score due to invalid data or constraint violation"})
+				RespondError(c, NewAppError(ErrValidation, "Failed to update score due to invalid data or constraint violation"))
 				return
 			}
 			log.Printf("[manualScoreHandler] Unexpected DB error updating article score: %v", err)
-			RespondError(c, http.StatusInternalServerError, ErrInternal, "Failed to update article score")
+			RespondError(c, NewAppError(ErrInternal, "Failed to update article score"))
 			LogError("manualScoreHandler: failed to update article score", err)
 			return
 		}

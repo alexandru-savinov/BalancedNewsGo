@@ -13,18 +13,6 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
-// PromptVariant defines a prompt template with few-shot examples
-type PromptVariant struct {
-	ID       string
-	Template string
-	Examples []string
-}
-
-func (pv *PromptVariant) GeneratePrompt(content string) string {
-	examplesText := strings.Join(pv.Examples, "\n")
-	return fmt.Sprintf("%s\n%s\nArticle:\n%s", pv.Template, examplesText, content)
-}
-
 // callLLM queries a specific LLM with a prompt variant
 func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant PromptVariant, content string) (float64, string, float64, string, error) {
 	maxRetries := 2
@@ -34,7 +22,7 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 	var explanation string
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		prompt := promptVariant.GeneratePrompt(content)
+		prompt := promptVariant.FormatPrompt(content)
 
 		// Compute prompt hash for logging
 		h := sha256.Sum256([]byte(prompt))
@@ -150,14 +138,6 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 }
 
 // Removed callOpenAIAPI as it's replaced by direct use of httpService.callLLMAPI
-
-func (c *LLMClient) callClaudeAPI(prompt string) (string, error) {
-	return "", fmt.Errorf("claude API integration not implemented")
-}
-
-func (c *LLMClient) callFineTunedModelAPI(prompt string) (string, error) {
-	return "", fmt.Errorf("fine-tuned model API integration not implemented")
-}
 
 // parseLLMResponse extracts score, explanation, confidence from raw response
 // parseNestedLLMJSONResponse extracts score, explanation, confidence from a raw response
