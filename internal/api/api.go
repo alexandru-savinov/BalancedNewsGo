@@ -658,10 +658,13 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 				return
 			}
 
+			// Include confidence information in the successful completion message
 			if scoreManager != nil {
+				confidencePercent := int(confidence * 100)
+				message := fmt.Sprintf("Scoring complete (confidence: %d%%)", confidencePercent)
 				scoreManager.SetProgress(articleID, &llm.ProgressState{
 					Step:        "Complete",
-					Message:     "Scoring complete",
+					Message:     message,
 					Percent:     100,
 					Status:      "Success",
 					FinalScore:  &finalScore,
@@ -811,7 +814,7 @@ func parseArticleID(c *gin.Context) (int64, bool) {
 }
 
 func filterAndTransformScores(scores []db.LLMScore, min, max float64) []map[string]interface{} {
-	results := make([]map[string]interface{}, 0)
+	results := make([]map[string]interface{}, 0, len(scores))
 	for _, score := range scores {
 		if score.Model != "ensemble" {
 			continue
@@ -1174,20 +1177,23 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		scores, err := db.FetchLLMScores(dbConn, req.ArticleID)
 		if err == nil {
 			// Calculate new composite score and confidence
-			compositeScore, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
+			score, confidence, compErr := llm.ComputeCompositeScoreWithConfidence(scores)
+			if compErr != nil {
+				LogError("feedbackHandler: composite score calculation", compErr)
+			} else {
+				// Adjust confidence based on feedback category
+				if req.Category == "agree" {
+					confidence = math.Min(1.0, confidence+0.1) // Increase confidence on agreement
+				} else if req.Category == "disagree" {
+					confidence = math.Max(0.0, confidence-0.1) // Decrease confidence on disagreement
+				}
 
-			// Adjust confidence based on feedback category
-			if req.Category == "agree" {
-				confidence = math.Min(1.0, confidence+0.1) // Increase confidence on agreement
-			} else if req.Category == "disagree" {
-				confidence = math.Max(0.0, confidence-0.1) // Decrease confidence on disagreement
-			}
-
-			// Update article with new confidence
-			err = db.UpdateArticleScore(dbConn, req.ArticleID, compositeScore, confidence)
-			if err != nil {
-				// Log error but don't fail the request since feedback was saved
-				LogError("feedbackHandler: update article confidence", err)
+				// Update article with new confidence
+				err = db.UpdateArticleScore(dbConn, req.ArticleID, score, confidence)
+				if err != nil {
+					// Log error but don't fail the request since feedback was saved
+					LogError("feedbackHandler: update article confidence", err)
+				}
 			}
 		}
 
