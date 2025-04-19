@@ -14,12 +14,12 @@ type ScoreManager struct {
 }
 
 // NewScoreManager creates a new score manager with dependencies
-func NewScoreManager(db *sqlx.DB, cache *Cache, calculator ScoreCalculator) *ScoreManager {
+func NewScoreManager(db *sqlx.DB, cache *Cache, calculator ScoreCalculator, progressMgr *ProgressManager) *ScoreManager {
 	return &ScoreManager{
 		db:          db,
 		cache:       cache,
 		calculator:  calculator,
-		progressMgr: nil, // To be set up later
+		progressMgr: progressMgr,
 	}
 }
 
@@ -37,4 +37,19 @@ func (sm *ScoreManager) InvalidateScoreCache(articleID int64) {
 // TrackProgress is a stub for progress tracking
 func (sm *ScoreManager) TrackProgress(articleID int64, step, status string) {
 	// TODO: Implement progress tracking
+}
+
+// SetProgress proxies to ProgressManager
+func (sm *ScoreManager) SetProgress(articleID int64, state *ProgressState) {
+	if sm.progressMgr != nil {
+		sm.progressMgr.SetProgress(articleID, state)
+	}
+}
+
+// GetProgress proxies to ProgressManager
+func (sm *ScoreManager) GetProgress(articleID int64) *ProgressState {
+	if sm.progressMgr != nil {
+		return sm.progressMgr.GetProgress(articleID)
+	}
+	return nil
 }
