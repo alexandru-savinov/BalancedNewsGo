@@ -10,11 +10,10 @@ import (
 )
 
 // MapModelToPerspective maps a model name to its perspective (left, center, right)
-// based on the composite score configuration
-func MapModelToPerspective(modelName string) string {
-	cfg, err := LoadCompositeScoreConfig()
-	if err != nil {
-		log.Printf("Error loading composite score config: %v", err)
+// based on the provided composite score configuration
+func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
+	if cfg == nil {
+		log.Printf("Error: CompositeScoreConfig is nil in MapModelToPerspective")
 		return ""
 	}
 
@@ -68,7 +67,7 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 		}
 
 		// First try to map the model to its perspective
-		perspective := MapModelToPerspective(s.Model)
+		perspective := MapModelToPerspective(s.Model, cfg)
 
 		// If mapping failed, try the old way
 		if perspective == "" {

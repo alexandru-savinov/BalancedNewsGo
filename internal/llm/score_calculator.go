@@ -19,16 +19,12 @@ type ScoreCalculator interface {
 // Missing perspectives are treated as 0 for both score and confidence
 // This implementation is pluggable for future algorithm changes
 type DefaultScoreCalculator struct {
-	Config *CompositeScoreConfig
+	Config *CompositeScoreConfig // Must be provided, not nil
 }
 
 func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
 	if c.Config == nil {
-		cfg, err := LoadCompositeScoreConfig()
-		if err != nil {
-			return 0, 0, fmt.Errorf("loading composite score config: %w", err)
-		}
-		c.Config = cfg
+		return 0, 0, fmt.Errorf("DefaultScoreCalculator: Config must not be nil")
 	}
 
 	scoreMap := map[string]*float64{
@@ -43,7 +39,7 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 	}
 
 	for _, s := range scores {
-		perspective := MapModelToPerspective(s.Model)
+		perspective := MapModelToPerspective(s.Model, c.Config)
 		if perspective == "" {
 			model := strings.ToLower(s.Model)
 			if model == "left" || model == LabelLeft {
