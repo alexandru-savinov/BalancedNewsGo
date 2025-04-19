@@ -65,7 +65,7 @@ func getProgress(articleID int64) *ProgressState {
 	return nil
 }
 
-func RegisterRoutes(dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient) *gin.Engine {
+func RegisterRoutes(dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) *gin.Engine {
 	router := gin.Default()
 
 	// Load HTML templates
@@ -79,7 +79,7 @@ func RegisterRoutes(dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm
 	router.GET("/api/articles/:id", SafeHandler(getArticleByIDHandler(dbConn)))
 	router.POST("/api/articles", SafeHandler(createArticleHandler(dbConn)))
 	router.POST("/api/refresh", SafeHandler(refreshHandler(rssCollector)))
-	router.POST("/api/llm/reanalyze/:id", SafeHandler(reanalyzeHandler(llmClient, dbConn)))
+	router.POST("/api/llm/reanalyze/:id", SafeHandler(reanalyzeHandler(llmClient, dbConn, scoreManager)))
 	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(dbConn)))
 	router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(dbConn)))
 	router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(dbConn)))
@@ -412,7 +412,8 @@ func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 	}
 }
 
-func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc {
+// Refactored reanalyzeHandler to use ScoreManager for scoring, storage, and progress
+func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
@@ -442,7 +443,6 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 
 		// Direct score update path - check if "score" field exists
 		if scoreRaw, hasScore := raw["score"]; hasScore {
-			// Convert to float64 (regardless of input format)
 			var scoreFloat float64
 			switch s := scoreRaw.(type) {
 			case float64:
@@ -467,14 +467,12 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 				return
 			}
 
-			// Validate score range
 			if scoreFloat < -1.0 || scoreFloat > 1.0 {
 				RespondError(c, NewAppError(ErrValidation, "Score must be between -1.0 and 1.0"))
 				LogError("reanalyzeHandler: invalid score value", nil)
 				return
 			}
 
-			// If score is valid, update the article score directly and return
 			confidence := 1.0 // Use maximum confidence for direct score updates
 			err = db.UpdateArticleScoreLLM(dbConn, articleID, scoreFloat, confidence)
 			if err != nil {
@@ -483,14 +481,11 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 				return
 			}
 
-			// Clear article from cache
-			articlesCacheLock.Lock()
-			articlesCache.Delete(fmt.Sprintf("article:%d", articleID))
-			articlesCache.Delete(fmt.Sprintf("ensemble:%d", articleID))
-			articlesCache.Delete(fmt.Sprintf("bias:%d", articleID))
-			articlesCacheLock.Unlock()
+			// Invalidate cache using ScoreManager
+			if scoreManager != nil {
+				scoreManager.InvalidateScoreCache(articleID)
+			}
 
-			// Return success response for direct score update
 			RespondSuccess(c, map[string]interface{}{
 				"status":     "score updated",
 				"article_id": articleID,
@@ -499,14 +494,12 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 			return
 		}
 
-		// API-first: Pre-flight LLM provider check
 		cfg, cfgErr := llm.LoadCompositeScoreConfig()
 		if cfgErr != nil || len(cfg.Models) == 0 {
 			RespondError(c, ErrLLMUnavailable)
 			return
 		}
 
-		// Pre-flight health check with short timeout
 		modelName := cfg.Models[0].ModelName
 		originalTimeout := 10 * time.Second
 		llmClient.SetHTTPLLMTimeout(2 * time.Second)
@@ -526,86 +519,155 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 			return
 		}
 
-		// Set initial progress: Queued
-		setProgress(articleID, "Queued", "Scoring job queued", 0, "InProgress", "", nil)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &llm.ProgressState{
+				Step:        "Queued",
+				Message:     "Scoring job queued",
+				Percent:     0,
+				Status:      "InProgress",
+				LastUpdated: time.Now().Unix(),
+			})
+		}
 
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					errMsg := fmt.Sprintf("Internal panic: %v", r)
-					log.Printf("[reanalyzeHandler %d] Recovered from panic: %s", articleID, errMsg)
-					setProgress(articleID, "Error", "Internal error occurred", 0, "Error", errMsg, nil)
+					if scoreManager != nil {
+						scoreManager.SetProgress(articleID, &llm.ProgressState{
+							Step:        "Error",
+							Message:     "Internal error occurred",
+							Percent:     0,
+							Status:      "Error",
+							Error:       errMsg,
+							LastUpdated: time.Now().Unix(),
+						})
+					}
 				}
 			}()
 
-			// Processing steps
 			totalSteps := len(cfg.Models) + 3
 			stepNum := 1
 
-			// Step 1: Delete old scores
-			setProgress(articleID, "Preparing", "Deleting old scores", percent(stepNum, totalSteps), "InProgress", "", nil)
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &llm.ProgressState{
+					Step:        "Preparing",
+					Message:     "Deleting old scores",
+					Percent:     percent(stepNum, totalSteps),
+					Status:      "InProgress",
+					LastUpdated: time.Now().Unix(),
+				})
+			}
 			if err := llmClient.DeleteScores(articleID); err != nil {
 				errMsg := fmt.Sprintf("Failed to delete old scores: %v", err)
-				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
+				if scoreManager != nil {
+					scoreManager.SetProgress(articleID, &llm.ProgressState{
+						Step:        "Error",
+						Message:     errMsg,
+						Percent:     percent(stepNum, totalSteps),
+						Status:      "Error",
+						Error:       errMsg,
+						LastUpdated: time.Now().Unix(),
+					})
+				}
 				return
 			}
 			stepNum++
 
-			// Step 2: Score with each model
 			for _, m := range cfg.Models {
 				label := fmt.Sprintf("Scoring with %s", m.ModelName)
-				setProgress(articleID, label, label, percent(stepNum, totalSteps), "InProgress", "", nil)
-
+				if scoreManager != nil {
+					scoreManager.SetProgress(articleID, &llm.ProgressState{
+						Step:        label,
+						Message:     label,
+						Percent:     percent(stepNum, totalSteps),
+						Status:      "InProgress",
+						LastUpdated: time.Now().Unix(),
+					})
+				}
 				_, scoreErr := llmClient.ScoreWithModel(article, m.ModelName)
 				if scoreErr != nil {
 					userMsg := fmt.Sprintf("Error scoring with %s", m.ModelName)
 					if errors.Is(scoreErr, llm.ErrBothLLMKeysRateLimited) {
 						userMsg = "Rate limit exceeded"
 					}
-					setProgress(articleID, "Error", userMsg, percent(stepNum, totalSteps), "Error", scoreErr.Error(), nil)
+					if scoreManager != nil {
+						scoreManager.SetProgress(articleID, &llm.ProgressState{
+							Step:        "Error",
+							Message:     userMsg,
+							Percent:     percent(stepNum, totalSteps),
+							Status:      "Error",
+							Error:       scoreErr.Error(),
+							LastUpdated: time.Now().Unix(),
+						})
+					}
 					return
 				}
 				stepNum++
 			}
 
-			// Step 3: Calculate final score
-			setProgress(articleID, "Calculating", "Computing final score", percent(stepNum, totalSteps), "InProgress", "", nil)
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &llm.ProgressState{
+					Step:        "Calculating",
+					Message:     "Computing final score",
+					Percent:     percent(stepNum, totalSteps),
+					Status:      "InProgress",
+					LastUpdated: time.Now().Unix(),
+				})
+			}
 			scores, fetchErr := llmClient.FetchScores(articleID)
 			if fetchErr != nil {
 				errMsg := fmt.Sprintf("Failed to fetch scores: %v", fetchErr)
-				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
-				return
-			}
-
-			finalScore, _, calcErr := llm.ComputeCompositeScoreWithConfidence(scores)
-			if calcErr != nil {
-				errMsg := fmt.Sprintf("Failed to calculate score: %v", calcErr)
-				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, nil)
+				if scoreManager != nil {
+					scoreManager.SetProgress(articleID, &llm.ProgressState{
+						Step:        "Error",
+						Message:     errMsg,
+						Percent:     percent(stepNum, totalSteps),
+						Status:      "Error",
+						Error:       errMsg,
+						LastUpdated: time.Now().Unix(),
+					})
+				}
 				return
 			}
 			stepNum++
 
-			// Step 4: Store results
-			setProgress(articleID, "Storing", "Saving results", percent(stepNum, totalSteps), "InProgress", "", nil)
-			actualScore, storeErr := llmClient.StoreEnsembleScore(article)
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &llm.ProgressState{
+					Step:        "Storing",
+					Message:     "Saving results",
+					Percent:     percent(stepNum, totalSteps),
+					Status:      "InProgress",
+					LastUpdated: time.Now().Unix(),
+				})
+			}
+			finalScore, confidence, storeErr := scoreManager.UpdateArticleScore(articleID, scores, cfg)
 			if storeErr != nil {
 				errMsg := fmt.Sprintf("Failed to store score: %v", storeErr)
-				setProgress(articleID, "Error", errMsg, percent(stepNum, totalSteps), "Error", errMsg, &finalScore)
+				if scoreManager != nil {
+					scoreManager.SetProgress(articleID, &llm.ProgressState{
+						Step:        "Error",
+						Message:     errMsg,
+						Percent:     percent(stepNum, totalSteps),
+						Status:      "Error",
+						Error:       errMsg,
+						FinalScore:  &finalScore,
+						LastUpdated: time.Now().Unix(),
+					})
+				}
 				return
 			}
 
-			// Success: Clear cache and set final progress
-			articlesCacheLock.Lock()
-			for _, key := range []string{
-				fmt.Sprintf("article:%d", articleID),
-				fmt.Sprintf("ensemble:%d", articleID),
-				fmt.Sprintf("bias:%d", articleID),
-			} {
-				articlesCache.Delete(key)
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &llm.ProgressState{
+					Step:        "Complete",
+					Message:     "Scoring complete",
+					Percent:     100,
+					Status:      "Success",
+					FinalScore:  &finalScore,
+					LastUpdated: time.Now().Unix(),
+				})
 			}
-			articlesCacheLock.Unlock()
-
-			setProgress(articleID, "Complete", "Scoring complete", 100, "Success", "", &actualScore)
 		}()
 
 		RespondSuccess(c, gin.H{
