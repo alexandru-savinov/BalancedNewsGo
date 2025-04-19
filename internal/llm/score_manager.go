@@ -84,9 +84,9 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 	}
 
 	meta := map[string]interface{}{
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp":   time.Now().Format(time.RFC3339),
 		"aggregation": "ensemble",
-		"confidence": confidence,
+		"confidence":  confidence,
 	}
 	metaBytes, _ := json.Marshal(meta)
 	ensembleScore := &db.LLMScore{
@@ -146,9 +146,20 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 	return score, confidence, nil
 }
 
-// InvalidateScoreCache invalidates all score-related caches for an article (stub)
+// InvalidateScoreCache invalidates all score-related caches for an article
 func (sm *ScoreManager) InvalidateScoreCache(articleID int64) {
-	// TODO: Implement cache invalidation
+	if sm.cache == nil {
+		return
+	}
+	// Invalidate all relevant cache keys (matching API cache usage)
+	keys := []string{
+		fmt.Sprintf("article:%d", articleID),
+		fmt.Sprintf("ensemble:%d", articleID),
+		fmt.Sprintf("bias:%d", articleID),
+	}
+	for _, key := range keys {
+		sm.cache.Delete(key)
+	}
 }
 
 // TrackProgress is a stub for progress tracking

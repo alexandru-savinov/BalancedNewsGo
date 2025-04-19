@@ -47,3 +47,13 @@ func (c *Cache) Set(contentHash, model string, score *db.LLMScore) {
 	}
 	c.m.Store(makeKey(contentHash, model), string(data))
 }
+
+// Delete removes a value from the cache
+func (c *Cache) Delete(key string) {
+	c.m.Delete(key)
+}
+
+// Remove removes a value from the cache by content hash and model
+func (c *Cache) Remove(contentHash, model string) {
+	c.m.Delete(makeKey(contentHash, model))
+}

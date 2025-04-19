@@ -27,7 +27,7 @@ func main() {
 		log.Println("No .env file found or error loading .env file:", err)
 	}
 	// Initialize services
-	dbConn, llmClient, rssCollector := initServices()
+	dbConn, llmClient, rssCollector, scoreManager := initServices()
 
 	// Initialize Gin
 	router := gin.Default()
@@ -44,7 +44,7 @@ func main() {
 	})
 
 	// Register API routes
-	router = api.RegisterRoutes(dbConn, rssCollector, llmClient)
+	router = api.RegisterRoutes(dbConn, rssCollector, llmClient, scoreManager)
 
 	// htmx endpoint for articles list with filters
 	router.GET("/articles", articlesHandler(dbConn))
@@ -176,7 +176,7 @@ func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
 
 // Removed placeholder function processArticleWithLLM as it's replaced by llmClient.EnsembleAnalyze
 
-func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
+func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager) {
 	// Load environment variables from .env file if present
 	err := godotenv.Load()
 	if err != nil {
@@ -217,7 +217,18 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
 	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
 	rssCollector.StartScheduler()
 
-	return dbConn, llmClient, rssCollector
+	// Initialize ScoreManager
+	cache := llm.NewCache()
+	calculator := &llm.DefaultScoreCalculator{
+		Config: &llm.CompositeScoreConfig{
+			MinScore: -1.0,
+			MaxScore: 1.0,
+		},
+	}
+	progressMgr := llm.NewProgressManager(10 * time.Minute) // Clean up progress data every 10 minutes
+	scoreManager := llm.NewScoreManager(dbConn, cache, calculator, progressMgr)
+
+	return dbConn, llmClient, rssCollector, scoreManager
 }
 
 func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {

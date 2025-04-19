@@ -25,7 +25,6 @@ type ProgressManager struct {
 }
 
 // NewProgressManager creates a progress manager with cleanup
-defaultCleanupInterval := 5 * time.Minute
 func NewProgressManager(cleanupInterval time.Duration) *ProgressManager {
 	pm := &ProgressManager{
 		progressMap:     make(map[int64]*ProgressState),

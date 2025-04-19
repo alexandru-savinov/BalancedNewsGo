@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"context"
+
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -315,8 +317,8 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 }
 
 // InsertLLMScore creates a new LLM score record
-func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
-	result, err := db.NamedExec(`
+func InsertLLMScore(exec sqlx.ExtContext, score *LLMScore) (int64, error) {
+	result, err := sqlx.NamedExecContext(context.Background(), exec, `
         INSERT INTO llm_scores (article_id, model, score, metadata, version, created_at)
         VALUES (:article_id, :model, :score, :metadata, :version, :created_at)`,
 		score)
@@ -423,14 +425,14 @@ func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence 
 }
 
 // UpdateArticleScoreLLM updates the composite score for an article, specifically from LLM rescoring
-func UpdateArticleScoreLLM(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
-	_, err := db.Exec(`
+func UpdateArticleScoreLLM(exec sqlx.ExtContext, articleID int64, score float64, confidence float64) error {
+	_, err := exec.ExecContext(context.Background(), `
         UPDATE articles 
-        SET composite_score = ?, confidence = ?, score_source = 'llm-manual'
+        SET composite_score = ?, confidence = ?, score_source = 'llm'
         WHERE id = ?`,
 		score, confidence, articleID)
 	if err != nil {
-		return handleError(err, "failed to update article score")
+		return handleError(err, "failed to update article score (LLM)")
 	}
 	return nil
 }
