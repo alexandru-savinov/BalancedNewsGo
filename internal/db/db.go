@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -359,11 +360,11 @@ func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset
 // FetchArticleByID retrieves a single article by ID
 func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 	var article Article
-	
+
 	// Add retry logic with backoff for recently created articles
 	maxRetries := 3
 	retryDelay := 100 * time.Millisecond
-	
+
 	var err error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err = db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
@@ -371,12 +372,15 @@ func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 			// Article found, return it
 			return &article, nil
 		}
-		
+
 		if err != sql.ErrNoRows {
-			// For errors other than "no rows", don't retry
+			// For errors other than "no rows", log the specific error
+			log.Printf("[ERROR] FetchArticleByID %d failed (attempt %d): %v", id, attempt+1, err)
+			// Don't retry for database errors
 			break
 		}
-		
+
+		log.Printf("[INFO] FetchArticleByID %d: article not found, retrying after %v (attempt %d of %d)", id, retryDelay, attempt+1, maxRetries)
 		// Only for "no rows" error, wait and retry
 		// This helps with timing issues when an article was just created
 		// but the transaction hasn't fully committed yet
@@ -385,11 +389,13 @@ func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 			retryDelay *= 2 // Exponential backoff
 		}
 	}
-	
+
 	// Handle the final error
 	if err == sql.ErrNoRows {
+		log.Printf("[WARN] FetchArticleByID %d: article not found after %d attempts", id, maxRetries)
 		return nil, ErrArticleNotFound
 	}
+	log.Printf("[ERROR] FetchArticleByID %d failed with database error: %v", id, err)
 	return nil, handleError(err, "failed to fetch article")
 }
 
@@ -408,6 +414,19 @@ func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence 
 	_, err := db.Exec(`
         UPDATE articles 
         SET composite_score = ?, confidence = ?, score_source = 'llm'
+        WHERE id = ?`,
+		score, confidence, articleID)
+	if err != nil {
+		return handleError(err, "failed to update article score")
+	}
+	return nil
+}
+
+// UpdateArticleScoreLLM updates the composite score for an article, specifically from LLM rescoring
+func UpdateArticleScoreLLM(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
+	_, err := db.Exec(`
+        UPDATE articles 
+        SET composite_score = ?, confidence = ?, score_source = 'llm-manual'
         WHERE id = ?`,
 		score, confidence, articleID)
 	if err != nil {

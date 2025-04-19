@@ -440,9 +440,62 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB) gin.HandlerFunc
 			return
 		}
 
-		// Check for forbidden score field
-		if _, hasScore := raw["score"]; hasScore {
-			RespondError(c, NewAppError(ErrValidation, "Payload must not contain 'score' field"))
+		// Direct score update path - check if "score" field exists
+		if scoreRaw, hasScore := raw["score"]; hasScore {
+			// Convert to float64 (regardless of input format)
+			var scoreFloat float64
+			switch s := scoreRaw.(type) {
+			case float64:
+				scoreFloat = s
+			case float32:
+				scoreFloat = float64(s)
+			case int:
+				scoreFloat = float64(s)
+			case int64:
+				scoreFloat = float64(s)
+			case string:
+				var parseErr error
+				scoreFloat, parseErr = strconv.ParseFloat(s, 64)
+				if parseErr != nil {
+					RespondError(c, NewAppError(ErrValidation, "Invalid score value"))
+					LogError("reanalyzeHandler: invalid score format", parseErr)
+					return
+				}
+			default:
+				RespondError(c, NewAppError(ErrValidation, "Invalid score value"))
+				LogError("reanalyzeHandler: invalid score value", nil)
+				return
+			}
+
+			// Validate score range
+			if scoreFloat < -1.0 || scoreFloat > 1.0 {
+				RespondError(c, NewAppError(ErrValidation, "Score must be between -1.0 and 1.0"))
+				LogError("reanalyzeHandler: invalid score value", nil)
+				return
+			}
+
+			// If score is valid, update the article score directly and return
+			confidence := 1.0 // Use maximum confidence for direct score updates
+			err = db.UpdateArticleScoreLLM(dbConn, articleID, scoreFloat, confidence)
+			if err != nil {
+				RespondError(c, NewAppError(ErrInternal, "Failed to update article score"))
+				LogError("reanalyzeHandler: failed to update article score", err)
+				return
+			}
+
+			// Clear article from cache
+			articlesCacheLock.Lock()
+			articlesCache.Delete(fmt.Sprintf("article:%d", articleID))
+			articlesCache.Delete(fmt.Sprintf("ensemble:%d", articleID))
+			articlesCache.Delete(fmt.Sprintf("bias:%d", articleID))
+			articlesCacheLock.Unlock()
+
+			// Return success response for direct score update
+			RespondSuccess(c, map[string]interface{}{
+				"status":     "score updated",
+				"article_id": articleID,
+				"score":      scoreFloat,
+			})
 			return
 		}
 
@@ -660,6 +713,22 @@ func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		scores, err := db.FetchLLMScores(dbConn, id)
 		if err != nil {
+			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article summary"))
+			return
+		}
+
+		for _, score := range scores {
+			if score.Model == "summarizer" {
+				result := map[string]interface{}{
+					"summary":    score.Metadata,
+					"created_at": score.CreatedAt,
+				}
+				articlesCacheLock.Lock()
+				articlesCache.Set(cacheKey, result, 30*time.Second)
+				articlesCacheLock.Unlock()
+
+				RespondSuccess(c, result)
+				LogPerformance("summaryHandler", start)
 				return
 			}
 		}
