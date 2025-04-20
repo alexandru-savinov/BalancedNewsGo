@@ -8,6 +8,8 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
+var perspectives = []string{"left", "center", "right"}
+
 // ScoreCalculator defines the interface for composite score calculation
 // Returns (score, confidence, error)
 type ScoreCalculator interface {
@@ -17,9 +19,61 @@ type ScoreCalculator interface {
 // DefaultScoreCalculator implements ScoreCalculator using the new averaging logic
 // It preserves the -1.0 to +1.0 scale and averages confidences from model metadata
 // Missing perspectives are treated as 0 for both score and confidence
-// This implementation is pluggable for future algorithm changes
 type DefaultScoreCalculator struct {
 	Config *CompositeScoreConfig // Must be provided, not nil
+}
+
+// initializeMaps creates and initializes maps for scores and confidence values
+func (c *DefaultScoreCalculator) initializeMaps() (map[string]*float64, map[string]*float64) {
+	scoreMap := make(map[string]*float64)
+	confMap := make(map[string]*float64)
+	for _, p := range perspectives {
+		scoreMap[p] = nil
+		confMap[p] = nil
+	}
+	return scoreMap, confMap
+}
+
+// getPerspective determines the perspective (left/center/right) for a given model
+func (c *DefaultScoreCalculator) getPerspective(model string) string {
+	perspective := MapModelToPerspective(model, c.Config)
+	if perspective != "" {
+		return perspective
+	}
+
+	model = strings.ToLower(model)
+	switch model {
+	case LabelLeft:
+		return "left"
+	case LabelRight:
+		return "right"
+	case "center":
+		return "center"
+	default:
+		return ""
+	}
+}
+
+// extractConfidence extracts confidence value from score metadata
+func (c *DefaultScoreCalculator) extractConfidence(metadata string) float64 {
+	var meta map[string]interface{}
+	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
+		return 0.0
+	}
+	if conf, ok := meta["confidence"]; ok {
+		// Handle both float64 and integer confidence values
+		switch v := conf.(type) {
+		case float64:
+			return v
+		case int:
+			return float64(v)
+		case int64:
+			return float64(v)
+		default:
+			return 0.0
+		}
+	}
+	return 0.0
 }
 
 func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
@@ -27,54 +81,29 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 		return 0, 0, fmt.Errorf("DefaultScoreCalculator: Config must not be nil")
 	}
 
-	scoreMap := map[string]*float64{
-		"left":   nil,
-		"center": nil,
-		"right":  nil,
-	}
-	confMap := map[string]*float64{
-		"left":   nil,
-		"center": nil,
-		"right":  nil,
-	}
+	scoreMap, confMap := c.initializeMaps()
 
+	// Process each score
 	for _, s := range scores {
-		perspective := MapModelToPerspective(s.Model, c.Config)
-		if perspective == "" {
-			model := strings.ToLower(s.Model)
-			if model == "left" || model == LabelLeft {
-				perspective = "left"
-			} else if model == "right" || model == LabelRight {
-				perspective = "right"
-			} else if model == "center" {
-				perspective = "center"
-			} else {
-				continue
-			}
-		}
-		if perspective != "left" && perspective != "center" && perspective != "right" {
+		perspective := c.getPerspective(s.Model)
+		if perspective == "" || perspective != "left" && perspective != "center" && perspective != "right" {
 			continue
 		}
+
 		val := s.Score
 		if isInvalid(val) || val < c.Config.MinScore || val > c.Config.MaxScore {
 			val = 0.0
 		}
 		scoreMap[perspective] = &val
 
-		// Extract confidence from metadata if available
-		conf := 0.0
-		var meta map[string]interface{}
-		if err := json.Unmarshal([]byte(s.Metadata), &meta); err == nil {
-			if v, ok := meta["confidence"].(float64); ok {
-				conf = v
-			}
-		}
+		conf := c.extractConfidence(s.Metadata)
 		confMap[perspective] = &conf
 	}
 
+	// Calculate final score and confidence
 	sum := 0.0
 	confSum := 0.0
-	for _, p := range []string{"left", "center", "right"} {
+	for _, p := range perspectives {
 		if scoreMap[p] != nil {
 			sum += *scoreMap[p]
 		} // else default 0
@@ -83,7 +112,5 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 		} // else default 0
 	}
 
-	score := sum / 3.0
-	confidence := confSum / 3.0
-	return score, confidence, nil
+	return sum / 3.0, confSum / 3.0, nil
 }

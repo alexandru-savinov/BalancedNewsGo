@@ -10,7 +10,7 @@ The 2025 redesign is now live, featuring a robust **multi-model, multi-prompt en
 
 ## E2E Testing Methodology (April 2025)
 - **Preparation:** Before running e2e tests, the `e2e_prep.js` script snapshots all news feeds and LLM model configs, performs health checks on feeds, LLM APIs, and the database, and triggers article ingestion via the Go CLI. The process halts if any critical service is unhealthy, ensuring tests run against a known-good, reproducible environment.
-- **Test Execution:** Cypress is used for e2e tests, with test specs organized under `cypress/e2e/**/*.cy.js` and executed against `http://localhost:8080`. No global support file is loaded; each suite is self-contained.
+- **Test Execution:** Playwright is used for E2E tests, with test specs organized under `playwright-tests/` and executed against `http://localhost:8080`. API testing is handled through Newman/Postman collections.
 - **Traceability:** Each test run is associated with a unique snapshot and metadata, enabling reproducibility and debugging.
 - **Best Practices:** This methodology ensures reliable, actionable e2e results and rapid diagnosis of failures.
 
