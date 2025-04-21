@@ -212,7 +212,7 @@ func createArticleHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 			CreatedAt:      time.Now(),
 			CompositeScore: &zero,
 			Confidence:     &zero,
-			ScoreSource:    "llm",
+			ScoreSource:    strPtr("llm"),
 		}
 
 		id, err := dbOps.InsertArticle(nil, article)

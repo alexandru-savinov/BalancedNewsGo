@@ -123,3 +123,54 @@ func TestInsertAndFetchLLMScore(t *testing.T) {
 		t.Errorf("Inserted LLM score not found")
 	}
 }
+
+func TestArticleWithNullFields(t *testing.T) {
+	dbConn := setupTestDB(t)
+	t.Cleanup(func() {
+		dbConn.Close()
+		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
+			t.Logf("Warning: failed to remove test DB file: %v", err)
+		}
+	})
+
+	// Create an article with null score_source
+	article := &Article{
+		Source:  "Test Source",
+		PubDate: time.Now(),
+		URL:     "http://example.com/test-null",
+		Title:   "Test Title Null",
+		Content: "Test Content Null",
+		// Explicitly not setting ScoreSource to test NULL handling
+	}
+
+	articleID, err := InsertArticle(dbConn, article)
+	if err != nil {
+		t.Fatalf("InsertArticle failed: %v", err)
+	}
+
+	// Fetch the article back
+	articles, err := FetchArticles(dbConn, "", "", 10, 0)
+	if err != nil {
+		t.Fatalf("FetchArticles failed: %v", err)
+	}
+
+	if len(articles) == 0 {
+		t.Fatal("No articles returned")
+	}
+
+	// Check if we can read the article with NULL score_source
+	found := false
+	for _, a := range articles {
+		if a.ID == articleID {
+			found = true
+			// score_source should be nil when NULL
+			if a.ScoreSource != nil {
+				t.Errorf("Expected nil score_source for NULL value, got %q", *a.ScoreSource)
+			}
+		}
+	}
+
+	if !found {
+		t.Error("Inserted article not found in results")
+	}
+}

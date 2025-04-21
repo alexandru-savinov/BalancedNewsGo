@@ -40,11 +40,11 @@ type Article struct {
 	CompositeScore *float64   `db:"composite_score"`
 	Confidence     *float64   `db:"confidence"`
 	CreatedAt      time.Time  `db:"created_at"`
-	Status         string     `db:"status"`
-	FailCount      int        `db:"fail_count"`
-	LastAttempt    *time.Time `db:"last_attempt"` // Changed to pointer
-	Escalated      bool       `db:"escalated"`
-	ScoreSource    string     `db:"score_source"`
+	Status         *string    `db:"status"`
+	FailCount      *int       `db:"fail_count"`
+	LastAttempt    *time.Time `db:"last_attempt"`
+	Escalated      *bool      `db:"escalated"`
+	ScoreSource    *string    `db:"score_source"`
 }
 
 type LLMScore struct {
@@ -369,8 +369,10 @@ func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset
 	// Add debug logging
 	log.Printf("[DEBUG] FetchArticles query: %s with args: %v", query, args)
 
+	// Use db.Unsafe() to allow scanning of null values
+	unsafe := db.Unsafe()
 	var articles []Article
-	err := db.Select(&articles, query, args...)
+	err := unsafe.Select(&articles, query, args...)
 	if err != nil {
 		log.Printf("[ERROR] FetchArticles failed: %v", err)
 		return nil, handleError(err, "failed to fetch articles")

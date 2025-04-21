@@ -149,6 +149,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		zero := 0.0
+		llmSource := "llm"
 		article := &db.Article{
 			Source:         req.Source,
 			PubDate:        pubDate,
@@ -158,7 +159,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			CreatedAt:      time.Now(),
 			CompositeScore: &zero,
 			Confidence:     &zero,
-			ScoreSource:    "llm",
+			ScoreSource:    &llmSource,
 		}
 
 		id, err := db.InsertArticle(dbConn, article)
@@ -1202,4 +1203,9 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			"score":      scoreVal,
 		})
 	}
+}
+
+// Helper function to convert string to *string
+func strPtr(s string) *string {
+	return &s
 }
