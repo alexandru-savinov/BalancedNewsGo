@@ -31,20 +31,20 @@ var (
 )
 
 type Article struct {
-	ID             int64     `db:"id"`
-	Source         string    `db:"source"`
-	PubDate        time.Time `db:"pub_date"`
-	URL            string    `db:"url"`
-	Title          string    `db:"title"`
-	Content        string    `db:"content"`
-	CompositeScore *float64  `db:"composite_score"`
-	Confidence     *float64  `db:"confidence"`
-	CreatedAt      time.Time `db:"created_at"`
-	Status         string    `db:"status"`
-	FailCount      int       `db:"fail_count"`
-	LastAttempt    time.Time `db:"last_attempt"`
-	Escalated      bool      `db:"escalated"`
-	ScoreSource    string    `db:"score_source"`
+	ID             int64      `db:"id"`
+	Source         string     `db:"source"`
+	PubDate        time.Time  `db:"pub_date"`
+	URL            string     `db:"url"`
+	Title          string     `db:"title"`
+	Content        string     `db:"content"`
+	CompositeScore *float64   `db:"composite_score"`
+	Confidence     *float64   `db:"confidence"`
+	CreatedAt      time.Time  `db:"created_at"`
+	Status         string     `db:"status"`
+	FailCount      int        `db:"fail_count"`
+	LastAttempt    *time.Time `db:"last_attempt"` // Changed to pointer
+	Escalated      bool       `db:"escalated"`
+	ScoreSource    string     `db:"score_source"`
 }
 
 type LLMScore struct {
@@ -86,8 +86,23 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		return nil, apperrors.New(ErrDBConnection, "Failed to open database")
 	}
 
+	// Configure connection pool
+	db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
 	if err := db.Ping(); err != nil {
 		return nil, apperrors.New(ErrDBConnection, "Failed to connect to database")
+	}
+
+	// Enable WAL mode for better concurrency
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		log.Printf("Warning: Failed to enable WAL mode: %v", err)
+	}
+
+	// Set busy timeout to handle concurrent access
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		log.Printf("Warning: Failed to set busy timeout: %v", err)
 	}
 
 	if err := createTables(db); err != nil {
@@ -351,11 +366,17 @@ func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset
 	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
+	// Add debug logging
+	log.Printf("[DEBUG] FetchArticles query: %s with args: %v", query, args)
+
 	var articles []Article
 	err := db.Select(&articles, query, args...)
 	if err != nil {
+		log.Printf("[ERROR] FetchArticles failed: %v", err)
 		return nil, handleError(err, "failed to fetch articles")
 	}
+
+	log.Printf("[INFO] FetchArticles found %d articles", len(articles))
 	return articles, nil
 }
 

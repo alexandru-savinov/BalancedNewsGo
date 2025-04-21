@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -43,8 +42,8 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Register API routes
-	router = api.RegisterRoutes(dbConn, rssCollector, llmClient, scoreManager)
+	// Register API routes on the router instance
+	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager)
 
 	// htmx endpoint for articles list with filters
 	router.GET("/articles", articlesHandler(dbConn))
@@ -111,66 +110,6 @@ func main() {
 
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
-	}
-}
-
-func startReprocessingLoop(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		reprocessFailedArticles(dbConn, llmClient)
-		<-ticker.C
-	}
-}
-
-func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
-	log.Println("Reprocessing failed articles...")
-
-	var articles []db.Article
-	err := dbConn.Select(&articles, "SELECT * FROM articles WHERE status = 'failed' OR fail_count > 0")
-	if err != nil {
-		log.Printf("Error fetching failed articles: %v", err)
-		return
-	}
-
-	for _, article := range articles {
-		log.Printf("Reprocessing article ID %d (fail count: %d)", article.ID, article.FailCount)
-
-		// Call the ensemble analysis method directly, using the configured models
-		// The EnsembleAnalyze method should handle its own internal logic based on config
-		_, err := llmClient.EnsembleAnalyze(article.ID, article.Content)
-		// Determine success based on the error returned by EnsembleAnalyze
-		success := err == nil
-		if err != nil && !errors.Is(err, llm.ErrRateLimited) { // Updated error type
-			log.Printf("Error during ensemble analysis for article %d: %v", article.ID, err)
-		} else if errors.Is(err, llm.ErrRateLimited) {
-			log.Printf("Skipping update for article %d due to rate limiting: %v", article.ID, err)
-		}
-
-		now := time.Now()
-		if success {
-			_, err := dbConn.Exec(`UPDATE articles SET status='processed', fail_count=0, last_attempt=?, escalated=0 WHERE id=?`, now, article.ID)
-			if err != nil {
-				log.Printf("Error updating article %d: %v", article.ID, err)
-			} else {
-				log.Printf("Article %d reprocessed successfully", article.ID)
-			}
-		} else {
-			newFailCount := article.FailCount + 1
-			escalated := 0
-			status := "failed"
-			if newFailCount >= 5 {
-				escalated = 1
-				status = "escalated"
-			}
-			_, err := dbConn.Exec(`UPDATE articles SET status=?, fail_count=?, last_attempt=?, escalated=? WHERE id=?`, status, newFailCount, now, escalated, article.ID)
-			if err != nil {
-				log.Printf("Error updating failed article %d: %v", article.ID, err)
-			} else {
-				log.Printf("Article %d failed again (fail count: %d)", newFailCount)
-			}
-		}
 	}
 }
 

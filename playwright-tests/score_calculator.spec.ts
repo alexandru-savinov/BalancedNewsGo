@@ -37,6 +37,24 @@ test.describe('DefaultScoreCalculator Tests', () => {
 
   // Consolidated test for the Go DefaultScoreCalculator logic
   test('DefaultScoreCalculator - Go Logic Test', async () => {
+    // Test boundary conditions and expected behavior of the Go score calculator implementation
+    const testCases = [
+      'TestDefaultScoreCalculator_CalculateScore',
+      'TestDefaultScoreCalculator_BoundaryConditions',
+      'TestDefaultScoreCalculator_ConfidenceHandling'
+    ];
+    
+    for (const testCase of testCases) {
+      try {
+        const result = await runGoTest(testCase);
+        expect(result).toContain('PASS');
+        expect(result).not.toContain('FAIL');
+        console.log(`✅ Passed: ${testCase}`);
+      } catch (error) {
+        console.error(`❌ Failed: ${testCase}`);
+        throw error;
+      }
+    }
     // Run the single available Go test function that covers various scenarios
     const result = await runGoTest('TestDefaultScoreCalculator_CalculateScore');
     expect(result).toContain('PASS');

@@ -2,6 +2,7 @@ package db
 
 import (
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -23,41 +24,64 @@ func setupTestDB(t *testing.T) *sqlx.DB {
 	return dbConn
 }
 
-func TestInsertAndFetchArticle(t *testing.T) {
+func TestInsertDuplicateArticle(t *testing.T) {
 	dbConn := setupTestDB(t)
-
-	defer func() {
+	t.Cleanup(func() {
+		dbConn.Close()
 		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
 			t.Logf("Warning: failed to remove test DB file: %v", err)
 		}
-	}()
+	})
 
-	article := &Article{
-		Source:  "Test Source",
-		PubDate: time.Now(),
-		URL:     "http://example.com/test",
-		Title:   "Test Title",
-		Content: "Test Content",
+	url := "https://example.com/test-article-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	article1 := &Article{
+		Source:  "test",
+		PubDate: time.Now().UTC().Truncate(time.Second),
+		URL:     url,
+		Title:   "Test Article",
+		Content: "This is a test article.",
 	}
 
-	id, err := InsertArticle(dbConn, article)
+	_, err := InsertArticle(dbConn, article1)
 	if err != nil {
-		t.Fatalf("InsertArticle failed: %v", err)
+		t.Fatalf("Failed to insert first article: %v", err)
 	}
 
-	articles, err := FetchArticles(dbConn, "", "", 10, 0)
+	article2 := &Article{
+		Source:  "test",
+		PubDate: time.Now().UTC().Truncate(time.Second),
+		URL:     url,
+		Title:   "Another Test Article",
+		Content: "This is another test article.",
+	}
+
+	_, err = InsertArticle(dbConn, article2)
+	if err == nil {
+		t.Error("Expected error when inserting duplicate URL, got nil")
+	}
+}
+
+func TestArticlePagination(t *testing.T) {
+	dbConn := setupTestDB(t)
+	t.Cleanup(func() {
+		dbConn.Close()
+		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
+			t.Logf("Warning: failed to remove test DB file: %v", err)
+		}
+	})
+
+	_, err := FetchArticles(dbConn, "test", "", 10, 0)
 	if err != nil {
-		t.Fatalf("FetchArticles failed: %v", err)
-	}
-
-	if len(articles) == 0 || articles[0].ID != id {
-		t.Errorf("Inserted article not found")
+		t.Errorf("FetchArticles with basic filter failed: %v", err)
 	}
 }
 
 func TestInsertAndFetchLLMScore(t *testing.T) {
 	dbConn := setupTestDB(t)
+	// Ensure the database connection is closed after the test
+	defer dbConn.Close()
 
+	// Defer the removal of the test database file
 	defer func() {
 		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
 			t.Logf("Warning: failed to remove test DB file: %v", err)

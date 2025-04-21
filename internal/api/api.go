@@ -42,19 +42,7 @@ var (
 	progressMapLock sync.RWMutex
 )
 
-func setProgress(articleID int64, step, message string, percent int, status string, errMsg string, finalScore *float64) {
-	progressMapLock.Lock()
-	defer progressMapLock.Unlock()
-	progressMap[articleID] = &ProgressState{
-		Step:        step,
-		Message:     message,
-		Percent:     percent,
-		Status:      status, // Added status
-		Error:       errMsg,
-		FinalScore:  finalScore, // Added finalScore
-		LastUpdated: time.Now().Unix(),
-	}
-}
+// Removed unused setProgress function
 
 func getProgress(articleID int64) *ProgressState {
 	progressMapLock.RLock()
@@ -65,15 +53,8 @@ func getProgress(articleID int64) *ProgressState {
 	return nil
 }
 
-func RegisterRoutes(dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) *gin.Engine {
-	router := gin.Default()
-
-	// Load HTML templates
-	router.LoadHTMLGlob("web/*.html")
-
-	// Serve static files from ./web
-	router.Static("/static", "./web")
-
+// RegisterRoutes registers all API routes on the provided router
+func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) {
 	// API routes
 	router.GET("/api/articles", SafeHandler(getArticlesHandler(dbConn)))
 	router.GET("/api/articles/:id", SafeHandler(getArticleByIDHandler(dbConn)))
@@ -87,11 +68,6 @@ func RegisterRoutes(dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm
 	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn)))
 	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
 	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler()))
-
-	// Debug endpoints
-	router.GET("/api/debug/schema", SafeHandler(debugSchemaHandler(dbConn)))
-
-	return router
 }
 
 // SafeHandler wraps a handler function with panic recovery to prevent server crashes
@@ -225,113 +201,54 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		limitStr := c.DefaultQuery("limit", "20")
 		offsetStr := c.DefaultQuery("offset", "0")
 
-		// Input validation
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
+			log.Printf("[ERROR] getArticlesHandler: invalid limit parameter: %v", err)
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'limit' parameter"))
-			LogError("getArticlesHandler: invalid limit", err)
 			return
 		}
 		offset, err := strconv.Atoi(offsetStr)
 		if err != nil || offset < 0 {
+			log.Printf("[ERROR] getArticlesHandler: invalid offset parameter: %v", err)
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'offset' parameter"))
-			LogError("getArticlesHandler: invalid offset", err)
 			return
 		}
 
-		// Caching with improved key generation
-		// Ensure source and leaning have default values for consistent cache keys
-		sourceKey := source
-		if sourceKey == "" {
-			sourceKey = "all"
-		}
-		leaningKey := leaning
-		if leaningKey == "" {
-			leaningKey = "all"
-		}
-
-		cacheKey := fmt.Sprintf("articles:%s:%s:%s:%s", sourceKey, leaningKey, limitStr, offsetStr)
-		articlesCacheLock.RLock()
-		log.Printf("[getArticlesHandler] Checking cache for key: %s", cacheKey) // DEBUG LOG ADDED
-		if cached, found := articlesCache.Get(cacheKey); found {
-			articlesCacheLock.RUnlock()
-			log.Printf("[getArticlesHandler] Cache HIT for key: %s. Serving cached data.", cacheKey) // DEBUG LOG ADDED
-			// Optionally log cached data details if needed, be mindful of log volume
-			// log.Printf("[getArticlesHandler] Cached data: %+v", cached)
-			RespondSuccess(c, cached)
-			LogPerformance("getArticlesHandler (cache hit)", start)
-			return
-		}
-		articlesCacheLock.RUnlock()
-		log.Printf("[getArticlesHandler] Cache MISS for key: %s. Fetching from DB.", cacheKey) // DEBUG LOG ADDED
-
+		log.Printf("[INFO] getArticlesHandler: Fetching articles (source=%s, leaning=%s, limit=%d, offset=%d)", source, leaning, limit, offset)
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
-		// Log fetched data *after* potential error check
 		if err != nil {
-			RespondError(c, NewAppError(ErrInternal, "Failed to fetch articles"))
-			LogError("getArticlesHandler: fetch articles", err)
+			log.Printf("[ERROR] getArticlesHandler: Database error fetching articles: %+v", err)
+			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch articles"))
 			return
 		}
-		log.Printf("[getArticlesHandler] Fetched %d articles from DB for key: %s", len(articles), cacheKey) // DEBUG LOG ADDED
-		if len(articles) > 0 {
-			log.Printf("[getArticlesHandler] First article: %+v", articles[0])
-		}
-		// Optionally log specific article details if needed, e.g., the one being re-analyzed
-		// for _, art := range articles { if art.ID == 1680 { log.Printf("[getArticlesHandler] DB Data for Article 1680: %+v", art) } }
 
-		// Improved score fetching with better error handling
+		// Enhance articles with composite scores and confidence
 		for i := range articles {
-			// Fetch the latest ensemble score directly
-			ensembleScore, scoreErr := db.FetchLatestEnsembleScore(dbConn, articles[i].ID)
-			if scoreErr != nil {
-				// Log error fetching the specific ensemble score, but don't block response
-				log.Printf("[getArticlesHandler] Error fetching latest ensemble score for article %d: %v", articles[i].ID, scoreErr)
-
-				// Use a default score of 0.0 instead of nil for better consistency
-				defaultScore := 0.0
-				articles[i].CompositeScore = &defaultScore
-
-				// Also set a default confidence value
-				defaultConfidence := 0.0
-				articles[i].Confidence = &defaultConfidence
-			} else {
-				// Take the address of the float64 to assign to *float64
-				scoreCopy := ensembleScore // Create a copy to ensure its address is stable
-				articles[i].CompositeScore = &scoreCopy
-
-				// Optionally fetch confidence as well if available
-				confidence, confErr := db.FetchLatestConfidence(dbConn, articles[i].ID)
-				if confErr == nil {
-					confCopy := confidence
-					articles[i].Confidence = &confCopy
-				} else {
-					defaultConf := 0.0
-					articles[i].Confidence = &defaultConf
+			scores, _ := db.FetchLLMScores(dbConn, articles[i].ID)
+			if len(scores) > 0 {
+				var weightedSum, sumWeights float64
+				for _, s := range scores {
+					var meta struct {
+						Confidence float64 `json:"confidence"`
+					}
+					_ = json.Unmarshal([]byte(s.Metadata), &meta)
+					weightedSum += s.Score * meta.Confidence
+					sumWeights += meta.Confidence
+				}
+				if sumWeights > 0 {
+					compositeScore := weightedSum / sumWeights
+					avgConfidence := sumWeights / float64(len(scores))
+					articles[i].CompositeScore = &compositeScore
+					articles[i].Confidence = &avgConfidence
 				}
 			}
-			// Optional: Log the fetched ensemble score if needed for debugging
-			// log.Printf("[getArticlesHandler] Fetched EnsembleScore for Article %d: %f", articles[i].ID, articles[i].CompositeScore)
 		}
 
-		sort.Slice(articles, func(i, j int) bool {
-			// Safely dereference pointers for comparison, treat nil as 0
-			scoreI := 0.0
-			if articles[i].CompositeScore != nil {
-				scoreI = *articles[i].CompositeScore
-			}
-			scoreJ := 0.0
-			if articles[j].CompositeScore != nil {
-				scoreJ = *articles[j].CompositeScore
-			}
-			return scoreI > scoreJ
+		log.Printf("[INFO] getArticlesHandler: Successfully fetched %d articles", len(articles))
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    articles,
 		})
-
-		// Cache the result for 30 seconds
-		articlesCacheLock.Lock()
-		articlesCache.Set(cacheKey, articles, 30*time.Second)
-		articlesCacheLock.Unlock()
-
-		RespondSuccess(c, articles)
 		LogPerformance("getArticlesHandler", start)
 	}
 }
