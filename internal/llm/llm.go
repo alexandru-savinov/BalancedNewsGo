@@ -340,41 +340,34 @@ func (c *LLMClient) SetHTTPLLMTimeout(timeout time.Duration) {
 
 func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	cache := NewCache()
-	provider := os.Getenv("LLM_PROVIDER")
-	var service LLMService
+
+	// Get OpenRouter configuration
+	primaryKey := os.Getenv("LLM_API_KEY")
+	backupKey := os.Getenv("LLM_API_KEY_SECONDARY")
+	baseURL := os.Getenv("LLM_BASE_URL")
+
+	if primaryKey == "" {
+		log.Fatal("ERROR: LLM_API_KEY not set")
+	}
 
 	config, err := LoadCompositeScoreConfig()
 	if err != nil {
 		log.Fatalf("Failed to load composite score config: %v", err)
 	}
 	if config == nil || len(config.Models) == 0 {
-		log.Fatalf("Composite score config loaded but is nil or contains no models.")
+		log.Fatalf("Composite score config loaded but is nil or contains no models")
 	}
 	log.Printf("Loaded composite score config with %d models.", len(config.Models))
 
-	// Create resty client instead of http.Client
+	// Create resty client with timeout
 	restyClient := resty.New()
 	restyClient.SetTimeout(defaultLLMTimeout)
 
-	switch provider {
-	case "openai":
-		apiKey := os.Getenv("OPENAI_API_KEY")
-		if apiKey == "" {
-			log.Fatal("ERROR: OPENAI_API_KEY not set, cannot use OpenAI LLM provider")
-		}
-		service = NewHTTPLLMService(restyClient, apiKey)
-	case "openrouter":
-		apiKey := os.Getenv("LLM_API_KEY")
-		if apiKey == "" {
-			log.Fatal("ERROR: LLM_API_KEY not set, cannot use OpenRouter LLM provider")
-		}
-		service = NewHTTPLLMService(restyClient, apiKey)
-	default:
-		log.Fatalf("ERROR: LLM_PROVIDER '%s' unknown, cannot initialize LLM service", provider)
-	}
+	// Initialize service with OpenRouter configuration
+	service := NewHTTPLLMService(restyClient, primaryKey, backupKey, baseURL)
 
 	return &LLMClient{
-		client:     &http.Client{}, // Keep http.Client for other uses
+		client:     &http.Client{},
 		cache:      cache,
 		db:         dbConn,
 		llmService: service,

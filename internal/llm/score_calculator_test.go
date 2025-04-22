@@ -39,8 +39,8 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 				{Model: "left", Score: -0.8, Metadata: `{"confidence": 0.9}`},
 				{Model: "right", Score: 0.6, Metadata: `{"confidence": 0.7}`},
 			},
-			expectedScore: -0.067, // (-0.8 + 0.0 + 0.6) / 3, center defaults to 0
-			expectedConf:  0.533,  // (0.9 + 0.0 + 0.7) / 3, missing confidence = 0
+			expectedScore: -0.100, // (-0.8 + 0.6) / 2, center perspective missing
+			expectedConf:  0.800,  // (0.9 + 0.7) / 2, missing confidence not counted
 			expectError:   false,
 		},
 		{
