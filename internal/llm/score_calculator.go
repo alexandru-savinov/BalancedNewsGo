@@ -83,10 +83,10 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 
 	scoreMap, confMap := c.initializeMaps()
 
-	// Process each score
+	// For each perspective, use the last provided score (and its confidence)
 	for _, s := range scores {
 		perspective := c.getPerspective(s.Model)
-		if perspective == "" || perspective != "left" && perspective != "center" && perspective != "right" {
+		if perspective == "" || (perspective != "left" && perspective != "center" && perspective != "right") {
 			continue
 		}
 
@@ -100,17 +100,32 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 		confMap[perspective] = &conf
 	}
 
-	// Calculate final score and confidence
 	sum := 0.0
 	confSum := 0.0
+	count := 0
+	confCount := 0
 	for _, p := range perspectives {
 		if scoreMap[p] != nil {
 			sum += *scoreMap[p]
-		} // else default 0
+			count++
+		}
 		if confMap[p] != nil {
 			confSum += *confMap[p]
-		} // else default 0
+			confCount++
+		}
 	}
 
-	return sum / 3.0, confSum / 3.0, nil
+	var avgScore, avgConf float64
+	if count > 0 {
+		avgScore = sum / float64(count)
+	} else {
+		avgScore = 0.0
+	}
+	if confCount > 0 {
+		avgConf = confSum / float64(confCount)
+	} else {
+		avgConf = 0.0
+	}
+
+	return avgScore, avgConf, nil
 }

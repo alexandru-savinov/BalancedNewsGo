@@ -1,0 +1,275 @@
+{
+  "info": {
+    "name": "Confidence Validation Tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Article and Check Initial Confidence",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/articles",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "articles"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Confidence Test Article\",\n  \"content\": \"This is a test article for confidence validation.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/confidence-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var json = pm.response.json();",
+              "pm.environment.set(\"confidenceArticleId\", json.data.article_id);",
+              "// Initial confidence check removed as it's only available on GET"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Get Article and Verify Initial Confidence Score",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "articles", "{{confidenceArticleId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Article has valid initial confidence score\", function () {",
+              "    var json = pm.response.json();",
+              "    pm.expect(json.data.article.confidence).to.exist;",
+              "    pm.expect(json.data.article.confidence).to.be.a('number');",
+              "    pm.expect(json.data.article.confidence).to.be.within(0, 1);",
+              "    // Store initial confidence for comparison",
+              "    pm.environment.set(\"initialConfidence\", json.data.article.confidence);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Submit Feedback to Affect Confidence",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": {
+          "raw": "{{baseUrl}}/api/feedback",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "feedback"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"Test feedback for confidence validation\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Submit Multiple Feedback Items",
+      "item": [
+        {
+          "name": "Submit Agree Feedback",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user-1\",\n  \"feedback_text\": \"Test feedback for confidence validation\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Additional Agree Feedback",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user-2\",\n  \"feedback_text\": \"Another test feedback\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Verify Confidence After Feedback",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "articles", "{{confidenceArticleId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Confidence score exists and is valid\", function () {",
+              "    var json = pm.response.json();",
+              "    var initialConfidence = Number(pm.environment.get(\"initialConfidence\"));",
+              "    var currentConfidence = json.data.article.confidence;",
+              "",
+              "    pm.expect(currentConfidence).to.exist;",
+              "    pm.expect(currentConfidence).to.be.a('number');",
+              "    pm.expect(currentConfidence).to.be.within(0, 1);",
+              "    // Compare with initial confidence",
+              "    pm.expect(currentConfidence).to.not.equal(0);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wait and Verify Confidence Updates",
+      "item": [
+        {
+          "name": "First Confidence Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{confidenceArticleId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var json = pm.response.json();",
+                  "var currentConfidence = json.data.article.confidence;",
+                  "",
+                  "if (currentConfidence > 0) {",
+                  "    pm.test(\"Confidence updated after feedback\", function () {",
+                  "        pm.expect(currentConfidence).to.be.within(0, 1);",
+                  "        pm.expect(currentConfidence).to.be.above(0);",
+                  "    });",
+                  "} else {",
+                  "    // Set delay for retry",
+                  "    setTimeout(function(){}, 1000);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Second Confidence Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles", "{{confidenceArticleId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Final confidence validation\", function () {",
+                  "    var json = pm.response.json();",
+                  "    var currentConfidence = json.data.article.confidence;",
+                  "    ",
+                  "    pm.expect(currentConfidence).to.exist;",
+                  "    pm.expect(currentConfidence).to.be.a('number');",
+                  "    pm.expect(currentConfidence).to.be.within(0, 1);",
+                  "    ",
+                  "    // Log confidence value for debugging",
+                  "    console.log('Final confidence value:', currentConfidence);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

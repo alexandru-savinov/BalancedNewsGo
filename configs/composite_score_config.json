@@ -1,7 +1,7 @@
 {
   "models": [
     {
-      "modelName": "tokyotech-llm/llama-3.1-swallow-8b-instruct-v0.3",
+      "modelName": "meta-llama/llama-guard-3-8b",
       "perspective": "left",
       "weight": 1.0
     },
@@ -11,7 +11,7 @@
       "weight": 1.0
     },
     {
-      "modelName": "google/gemini-2.0-flash-001",
+      "modelName": "openai/gpt-4.1-nano",
       "perspective": "right",
       "weight": 1.0
     }

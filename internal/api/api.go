@@ -95,7 +95,13 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			Title   string `json:"title"`
 			Content string `json:"content"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
+		decoder := json.NewDecoder(c.Request.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil {
+			if strings.Contains(err.Error(), "unknown field") {
+				RespondError(c, NewAppError(ErrValidation, "Request contains unknown or extra fields"))
+				return
+			}
 			RespondError(c, ErrInvalidPayload)
 			return
 		}
@@ -1134,7 +1140,9 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		// Read raw body for strict validation
 		var raw map[string]interface{}
-		if err := c.ShouldBindJSON(&raw); err != nil {
+		decoder := json.NewDecoder(c.Request.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&raw); err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid JSON body"))
 			LogError("manualScoreHandler: invalid JSON body", err)
 			return

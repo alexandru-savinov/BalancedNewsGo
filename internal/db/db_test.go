@@ -174,3 +174,78 @@ func TestArticleWithNullFields(t *testing.T) {
 		t.Error("Inserted article not found in results")
 	}
 }
+
+func TestTransactionRollback(t *testing.T) {
+	dbConn := setupTestDB(t)
+	defer dbConn.Close()
+	defer func() {
+		_ = os.Remove(testDBFile)
+	}()
+
+	tx, err := dbConn.Beginx()
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+
+	article := &Article{
+		Source:  "Rollback Source",
+		PubDate: time.Now(),
+		URL:     "http://example.com/rollback",
+		Title:   "Rollback Title",
+		Content: "Rollback Content",
+	}
+
+	_, err = tx.NamedExec(`INSERT INTO articles (source, pub_date, url, title, content) VALUES (:source, :pub_date, :url, :title, :content)`, article)
+	if err != nil {
+		t.Fatalf("Failed to insert article in tx: %v", err)
+	}
+
+	err = tx.Rollback()
+	if err != nil {
+		t.Fatalf("Failed to rollback: %v", err)
+	}
+
+	// Should not find the article after rollback
+	articles, err := FetchArticles(dbConn, "Rollback Source", "", 10, 0)
+	if err != nil {
+		t.Fatalf("FetchArticles failed: %v", err)
+	}
+	for _, a := range articles {
+		if a.URL == "http://example.com/rollback" {
+			t.Error("Article should not exist after rollback")
+		}
+	}
+}
+
+func TestConcurrentInserts(t *testing.T) {
+	dbConn := setupTestDB(t)
+	defer dbConn.Close()
+	defer func() {
+		_ = os.Remove(testDBFile)
+	}()
+
+	n := 5
+	done := make(chan bool, n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			article := &Article{
+				Source:  "Concurrent",
+				PubDate: time.Now(),
+				URL:     "http://example.com/concurrent-" + strconv.Itoa(idx),
+				Title:   "Concurrent Title",
+				Content: "Concurrent Content",
+			}
+			_, err := InsertArticle(dbConn, article)
+			done <- err == nil
+		}(i)
+	}
+	count := 0
+	for i := 0; i < n; i++ {
+		if <-done {
+			count++
+		}
+	}
+	if count != n {
+		t.Errorf("Expected %d successful inserts, got %d", n, count)
+	}
+}
