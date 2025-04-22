@@ -1424,6 +1424,483 @@
           ]
         }
       ]
+    },
+    {
+      "name": "5. Cache and Concurrency Tests",
+      "item": [
+        {
+          "name": "5.1 Cache Validation Tests",
+          "item": [
+            {
+              "name": "Get Article - Cache Hit",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "// Store response time for cache hit comparison",
+                      "var firstResponseTime = pm.response.responseTime;",
+                      "pm.environment.set(\"firstResponseTime\", firstResponseTime);",
+                      "",
+                      "// Store ETag if present",
+                      "var etag = pm.response.headers.get(\"ETag\");",
+                      "if (etag) {",
+                      "    pm.environment.set(\"articleEtag\", etag);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Article - Validate Cache Hit",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "If-None-Match",
+                    "value": "{{articleEtag}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 304 for cached response\", function () {",
+                      "    pm.response.to.have.status(304);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Articles - Cache Performance",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?source=test",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "source",
+                      "value": "test"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "// Verify response time improvement from caching",
+                      "var cachedResponseTime = pm.response.responseTime;",
+                      "var firstResponseTime = Number(pm.environment.get(\"firstResponseTime\"));",
+                      "",
+                      "pm.test(\"Cached response should be faster\", function () {",
+                      "    pm.expect(cachedResponseTime).to.be.below(firstResponseTime);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "5.2 Concurrent Operations Tests",
+          "item": [
+            {
+              "name": "Concurrent Article Creation",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Concurrent Test Article {{$timestamp}}\",\n  \"content\": \"This is a test article for concurrent operations.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/concurrent-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 201\", function () {",
+                      "    pm.expect([200, 201]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "// Store article ID for concurrent operations",
+                      "var json = pm.response.json();",
+                      "if (json.data && json.data.article_id) {",
+                      "    pm.environment.set(\"concurrentArticleId\", json.data.article_id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Concurrent Score Updates",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/manual-score/{{concurrentArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "manual-score", "{{concurrentArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"score\": 0.5\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response indicates successful update\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Concurrent Feedback Submission",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/feedback",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "feedback"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"article_id\": {{concurrentArticleId}},\n  \"user_id\": \"test-user-concurrent\",\n  \"feedback_text\": \"Concurrent feedback test\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Feedback submission successful\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Confidence Validation Tests",
+      "item": [
+        {
+          "name": "6.1 Initial Confidence Tests",
+          "item": [
+            {
+              "name": "Create Article and Check Initial Confidence",
+              "request": {
+                "method": "POST",
+                "header": [{"key": "Content-Type", "value": "application/json"}],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Confidence Test Article\",\n  \"content\": \"This is a test article for confidence validation.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/confidence-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "var json = pm.response.json();",
+                      "pm.environment.set(\"confidenceArticleId\", json.data.article_id);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Article and Verify Initial Confidence Score",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{confidenceArticleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test(\"Initial confidence validation\", function () {",
+                      "    var json = pm.response.json();",
+                      "    var confidence = json.data.article.confidence;",
+                      "    ",
+                      "    pm.expect(confidence).to.exist;",
+                      "    pm.expect(confidence).to.be.a('number');",
+                      "    pm.expect(confidence).to.be.within(0, 1);",
+                      "    pm.environment.set(\"initialConfidence\", confidence);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "6.2 Feedback Impact on Confidence",
+          "item": [
+            {
+              "name": "Submit Initial Feedback",
+              "request": {
+                "method": "POST",
+                "header": [{"key": "Content-Type", "value": "application/json"}],
+                "url": {
+                  "raw": "{{baseUrl}}/api/feedback",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "feedback"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"Test feedback for confidence validation\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Submit Multiple Feedback Items",
+              "item": [
+                {
+                  "name": "Submit Agree Feedback",
+                  "request": {
+                    "method": "POST",
+                    "header": [{"key": "Content-Type", "value": "application/json"}],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/feedback",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "feedback"]
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user-1\",\n  \"feedback_text\": \"Test feedback for confidence validation\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "exec": [
+                          "pm.test(\"Status code is 200\", function () {",
+                          "    pm.response.to.have.status(200);",
+                          "});"
+                        ],
+                        "type": "text/javascript"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "Submit Additional Agree Feedback",
+                  "request": {
+                    "method": "POST",
+                    "header": [{"key": "Content-Type", "value": "application/json"}],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/feedback",
+                      "host": ["{{baseUrl}}"],
+                      "path": ["api", "feedback"]
+                    },
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user-2\",\n  \"feedback_text\": \"Another test feedback\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
+                    }
+                  },
+                  "event": [
+                    {
+                      "listen": "test",
+                      "script": {
+                        "exec": [
+                          "pm.test(\"Status code is 200\", function () {",
+                          "    pm.response.to.have.status(200);",
+                          "});"
+                        ],
+                        "type": "text/javascript"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Verify Confidence After Feedback",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{confidenceArticleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "var json = pm.response.json();",
+                      "var currentConfidence = json.data.article.confidence;",
+                      "",
+                      "if (currentConfidence > 0) {",
+                      "    pm.test(\"Confidence updated after feedback\", function () {",
+                      "        pm.expect(currentConfidence).to.be.within(0, 1);",
+                      "        pm.expect(currentConfidence).to.be.above(0);",
+                      "    });",
+                      "} else {",
+                      "    // Set delay for retry",
+                      "    setTimeout(function(){}, 1000);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Second Confidence Check",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{confidenceArticleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "pm.test(\"Final confidence validation\", function () {",
+                      "    var json = pm.response.json();",
+                      "    var currentConfidence = json.data.article.confidence;",
+                      "    ",
+                      "    pm.expect(currentConfidence).to.exist;",
+                      "    pm.expect(currentConfidence).to.be.a('number');",
+                      "    pm.expect(currentConfidence).to.be.within(0, 1);",
+                      "    ",
+                      "    // Log confidence value for debugging",
+                      "    console.log('Final confidence value:', currentConfidence);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [

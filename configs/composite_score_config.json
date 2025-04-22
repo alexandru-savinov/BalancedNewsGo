@@ -1,12 +1,12 @@
 {
   "models": [
     {
-      "modelName": "meta-llama/llama-guard-3-8b",
+      "modelName": "meta-llama/llama-4-maverick",
       "perspective": "left",
       "weight": 1.0
     },
     {
-      "modelName": "mistralai/mistral-small-3.1-24b-instruct",
+      "modelName": "google/gemini-2.0-flash-001",
       "perspective": "center",
       "weight": 1.0
     },
