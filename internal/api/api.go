@@ -31,9 +31,9 @@ type ProgressState struct {
 	Step        string   `json:"step"`                  // Current detailed step
 	Message     string   `json:"message"`               // User-friendly message
 	Percent     int      `json:"percent"`               // Progress percentage
-	Status      string   `json:"status"`                // Overall status
-	Error       string   `json:"error,omitempty"`       // Error message if Status is "Error"
-	FinalScore  *float64 `json:"final_score,omitempty"` // Final score if Status is "Success"
+	Status      string   `json:"status"`                // Overall status: "pending", "in_progress", "completed", "failed"
+	Error       string   `json:"error,omitempty"`       // Error message if Status is "failed"
+	FinalScore  *float64 `json:"final_score,omitempty"` // Final score if Status is "completed"
 	LastUpdated int64    `json:"last_updated"`          // Timestamp
 }
 
@@ -42,7 +42,14 @@ var (
 	progressMapLock sync.RWMutex
 )
 
-// Removed unused setProgress function
+func setProgress(articleID int64, state *ProgressState) {
+	progressMapLock.Lock()
+	defer progressMapLock.Unlock()
+	progressMap[articleID] = state
+	// Log the progress update for debugging
+	log.Printf("[Progress Update] Article %d: Status=%s, Step=%s, Message=%s", 
+		articleID, state.Status, state.Step, state.Message)
+}
 
 func getProgress(articleID int64) *ProgressState {
 	progressMapLock.RLock()
@@ -443,9 +450,10 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			return
 		}
 
+		// Initial progress state
 		if scoreManager != nil {
 			scoreManager.SetProgress(articleID, &llm.ProgressState{
-				Step:        "Queued",
+				Step:        "Starting",
 				Message:     "Scoring job queued",
 				Percent:     0,
 				Status:      "InProgress",
@@ -575,14 +583,13 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 						Percent:     percent(stepNum, totalSteps),
 						Status:      "Error",
 						Error:       errMsg,
-						FinalScore:  &finalScore,
 						LastUpdated: time.Now().Unix(),
 					})
 				}
 				return
 			}
 
-			// Include confidence information in the successful completion message
+			// Final success state with composite score
 			if scoreManager != nil {
 				confidencePercent := int(confidence * 100)
 				message := fmt.Sprintf("Scoring complete (confidence: %d%%)", confidencePercent)
@@ -620,7 +627,7 @@ func scoreProgressSSEHandler() gin.HandlerFunc {
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Flush()
 
-		lastStep := ""
+		lastProgress := ""
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
 
@@ -633,13 +640,19 @@ func scoreProgressSSEHandler() gin.HandlerFunc {
 				if progress == nil {
 					continue
 				}
-				if progress.Step != lastStep || progress.Error != "" {
-					data, _ := json.Marshal(progress)
-					fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-					c.Writer.Flush()
-					lastStep = progress.Step
-					if progress.Step == "Complete" || progress.Error != "" {
-						return
+
+				// Always send updates when status changes or on final states
+				if data, err := json.Marshal(progress); err == nil {
+					currentProgress := string(data)
+					if currentProgress != lastProgress {
+						fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+						c.Writer.Flush()
+						lastProgress = currentProgress
+
+						// Close connection on final states
+						if progress.Status == "Success" || progress.Status == "Error" {
+							return
+						}
 					}
 				}
 			}
