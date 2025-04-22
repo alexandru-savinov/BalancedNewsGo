@@ -52,7 +52,7 @@ func main() {
 	// Create test prompt variant
 	promptVariant := llm.PromptVariant{
 		ID:       "test",
-		Model:    "mistralai/mistral-small-3.1-24b-instruct",  // Switch to Mistral model
+		Model:    "mistralai/mistral-small-3.1-24b-instruct", // Switch to Mistral model
 		Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Article: {{content}}",
 		Examples: []string{
 			`{"score": 0.0, "explanation": "This article appears neutral in its political bias", "confidence": 0.9}`,
