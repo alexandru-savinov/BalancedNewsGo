@@ -1,29 +1,50 @@
 package db
 
 import (
-	"fmt"
+	"database/sql"
+	"errors"
+	"log"
 	"strings"
 	"time"
 
+	"context"
+
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
 
-type Article struct {
-	ID             int64     `db:"id"`
-	Source         string    `db:"source"`
-	PubDate        time.Time `db:"pub_date"`
-	URL            string    `db:"url"`
-	Title          string    `db:"title"`
-	Content        string    `db:"content"`
-	CreatedAt      time.Time `db:"created_at"`
-	CompositeScore *float64  `db:"composite_score"` // Use pointer for nullable
-	Confidence     *float64  `db:"confidence"`      // Use pointer for nullable
+// Error codes
+const (
+	ErrDBConnection = "db_connection_error"
+	ErrDBQuery      = "db_query_error"
+	ErrDBConstraint = "db_constraint_error"
+	ErrDBMigration  = "db_migration_error"
+	ErrInvalidInput = "db_invalid_input"
+)
 
-	Status      string     `db:"status"`
-	FailCount   int        `db:"fail_count"`
-	LastAttempt *time.Time `db:"last_attempt"`
-	Escalated   bool       `db:"escalated"`
+// Pre-defined database errors
+var (
+	ErrDuplicateURL    = apperrors.New("Article with this URL already exists", "conflict")
+	ErrInvalidScore    = apperrors.New("Invalid score value", "validation_error")
+	ErrArticleNotFound = errors.New("not found")
+)
+
+type Article struct {
+	ID             int64      `db:"id"`
+	Source         string     `db:"source"`
+	PubDate        time.Time  `db:"pub_date"`
+	URL            string     `db:"url"`
+	Title          string     `db:"title"`
+	Content        string     `db:"content"`
+	CompositeScore *float64   `db:"composite_score"`
+	Confidence     *float64   `db:"confidence"`
+	CreatedAt      time.Time  `db:"created_at"`
+	Status         *string    `db:"status"`
+	FailCount      *int       `db:"fail_count"`
+	LastAttempt    *time.Time `db:"last_attempt"`
+	Escalated      *bool      `db:"escalated"`
+	ScoreSource    *string    `db:"score_source"`
 }
 
 type LLMScore struct {
@@ -35,14 +56,15 @@ type LLMScore struct {
 	Version   int       `db:"version"`
 	CreatedAt time.Time `db:"created_at"`
 }
+
 type Feedback struct {
 	ID               int64     `db:"id"`
 	ArticleID        int64     `db:"article_id"`
 	UserID           string    `db:"user_id"`
 	FeedbackText     string    `db:"feedback_text"`
-	Category         string    `db:"category"`           // agree, disagree, unclear, other
-	EnsembleOutputID *int64    `db:"ensemble_output_id"` // optional, nullable
-	Source           string    `db:"source"`             // form, email, api
+	Category         string    `db:"category"`
+	EnsembleOutputID *int64    `db:"ensemble_output_id"`
+	Source           string    `db:"source"`
 	CreatedAt        time.Time `db:"created_at"`
 }
 
@@ -57,12 +79,44 @@ type Label struct {
 	CreatedAt   time.Time `db:"created_at"`
 }
 
+// InitDB initializes the database with all required tables
 func InitDB(dbPath string) (*sqlx.DB, error) {
 	db, err := sqlx.Open("sqlite", dbPath)
 	if err != nil {
+		return nil, apperrors.New(ErrDBConnection, "Failed to open database")
+	}
+
+	// Configure connection pool
+	db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	if err := db.Ping(); err != nil {
+		return nil, apperrors.New(ErrDBConnection, "Failed to connect to database")
+	}
+
+	// Enable WAL mode for better concurrency
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		log.Printf("Warning: Failed to enable WAL mode: %v", err)
+	}
+
+	// Set busy timeout to handle concurrent access
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		log.Printf("Warning: Failed to set busy timeout: %v", err)
+	}
+
+	if err := createTables(db); err != nil {
 		return nil, err
 	}
 
+	if err := migrateSchema(db); err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func createTables(db *sqlx.DB) error {
 	schema := `
 CREATE TABLE IF NOT EXISTS articles (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,9 +125,14 @@ CREATE TABLE IF NOT EXISTS articles (
 	url TEXT UNIQUE,
 	title TEXT,
 	content TEXT,
-	composite_score REAL, -- ADDED
-	confidence REAL,      -- ADDED
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	composite_score REAL,
+	confidence REAL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	status TEXT DEFAULT 'pending',
+	fail_count INTEGER DEFAULT 0,
+	last_attempt DATETIME,
+	escalated BOOLEAN DEFAULT 0,
+	score_source TEXT
 );
 
 CREATE TABLE IF NOT EXISTS llm_scores (
@@ -94,46 +153,54 @@ CREATE TABLE IF NOT EXISTS feedback (
 	article_id INTEGER,
 	user_id TEXT,
 	feedback_text TEXT NOT NULL,
+	category TEXT,
+	ensemble_output_id INTEGER,
+	source TEXT,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	FOREIGN KEY(article_id) REFERENCES articles(id)
 );
+
 CREATE TABLE IF NOT EXISTS labels (
-   id INTEGER PRIMARY KEY AUTOINCREMENT,
-   data TEXT,
-   label TEXT,
-   source TEXT,
-   date_labeled DATETIME,
-   labeler TEXT,
-   confidence REAL,
-   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	data TEXT,
+	label TEXT,
+	source TEXT,
+	date_labeled DATETIME,
+	labeler TEXT,
+	confidence REAL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 `
-	_, err = db.Exec(schema)
+	_, err := db.Exec(schema)
 	if err != nil {
-		return nil, err
+		return apperrors.New(ErrDBMigration, "Failed to create tables")
 	}
+	return nil
+}
 
-	// Migrate: add columns for failure tracking if they don't exist
+func migrateSchema(db *sqlx.DB) error {
 	alterStatements := []string{
 		"ALTER TABLE articles ADD COLUMN status TEXT DEFAULT 'pending';",
 		"ALTER TABLE articles ADD COLUMN fail_count INTEGER DEFAULT 0;",
 		"ALTER TABLE articles ADD COLUMN last_attempt DATETIME;",
 		"ALTER TABLE articles ADD COLUMN escalated BOOLEAN DEFAULT 0;",
-		"ALTER TABLE articles ADD COLUMN composite_score REAL;", // ADDED Migration
-		"ALTER TABLE articles ADD COLUMN confidence REAL;",      // ADDED Migration
+		"ALTER TABLE articles ADD COLUMN composite_score REAL;",
+		"ALTER TABLE articles ADD COLUMN confidence REAL;",
+		"ALTER TABLE articles ADD COLUMN score_source TEXT;",
+		"ALTER TABLE feedback ADD COLUMN category TEXT;",
+		"ALTER TABLE feedback ADD COLUMN source TEXT;",
+		"ALTER TABLE feedback ADD COLUMN ensemble_output_id INTEGER;",
 	}
 
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)
 		if err != nil && !isDuplicateColumnError(err) {
-			fmt.Printf("DB migration error: %v\n", err)
+			return apperrors.New(ErrDBMigration, "Failed to migrate schema")
 		}
 	}
-
-	return db, nil
+	return nil
 }
 
-// isDuplicateColumnError returns true if the error is due to an existing column
 func isDuplicateColumnError(err error) bool {
 	if err == nil {
 		return false
@@ -142,119 +209,263 @@ func isDuplicateColumnError(err error) bool {
 	return strings.Contains(msg, "duplicate column name") || strings.Contains(msg, "already exists")
 }
 
+// handleError is a helper to wrap database errors with appropriate context
+func handleError(err error, msg string) error {
+	if err == nil {
+		return nil
+	}
+
+	errMsg := err.Error()
+	switch {
+	case err == sql.ErrNoRows:
+		return apperrors.New("not_found", msg)
+	case strings.Contains(errMsg, "UNIQUE constraint"):
+		return apperrors.New("conflict", msg)
+	case strings.Contains(errMsg, "FOREIGN KEY constraint"):
+		return apperrors.New("foreign_key_violation", msg)
+	default:
+		return apperrors.New("internal", msg)
+	}
+}
+
+// InsertLabel inserts a new label record
+func InsertLabel(db *sqlx.DB, label *Label) error {
+	result, err := db.NamedExec(`
+        INSERT INTO labels (data, label, source, date_labeled, labeler, confidence, created_at)
+        VALUES (:data, :label, :source, :date_labeled, :labeler, :confidence, :created_at)`,
+		label)
+	if err != nil {
+		return handleError(err, "failed to insert label")
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return handleError(err, "failed to get inserted label ID")
+	}
+	label.ID = id
+	return nil
+}
+
+// InsertFeedback stores user feedback for an article
+func InsertFeedback(db *sqlx.DB, feedback *Feedback) error {
+	result, err := db.NamedExec(`
+        INSERT INTO feedback (article_id, user_id, feedback_text, category, ensemble_output_id, source, created_at)
+        VALUES (:article_id, :user_id, :feedback_text, :category, :ensemble_output_id, :source, :created_at)`,
+		feedback)
+	if err != nil {
+		return handleError(err, "failed to insert feedback")
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return handleError(err, "failed to get inserted feedback ID")
+	}
+	feedback.ID = id
+	return nil
+}
+
+// FetchLatestEnsembleScore gets the most recent ensemble score for an article
+func FetchLatestEnsembleScore(db *sqlx.DB, articleID int64) (float64, error) {
+	var score float64
+	err := db.Get(&score, `
+        SELECT score FROM llm_scores 
+        WHERE article_id = ? AND model = 'ensemble'
+        ORDER BY created_at DESC LIMIT 1`,
+		articleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0.0, nil // Return 0 if no score exists
+		}
+		return 0.0, handleError(err, "failed to fetch latest ensemble score")
+	}
+	return score, nil
+}
+
+// FetchLatestConfidence gets the most recent confidence score for an article
+func FetchLatestConfidence(db *sqlx.DB, articleID int64) (float64, error) {
+	var confidence float64
+	err := db.Get(&confidence, `
+        SELECT confidence FROM articles WHERE id = ?`,
+		articleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0.0, nil // Return 0 if no confidence exists
+		}
+		return 0.0, handleError(err, "failed to fetch latest confidence score")
+	}
+	return confidence, nil
+}
+
+// ArticleExistsBySimilarTitle checks if an article with a similar title exists
+func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
+	// Use SQLite's LIKE operator with wildcards to find similar titles
+	// Remove common punctuation and spaces for comparison
+	cleanTitle := strings.TrimSpace(strings.ToLower(title))
+	cleanTitle = strings.ReplaceAll(cleanTitle, "'", "")
+	cleanTitle = strings.ReplaceAll(cleanTitle, "\"", "")
+
+	var exists bool
+	err := db.Get(&exists, `
+        SELECT EXISTS(
+            SELECT 1 FROM articles 
+            WHERE LOWER(REPLACE(REPLACE(REPLACE(title, "'", ""), '"', ""), ' ', '')) 
+            LIKE '%' || ? || '%'
+        )`,
+		strings.ReplaceAll(cleanTitle, " ", ""))
+
+	if err != nil {
+		return false, handleError(err, "failed to check for similar title")
+	}
+	return exists, nil
+}
+
+// InsertArticle creates a new article record
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
-	res, err := db.NamedExec(`INSERT INTO articles (source, pub_date, url, title, content) 
-	VALUES (:source, :pub_date, :url, :title, :content)`, article)
+	result, err := db.NamedExec(`
+        INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source)
+        VALUES (:source, :pub_date, :url, :title, :content, :created_at, :composite_score, :confidence, :score_source)`,
+		article)
 	if err != nil {
-		return 0, err
+		return 0, handleError(err, "failed to insert article")
 	}
-	return res.LastInsertId()
+	return result.LastInsertId()
 }
 
-func InsertLabel(db *sqlx.DB, label *Label) (int64, error) {
-	res, err := db.NamedExec(`INSERT INTO labels (data, label, source, date_labeled, labeler, confidence)
-		VALUES (:data, :label, :source, :date_labeled, :labeler, :confidence)`, label)
+// InsertLLMScore creates a new LLM score record
+func InsertLLMScore(exec sqlx.ExtContext, score *LLMScore) (int64, error) {
+	result, err := sqlx.NamedExecContext(context.Background(), exec, `
+        INSERT INTO llm_scores (article_id, model, score, metadata, version, created_at)
+        VALUES (:article_id, :model, :score, :metadata, :version, :created_at)`,
+		score)
 	if err != nil {
-		return 0, err
+		return 0, handleError(err, "failed to insert LLM score")
 	}
-	return res.LastInsertId()
+	return result.LastInsertId()
 }
 
-func InsertFeedback(db *sqlx.DB, feedback *Feedback) (int64, error) {
-	res, err := db.NamedExec(`INSERT INTO feedback (article_id, user_id, feedback_text)
-		VALUES (:article_id, :user_id, :feedback_text)`, feedback)
-	if err != nil {
-		return 0, err
-	}
-
-	return res.LastInsertId()
-}
-
-func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
-	var count int
-	err := db.Get(&count, "SELECT COUNT(1) FROM articles WHERE url = ?", url)
-
-	return count > 0, err
-}
-
-func ArticleExistsBySimilarTitle(db *sqlx.DB, title string, days int) (bool, error) {
-	var count int
-	query := `
-		SELECT COUNT(1) FROM articles
-		WHERE pub_date >= datetime('now', ?)
-		  AND LOWER(title) LIKE '%' || LOWER(?) || '%'
-	`
-	interval := fmt.Sprintf("-%d days", days)
-	err := db.Get(&count, query, interval, title)
-	return count > 0, err
-}
-
-func InsertLLMScore(db *sqlx.DB, score *LLMScore) (int64, error) {
-	res, err := db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, version)
-	VALUES (:article_id, :model, :score, :metadata, :version)`, score)
-	if err != nil {
-		return 0, err
-	}
-
-	return res.LastInsertId()
-}
-
-func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
-	_, err := db.Exec(`UPDATE articles SET composite_score = ?, confidence = ? WHERE id = ?`, score, confidence, articleID)
-	return err
-}
-
-// FetchArticles with optional filters and pagination.
-func FetchArticles(db *sqlx.DB, source, leaning string, limit, offset int) ([]Article, error) {
-	query := "SELECT * FROM articles WHERE 1=1"
-	args := make([]interface{}, 0, 3)
+// FetchArticles retrieves articles with optional filters
+func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset int) ([]Article, error) {
+	query := `SELECT * FROM articles WHERE 1=1`
+	var args []interface{}
 
 	if source != "" {
 		query += " AND source = ?"
-
 		args = append(args, source)
 	}
+	if leaning != "" {
+		switch leaning {
+		case "left":
+			query += " AND composite_score < -0.1"
+		case "right":
+			query += " AND composite_score > 0.1"
+		case "center":
+			query += " AND composite_score BETWEEN -0.1 AND 0.1"
+		}
+	}
 
-	// For MVP, leaning filter is ignored or can be implemented via join with llm_scores
-	query += " ORDER BY pub_date DESC LIMIT ? OFFSET ?"
-
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
+	// Add debug logging
+	log.Printf("[DEBUG] FetchArticles query: %s with args: %v", query, args)
+
+	// Use db.Unsafe() to allow scanning of null values
+	unsafe := db.Unsafe()
 	var articles []Article
-	err := db.Select(&articles, query, args...)
+	err := unsafe.Select(&articles, query, args...)
+	if err != nil {
+		log.Printf("[ERROR] FetchArticles failed: %v", err)
+		return nil, handleError(err, "failed to fetch articles")
+	}
 
-	return articles, err
+	log.Printf("[INFO] FetchArticles found %d articles", len(articles))
+	return articles, nil
 }
 
-// FetchArticleByID returns a single article by ID.
-func FetchArticleByID(db *sqlx.DB, id int64) (Article, error) {
+// FetchArticleByID retrieves a single article by ID
+func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 	var article Article
-	err := db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
 
-	return article, err
+	// Add retry logic with backoff for recently created articles
+	maxRetries := 3
+	retryDelay := 100 * time.Millisecond
+
+	var err error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err = db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
+		if err == nil {
+			// Article found, return it
+			return &article, nil
+		}
+
+		if err != sql.ErrNoRows {
+			// For errors other than "no rows", log the specific error
+			log.Printf("[ERROR] FetchArticleByID %d failed (attempt %d): %v", id, attempt+1, err)
+			// Don't retry for database errors
+			break
+		}
+
+		log.Printf("[INFO] FetchArticleByID %d: article not found, retrying after %v (attempt %d of %d)", id, retryDelay, attempt+1, maxRetries)
+		// Only for "no rows" error, wait and retry
+		// This helps with timing issues when an article was just created
+		// but the transaction hasn't fully committed yet
+		if attempt < maxRetries-1 {
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		}
+	}
+
+	// Handle the final error
+	if err == sql.ErrNoRows {
+		log.Printf("[WARN] FetchArticleByID %d: article not found after %d attempts", id, maxRetries)
+		return nil, ErrArticleNotFound
+	}
+	log.Printf("[ERROR] FetchArticleByID %d failed with database error: %v", id, err)
+	return nil, handleError(err, "failed to fetch article")
 }
 
-// FetchLLMScores returns all LLM scores for an article.
+// FetchLLMScores retrieves all LLM scores for an article
 func FetchLLMScores(db *sqlx.DB, articleID int64) ([]LLMScore, error) {
 	var scores []LLMScore
-	err := db.Select(&scores, "SELECT * FROM llm_scores WHERE article_id = ? ORDER BY version DESC", articleID)
-
-	return scores, err
+	err := db.Select(&scores, "SELECT * FROM llm_scores WHERE article_id = ? ORDER BY created_at DESC", articleID)
+	if err != nil {
+		return nil, handleError(err, "failed to fetch LLM scores")
+	}
+	return scores, nil
 }
 
-// FetchLatestEnsembleScore returns the score value of the most recent 'ensemble' score record for an article.
-// Returns 0.0 and nil error if no ensemble score is found.
-func FetchLatestEnsembleScore(db *sqlx.DB, articleID int64) (float64, error) {
-	var score float64
-	// Query for the score field of the latest record matching article_id and model='ensemble'
-	err := db.Get(&score, "SELECT score FROM llm_scores WHERE article_id = ? AND model = 'ensemble' ORDER BY created_at DESC LIMIT 1", articleID)
+// UpdateArticleScore updates the composite score for an article
+func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
+	_, err := db.Exec(`
+        UPDATE articles 
+        SET composite_score = ?, confidence = ?, score_source = 'llm'
+        WHERE id = ?`,
+		score, confidence, articleID)
 	if err != nil {
-		// If no rows are found, it's not a fatal error, just means no ensemble score exists yet.
-		if err.Error() == "sql: no rows in result set" { // Check specifically for no rows error
-			return 0.0, nil // Return 0.0 score, no error
-		}
-		// For other potential errors (DB connection issues, etc.), return the error.
-		return 0.0, err
+		return handleError(err, "failed to update article score")
 	}
-	return score, nil
+	return nil
+}
+
+// UpdateArticleScoreLLM updates the composite score for an article, specifically from LLM rescoring
+func UpdateArticleScoreLLM(exec sqlx.ExtContext, articleID int64, score float64, confidence float64) error {
+	_, err := exec.ExecContext(context.Background(), `
+        UPDATE articles 
+        SET composite_score = ?, confidence = ?, score_source = 'llm'
+        WHERE id = ?`,
+		score, confidence, articleID)
+	if err != nil {
+		return handleError(err, "failed to update article score (LLM)")
+	}
+	return nil
+}
+
+// ArticleExistsByURL checks if an article exists with the given URL
+func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
+	var exists bool
+	err := db.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", url)
+	if err != nil {
+		return false, handleError(err, "failed to check article URL existence")
+	}
+	return exists, nil
 }

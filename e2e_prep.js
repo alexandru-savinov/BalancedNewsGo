@@ -47,8 +47,8 @@ async function checkApi() {
   try {
     // Check OpenRouter API health
     const headers = { 'Content-Type': 'application/json' };
-    if (process.env.OPENAI_API_KEY) {
-      headers['Authorization'] = `Bearer ${process.env.OPENAI_API_KEY}`;
+    if (process.env.LLM_API_KEY) {
+      headers['Authorization'] = `Bearer ${process.env.LLM_API_KEY}`;
     }
     const res = await fetch('https://openrouter.ai/api/v1', {
       method: 'POST',
@@ -172,7 +172,8 @@ async function main() {
   const { spawnSync } = require('child_process');
   console.log('---');
   console.log('[E2E PREP][Ingestion] Starting article ingestion job via Go CLI...');
-  const ingestion = spawnSync('go', ['run', 'cmd/fetch_articles/main.go'], { encoding: 'utf-8' });
+  // Limit ingestion to 3 articles for faster tests
+  const ingestion = spawnSync('go', ['run', 'cmd/fetch_articles/main.go', '--count=3'], { encoding: 'utf-8' });
   if (ingestion.stdout) {
     console.log('[E2E PREP][Ingestion][stdout]:\n' + ingestion.stdout);
   }

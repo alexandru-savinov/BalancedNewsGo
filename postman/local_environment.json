@@ -1,0 +1,16 @@
+{
+  "id": "local-env",
+  "name": "Local Environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "enabled": true
+    },
+    {
+      "key": "articleId",
+      "value": "",
+      "enabled": true
+    }
+  ]
+}

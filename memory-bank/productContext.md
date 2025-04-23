@@ -47,3 +47,4 @@ To ensure model reliability and accelerate iteration, the UI now prioritizes **t
 - **Minimal JS/SCSS:** Ensures maintainability and reduces debugging complexity.
 
 These features enable developers and testers to **quickly identify issues, understand model outputs, and iterate on prompts, parsing, and aggregation logic** with minimal friction.
+

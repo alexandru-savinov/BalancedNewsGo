@@ -1,32 +1,27 @@
 {
-  "formula": "average", 
-  "weights": {
-    "left": 1.0,
-    "center": 1.0,
-    "right": 1.0
-  },
-  "min_score": -1.0,
-  "max_score": 1.0,
-  "default_missing": 0.0,
-  "handle_invalid": "ignore", 
-  "confidence_method": "count_valid", 
-  "min_confidence": 0.0,
-  "max_confidence": 1.0,
   "models": [
     {
+      "modelName": "meta-llama/llama-4-maverick",
       "perspective": "left",
-      "modelName": "tokyotech-llm/llama-3.1-swallow-8b-instruct-v0.3",
-      "url": "https://openrouter.ai/api/v1"
+      "weight": 1.0
     },
     {
-      "perspective": "center",
-      "modelName": "mistralai/mistral-small-3.1-24b-instruct",
-      "url": "https://openrouter.ai/api/v1"
-    },
-    {
-      "perspective": "right",
       "modelName": "google/gemini-2.0-flash-001",
-      "url": "https://openrouter.ai/api/v1"
+      "perspective": "center",
+      "weight": 1.0
+    },
+    {
+      "modelName": "openai/gpt-4.1-nano",
+      "perspective": "right",
+      "weight": 1.0
     }
-  ]
+  ],
+  "aggregationMethod": "weighted_mean",
+  "confidenceMethod": "count_valid",
+  "minScore": -1.0,
+  "maxScore": 1.0,
+  "defaultMissing": 0.0,
+  "minConfidence": 0.1,
+  "maxConfidence": 0.95,
+  "handleInvalid": "default"
 }

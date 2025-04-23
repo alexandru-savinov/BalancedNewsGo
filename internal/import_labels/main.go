@@ -92,8 +92,7 @@ func importCSV(database *sqlx.DB, f *os.File, source, labeler string, confidence
 			Confidence:  confidence,
 			CreatedAt:   time.Now(),
 		}
-		_, err := db.InsertLabel(database, &label)
-		if err != nil {
+		if err := db.InsertLabel(database, &label); err != nil {
 			log.Printf("Failed to insert label: %v", err)
 			continue
 		}
@@ -126,8 +125,7 @@ func importJSON(database *sqlx.DB, f *os.File, source, labeler string, confidenc
 			Confidence:  confidence,
 			CreatedAt:   time.Now(),
 		}
-		_, err := db.InsertLabel(database, &label)
-		if err != nil {
+		if err := db.InsertLabel(database, &label); err != nil {
 			log.Printf("Failed to insert label: %v", err)
 			continue
 		}

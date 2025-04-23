@@ -1,19 +1,21 @@
 {
   "compilerOptions": {
-    "target": "es2016", // Use a reasonable default target
-    "lib": ["es2016", "dom"],
-    "types": ["cypress", "node"], // Crucial for Cypress typings
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
     "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "module": "commonjs", // Cypress runs in Node
-    "moduleResolution": "node",
-    "isolatedModules": false, // Often needed for Cypress TS setup
-    "allowJs": true, // Allow JS files too if needed
-    "noEmit": true // Don't actually emit JS files from this config
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["node"]
   },
   "include": [
-    "node_modules/cypress", // Include Cypress types from node_modules
-    "cypress/**/*.ts"      // Include all TS files within the cypress folder
-  ]
+    "internal/**/*.ts",
+    "cmd/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
 }

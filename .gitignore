@@ -35,3 +35,10 @@ node_modules/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Ignore e2e and frontend
+cypress/
+playwright-tests/
+frontend/
+cypress.config.js
+playwright.config.ts

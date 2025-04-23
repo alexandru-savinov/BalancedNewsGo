@@ -98,6 +98,17 @@ func (c *Collector) processFeedItem(feed *gofeed.Feed, item *gofeed.Item) {
 		return
 	}
 
+	// Check for duplicates using title similarity
+	isDuplicate, err := db.ArticleExistsBySimilarTitle(c.DB, item.Title)
+	if err != nil {
+		log.Printf("[RSS] Error checking for duplicate article: %v", err)
+		return
+	}
+	if isDuplicate {
+		log.Printf("[RSS] Skipping duplicate article: %s", item.Title)
+		return
+	}
+
 	article := c.createArticle(feed, item)
 
 	if err := c.storeArticle(article); err != nil {
@@ -131,15 +142,6 @@ func (c *Collector) isDuplicate(item *gofeed.Item) (bool, error) {
 	}
 	if exists {
 		log.Printf("[RSS] Duplicate article by URL skipped: %s", item.Link)
-		return true, nil
-	}
-
-	titleExists, err := db.ArticleExistsBySimilarTitle(c.DB, item.Title, 7)
-	if err != nil {
-		return false, err
-	}
-	if titleExists {
-		log.Printf("[RSS] Duplicate article by similar title skipped: %s", item.Title)
 		return true, nil
 	}
 

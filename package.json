@@ -3,8 +3,14 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "cypress:open": "cypress open",
-    "cypress:run": "cypress run"
+    "test": "test.cmd",
+    "test:backend": "test.cmd backend",
+    "test:all": "test.cmd all",
+    "test:debug": "test.cmd debug",
+    "test:report": "test.cmd report",
+    "test:clean": "test.cmd clean",
+    "test:analyze": "test.cmd analyze",
+    "test:list": "test.cmd list"
   },
   "repository": {
     "type": "git",
@@ -19,10 +25,11 @@
   "homepage": "https://github.com/alexandru-savinov/BalancedNewsGo#readme",
   "description": "",
   "devDependencies": {
-    "@playwright/test": "^1.51.1",
     "@types/node": "^22.14.1",
-    "cypress": "^14.3.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "@types/eventsource": "^1.1.15",
+    "eventsource": "^3.0.6",
+    "newman": "^6.2.1"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

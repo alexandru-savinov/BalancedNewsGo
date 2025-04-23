@@ -1,0 +1,25 @@
+{
+  "name": "Local Environment",
+  "variables": [
+    {
+      "name": "baseUrl",
+      "value": "http://localhost:8080",
+      "enabled": true
+    },
+    {
+      "name": "articleId",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "name": "preRescoreResponse",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "name": "postRescoreResponse",
+      "value": "",
+      "enabled": true
+    }
+  ]
+}

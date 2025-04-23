@@ -1,14 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/joho/godotenv"
 
-	"strings" // Added import
-
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 )
 
@@ -19,43 +20,51 @@ func main() {
 		log.Printf("Warning: .env file not loaded: %v", err)
 	}
 
-	// Check for generic LLM_API_KEY first, then provider-specific fallback
-	provider := os.Getenv("LLM_PROVIDER") // Need provider for fallback key name
-	if provider == "" {
-		log.Println("Warning: LLM_PROVIDER not set, assuming 'openai' for API key fallback check.")
-		provider = "openai"
-	}
+	// Get API key and base URL
 	apiKey := os.Getenv("LLM_API_KEY")
 	if apiKey == "" {
-		fallbackKeyName := strings.ToUpper(provider) + "_API_KEY"
-		apiKey = os.Getenv(fallbackKeyName)
-		if apiKey == "" {
-			log.Fatalf("LLM_API_KEY (and fallback %s) not set. Cannot run LLM test.", fallbackKeyName)
-		}
-		log.Printf("Warning: Using fallback API key %s. Set LLM_API_KEY.", fallbackKeyName)
+		log.Fatal("LLM_API_KEY not set")
 	}
 
-	// TODO: Get models to test from env var or config based on provider?
-	// Example models - adjust based on the configured provider (e.g., OpenRouter might need 'openai/gpt-3.5-turbo')
-	models := []string{"gpt-3.5-turbo", "gpt-4"}
-	if provider == "openrouter" {
-		models = []string{"openai/gpt-3.5-turbo", "openai/gpt-4"} // Example OpenRouter model names
+	backupKey := os.Getenv("LLM_API_KEY_SECONDARY")
+	baseURL := os.Getenv("LLM_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://openrouter.ai/api/v1/chat/completions"
 	}
-	log.Printf("Using LLM Provider: %s", provider)
+
+	log.Printf("Using baseURL: %s", baseURL)
+
+	// Create resty client with debug enabled
 	client := resty.New()
-	// Create the service once, configured via environment variables
-	service := llm.NewHTTPLLMService(client)
-	log.Printf("Service configured with BaseURL: %s", service.BaseURL()) // Removed DefaultModelName() call
+	client.SetTimeout(30 * time.Second)
+	client.SetDebug(true)
 
-	for _, model := range models {
-		log.Printf("Testing model: %s", model)
-		// Use the single service instance to test the specific model
-		// AnalyzeWithPrompt requires content, using placeholder
-		_, err := service.AnalyzeWithPrompt(model, "Say hello to the world!", "Placeholder content")
-		if err != nil {
-			log.Printf("Model %s test failed: %v", model, err)
-		} else {
-			log.Printf("Model %s test succeeded", model)
-		}
+	// Create service instance with OpenRouter configuration
+	svc := llm.NewHTTPLLMService(client, apiKey, backupKey, baseURL)
+
+	// Create test article
+	testArticle := &db.Article{
+		ID:      1,
+		Title:   "Test Article",
+		Content: "This is a test article that should be fairly neutral in its political bias.",
 	}
+
+	// Create test prompt variant
+	promptVariant := llm.PromptVariant{
+		ID:       "test",
+		Model:    "mistralai/mistral-small-3.1-24b-instruct", // Switch to Mistral model
+		Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Article: {{content}}",
+		Examples: []string{
+			`{"score": 0.0, "explanation": "This article appears neutral in its political bias", "confidence": 0.9}`,
+		},
+	}
+
+	// Test the service
+	ctx := context.Background()
+	score, confidence, err := svc.ScoreContent(ctx, promptVariant, testArticle)
+	if err != nil {
+		log.Fatalf("Test failed: %v", err)
+	}
+
+	log.Printf("Test succeeded - Score: %.2f, Confidence: %.2f", score, confidence)
 }

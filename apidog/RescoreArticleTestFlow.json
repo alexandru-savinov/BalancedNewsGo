@@ -1,0 +1,106 @@
+{
+  "name": "Rescore Article Test Flow",
+  "description": "A test flow to verify article rescoring functionality",
+  "steps": [
+    {
+      "name": "List Articles",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/articles",
+        "headers": [
+          {
+            "name": "Accept",
+            "value": "application/json"
+          }
+        ]
+      },
+      "tests": [
+        {
+          "name": "Status code is 200",
+          "script": "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });"
+        },
+        {
+          "name": "Response is JSON",
+          "script": "pm.test(\"Response is JSON\", function() { pm.response.to.be.json; });"
+        },
+        {
+          "name": "Store article ID",
+          "script": "var jsonData = pm.response.json(); if (jsonData && jsonData.length > 0) { pm.environment.set(\"articleId\", jsonData[0].id); pm.test(\"Found at least one article\", function() { pm.expect(jsonData.length).to.be.above(0); }); } else { console.log(\"No articles found\"); }"
+        }
+      ]
+    },
+    {
+      "name": "Get Article Before Rescoring",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/articles/{{articleId}}",
+        "headers": [
+          {
+            "name": "Accept",
+            "value": "application/json"
+          }
+        ]
+      },
+      "tests": [
+        {
+          "name": "Status code is 200",
+          "script": "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });"
+        },
+        {
+          "name": "Response is JSON",
+          "script": "pm.test(\"Response is JSON\", function() { pm.response.to.be.json; });"
+        },
+        {
+          "name": "Store pre-rescore response",
+          "script": "var jsonData = pm.response.json(); pm.environment.set(\"preRescoreResponse\", JSON.stringify(jsonData));"
+        }
+      ]
+    },
+    {
+      "name": "Trigger Rescoring for Article",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/articles/{{articleId}}/rescore",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ]
+      },
+      "tests": [
+        {
+          "name": "Status code is 200",
+          "script": "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });"
+        }
+      ]
+    },
+    {
+      "name": "Get Article After Rescoring",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/articles/{{articleId}}",
+        "headers": [
+          {
+            "name": "Accept",
+            "value": "application/json"
+          }
+        ]
+      },
+      "tests": [
+        {
+          "name": "Status code is 200",
+          "script": "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });"
+        },
+        {
+          "name": "Response is JSON",
+          "script": "pm.test(\"Response is JSON\", function() { pm.response.to.be.json; });"
+        },
+        {
+          "name": "Compare pre and post rescore responses",
+          "script": "var jsonData = pm.response.json(); pm.environment.set(\"postRescoreResponse\", JSON.stringify(jsonData)); var preRescoreResponse = JSON.parse(pm.environment.get(\"preRescoreResponse\")); var postRescoreResponse = JSON.parse(pm.environment.get(\"postRescoreResponse\")); pm.test(\"Compare pre and post rescore responses\", function () { pm.expect(preRescoreResponse.id).to.eql(postRescoreResponse.id); pm.expect(preRescoreResponse.compositeScore).to.not.eql(postRescoreResponse.compositeScore); pm.expect(preRescoreResponse.confidence).to.not.eql(postRescoreResponse.confidence); });"
+        }
+      ]
+    }
+  ]
+}

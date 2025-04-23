@@ -1,0 +1,310 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Rescore Article Test",
+    "version": "1.0.0",
+    "description": "API collection for testing article rescoring functionality"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/api/articles": {
+      "get": {
+        "summary": "List Articles",
+        "description": "Retrieves a list of articles",
+        "operationId": "listArticles",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of articles to return",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of articles to skip",
+            "schema": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Filter articles by source",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "leaning",
+            "in": "query",
+            "description": "Filter articles by political leaning",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Article"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-apidog-test": {
+          "testScript": "const response = pm.response.json();\nif (response && response.length > 0) {\n  pm.environment.set('articleId', response[0].id);\n  pm.test('Found at least one article', () => {\n    pm.expect(response.length).to.be.above(0);\n  });\n} else {\n  console.log('No articles found');\n}"
+        }
+      }
+    },
+    "/api/articles/{articleId}": {
+      "get": {
+        "summary": "Get Article by ID",
+        "description": "Retrieves a specific article by its ID",
+        "operationId": "getArticleById",
+        "parameters": [
+          {
+            "name": "articleId",
+            "in": "path",
+            "required": true,
+            "description": "ID of the article to retrieve",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Article not found"
+          }
+        },
+        "x-apidog-test": {
+          "testScript": "pm.environment.set('preRescoreResponse', JSON.stringify(pm.response.json()));"
+        }
+      }
+    },
+    "/api/articles/{articleId}/rescore": {
+      "post": {
+        "summary": "Trigger Rescoring for Article",
+        "description": "Initiates the rescoring process for a specific article",
+        "operationId": "rescoreArticle",
+        "parameters": [
+          {
+            "name": "articleId",
+            "in": "path",
+            "required": true,
+            "description": "ID of the article to rescore",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Optional parameters for rescoring",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "forceRescore": {
+                    "type": "boolean",
+                    "description": "Force rescoring even if recent scores exist"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rescoring initiated successfully"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Article not found"
+          }
+        }
+      }
+    },
+    "/api/llm/reanalyze/{articleId}": {
+      "post": {
+        "summary": "Reanalyze Article with LLM",
+        "description": "Triggers LLM-based reanalysis of an article",
+        "operationId": "reanalyzeArticle",
+        "parameters": [
+          {
+            "name": "articleId",
+            "in": "path",
+            "required": true,
+            "description": "ID of the article to reanalyze",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reanalysis initiated successfully"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Article not found"
+          }
+        }
+      }
+    },
+    "/api/llm/score-progress/{articleId}": {
+      "get": {
+        "summary": "Get Scoring Progress",
+        "description": "Retrieves the progress of a scoring operation for an article",
+        "operationId": "getScoringProgress",
+        "parameters": [
+          {
+            "name": "articleId",
+            "in": "path",
+            "required": true,
+            "description": "ID of the article",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressState"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Article": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "pubDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "compositeScore": {
+            "type": "number"
+          },
+          "confidence": {
+            "type": "number"
+          }
+        }
+      },
+      "ArticleDetail": {
+        "type": "object",
+        "properties": {
+          "article": {
+            "$ref": "#/components/schemas/Article"
+          },
+          "scores": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "composite_score": {
+            "type": "number"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "score_source": {
+            "type": "string"
+          }
+        }
+      },
+      "ProgressState": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "percent": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["InProgress", "Success", "Error"]
+          },
+          "error": {
+            "type": "string"
+          },
+          "final_score": {
+            "type": "number"
+          },
+          "last_updated": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

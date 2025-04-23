@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -27,10 +26,13 @@ func main() {
 		log.Println("No .env file found or error loading .env file:", err)
 	}
 	// Initialize services
-	dbConn, llmClient, rssCollector := initServices()
+	dbConn, llmClient, rssCollector, scoreManager := initServices()
 
 	// Initialize Gin
 	router := gin.Default()
+
+	// Load HTML templates
+	router.LoadHTMLGlob("web/*.html")
 
 	// Serve static files from ./web
 	router.Static("/static", "./web")
@@ -40,8 +42,8 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// Register API routes
-	api.RegisterRoutes(router, dbConn, rssCollector, llmClient)
+	// Register API routes on the router instance
+	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager)
 
 	// htmx endpoint for articles list with filters
 	router.GET("/articles", articlesHandler(dbConn))
@@ -111,71 +113,9 @@ func main() {
 	}
 }
 
-func startReprocessingLoop(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
-	ticker := time.NewTicker(10 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		reprocessFailedArticles(dbConn, llmClient)
-		<-ticker.C
-	}
-}
-
-func reprocessFailedArticles(dbConn *sqlx.DB, llmClient *llm.LLMClient) {
-	log.Println("Reprocessing failed articles...")
-
-	var articles []db.Article
-	err := dbConn.Select(&articles, "SELECT * FROM articles WHERE status = 'failed' OR fail_count > 0")
-	if err != nil {
-		log.Printf("Error fetching failed articles: %v", err)
-		return
-	}
-
-	for _, article := range articles {
-		log.Printf("Reprocessing article ID %d (fail count: %d)", article.ID, article.FailCount)
-
-		// Call the ensemble analysis method directly, using the configured models
-		// The EnsembleAnalyze method should handle its own internal logic based on config
-		_, err := llmClient.EnsembleAnalyze(article.ID, article.Content)
-		// Determine success based on the error returned by EnsembleAnalyze
-		success := err == nil
-		if err != nil && !errors.Is(err, llm.ErrBothLLMKeysRateLimited) { // Log errors unless it's just rate limiting
-			log.Printf("Error during ensemble analysis for article %d: %v", article.ID, err)
-		} else if errors.Is(err, llm.ErrBothLLMKeysRateLimited) {
-			log.Printf("Skipping update for article %d due to rate limiting: %v", article.ID, err)
-			// Optionally continue to next article instead of updating status below
-			// continue
-		}
-
-		now := time.Now()
-		if success {
-			_, err := dbConn.Exec(`UPDATE articles SET status='processed', fail_count=0, last_attempt=?, escalated=0 WHERE id=?`, now, article.ID)
-			if err != nil {
-				log.Printf("Error updating article %d: %v", article.ID, err)
-			} else {
-				log.Printf("Article %d reprocessed successfully", article.ID)
-			}
-		} else {
-			newFailCount := article.FailCount + 1
-			escalated := 0
-			status := "failed"
-			if newFailCount >= 5 {
-				escalated = 1
-				status = "escalated"
-			}
-			_, err := dbConn.Exec(`UPDATE articles SET status=?, fail_count=?, last_attempt=?, escalated=? WHERE id=?`, status, newFailCount, now, escalated, article.ID)
-			if err != nil {
-				log.Printf("Error updating failed article %d: %v", article.ID, err)
-			} else {
-				log.Printf("Article %d failed again (fail count: %d)", article.ID, newFailCount)
-			}
-		}
-	}
-}
-
 // Removed placeholder function processArticleWithLLM as it's replaced by llmClient.EnsembleAnalyze
 
-func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
+func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager) {
 	// Load environment variables from .env file if present
 	err := godotenv.Load()
 	if err != nil {
@@ -216,7 +156,18 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector) {
 	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
 	rssCollector.StartScheduler()
 
-	return dbConn, llmClient, rssCollector
+	// Initialize ScoreManager
+	cache := llm.NewCache()
+	calculator := &llm.DefaultScoreCalculator{
+		Config: &llm.CompositeScoreConfig{
+			MinScore: -1.0,
+			MaxScore: 1.0,
+		},
+	}
+	progressMgr := llm.NewProgressManager(10 * time.Minute) // Clean up progress data every 10 minutes
+	scoreManager := llm.NewScoreManager(dbConn, cache, calculator, progressMgr)
+
+	return dbConn, llmClient, rssCollector, scoreManager
 }
 
 func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
@@ -294,14 +245,60 @@ func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		scores, _ := db.FetchLLMScores(dbConn, articleID)
-		html := "<h2>" + article.Title + "</h2><p>" + article.Source + " | " +
-			article.PubDate.Format("2006-01-02") + "</p><p>" + article.Content + "</p>"
+		composite, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
 
-		for _, s := range scores {
-			html += "<p>" + s.Model + ": " + fmt.Sprintf("%.2f", s.Score) + "</p>"
+		// Calculate bias label and confidence colors
+		var biasLabel string
+		if composite < -0.5 {
+			biasLabel = "Left"
+		} else if composite < -0.1 {
+			biasLabel = "Slightly Left"
+		} else if composite > 0.5 {
+			biasLabel = "Right"
+		} else if composite > 0.1 {
+			biasLabel = "Slightly Right"
+		} else {
+			biasLabel = "Center"
 		}
 
-		c.Header("Content-Type", "text/html")
-		c.String(200, html)
+		var confidenceColor string
+		if confidence >= 0.8 {
+			confidenceColor = "var(--confidence-high)"
+		} else if confidence >= 0.5 {
+			confidenceColor = "var(--confidence-medium)"
+		} else {
+			confidenceColor = "var(--confidence-low)"
+		}
+
+		// Calculate model indicators for the bias slider
+		var modelIndicators []map[string]interface{}
+		for _, s := range scores {
+			var meta struct {
+				Confidence float64 `json:"confidence"`
+			}
+			_ = json.Unmarshal([]byte(s.Metadata), &meta)
+
+			modelIndicators = append(modelIndicators, map[string]interface{}{
+				"Position": ((s.Score + 1) / 2) * 100,
+				"Title":    fmt.Sprintf("%s: %.2f (Confidence: %.0f%%)", s.Model, s.Score, meta.Confidence*100),
+			})
+		}
+
+		// Render HTML template
+		c.HTML(200, "article.html", gin.H{
+			"ID":                article.ID,
+			"Title":             article.Title,
+			"Content":           article.Content,
+			"Source":            article.Source,
+			"PubDate":           article.PubDate.Format("2006-01-02 15:04:05"),
+			"CreatedAt":         article.CreatedAt.Format("2006-01-02 15:04:05"),
+			"CompositeScore":    fmt.Sprintf("%.2f", composite),
+			"BiasLabel":         biasLabel,
+			"ConfidencePercent": fmt.Sprintf("%.0f", confidence*100),
+			"ConfidenceColor":   confidenceColor,
+			"SliderPosition":    ((composite + 1) / 2) * 100,
+			"ModelIndicators":   modelIndicators,
+			"Explanation":       "Analysis based on multiple machine learning models evaluating political bias.",
+		})
 	}
 }
