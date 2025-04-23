@@ -4,5 +4,6 @@
         "projectKey": "alexandru-savinov_BalancedNewsGo"
     },
     "zencoder.enableRepoIndexing": true,
-    "cline.mcpMarketplace.enabled": false
+    "cline.mcpMarketplace.enabled": false,
+    "git.ignoreLimitWarning": true
 }
