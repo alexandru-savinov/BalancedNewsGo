@@ -17,7 +17,27 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
+
+	swaggerFiles "github.com/swaggo/files"        // Correct swagger embed files import
+	ginSwagger "github.com/swaggo/gin-swagger"    // Swagger UI
+	_ "github.com/swaggo/swag/example/basic/docs" // Swaggo docs generation
 )
+
+// @title           NewsBalancer API
+// @version         1.0
+// @description     API for the NewsBalancer application which analyzes political bias in news articles
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name   NewsBalancer Support
+// @contact.url    https://github.com/alexandru-savinov/BalancedNewsGo
+// @contact.email  support@newsbalancer.example
+
+// @license.name  MIT
+// @license.url   https://opensource.org/licenses/MIT
+
+// @host      localhost:8080
+// @BasePath  /api
+// @schemes   http
 
 func main() {
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
@@ -37,7 +57,11 @@ func main() {
 	// Serve static files from ./web
 	router.Static("/static", "./web")
 
-	// Health check
+	// @Summary Health Check
+	// @Description Returns the health status of the server.
+	// @Tags Health
+	// @Success 200 {object} map[string]string
+	// @Router /healthz [get]
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
@@ -45,10 +69,23 @@ func main() {
 	// Register API routes on the router instance
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager)
 
-	// htmx endpoint for articles list with filters
+	// @Summary Get Articles
+	// @Description Fetches a list of articles with optional filters.
+	// @Tags Articles
+	// @Param source query string false "Filter by source"
+	// @Param leaning query string false "Filter by political leaning"
+	// @Param offset query int false "Pagination offset"
+	// @Param limit query int false "Pagination limit"
+	// @Success 200 {array} db.Article
+	// @Router /articles [get]
 	router.GET("/articles", articlesHandler(dbConn))
 
-	// htmx endpoint for article detail
+	// @Summary Get Article Details
+	// @Description Fetches details of a specific article by ID.
+	// @Tags Articles
+	// @Param id path int true "Article ID"
+	// @Success 200 {object} db.Article
+	// @Router /article/{id} [get]
 	router.GET("/article/:id", articleDetailHandler(dbConn))
 
 	// Metrics endpoints
@@ -101,6 +138,9 @@ func main() {
 	router.GET("/", func(c *gin.Context) {
 		c.File("./web/index.html")
 	})
+
+	// Add Swagger route
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Start server
 	log.Println("Server running on :8080")

@@ -16,6 +16,7 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -26,35 +27,21 @@ var (
 	articlesCacheLock sync.RWMutex
 )
 
-// Progress tracking types and vars
-type ProgressState struct {
-	Step        string   `json:"step"`                  // Current detailed step
-	Message     string   `json:"message"`               // User-friendly message
-	Percent     int      `json:"percent"`               // Progress percentage
-	Status      string   `json:"status"`                // Overall status: "pending", "in_progress", "completed", "failed"
-	Error       string   `json:"error,omitempty"`       // Error message if Status is "failed"
-	FinalScore  *float64 `json:"final_score,omitempty"` // Final score if Status is "completed"
-	LastUpdated int64    `json:"last_updated"`          // Timestamp
-}
-
+// Progress tracking vars
 var (
-	progressMap     = make(map[int64]*ProgressState)
+	progressMap     = make(map[int64]*models.ProgressState)
 	progressMapLock sync.RWMutex
 )
 
-func setProgress(articleID int64, state *ProgressState) {
+func setProgress(articleID int64, state *models.ProgressState) {
 	progressMapLock.Lock()
 	defer progressMapLock.Unlock()
 	progressMap[articleID] = state
-	// Log the progress update for debugging
-	if state.Status == "Success" || state.Status == "Error" {
-		log.Printf("[SetProgress] FINAL: ArticleID=%d Status=%s Step=%s Message=%s", articleID, state.Status, state.Step, state.Message)
-	} else {
-		log.Printf("[SetProgress] ArticleID=%d Status=%s Step=%s Message=%s", articleID, state.Status, state.Step, state.Message)
-	}
+	log.Printf("[SetProgress] ArticleID=%d Status=%s Step=%s Message=%s",
+		articleID, state.Status, state.Step, state.Message)
 }
 
-func getProgress(articleID int64) *ProgressState {
+func getProgress(articleID int64) *models.ProgressState {
 	progressMapLock.RLock()
 	defer progressMapLock.RUnlock()
 	if p, ok := progressMap[articleID]; ok {
@@ -96,6 +83,17 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 }
 
 // Handler for POST /api/articles
+// @Summary Create article
+// @Description Creates a new article with the provided information
+// @Tags Articles
+// @Accept json
+// @Produce json
+// @Param request body CreateArticleRequest true "Article information"
+// @Success 200 {object} StandardResponse{data=CreateArticleResponse} "Article created successfully"
+// @Failure 400 {object} ErrorResponse "Invalid request data"
+// @Failure 409 {object} ErrorResponse "Article URL already exists"
+// @Failure 500 {object} ErrorResponse "Server error"
+// @Router /articles [post]
 func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -210,6 +208,19 @@ func handleArticleBatch(dbConn *sqlx.DB, articles []db.Article) ([]*ArticleResul
 }
 
 // getArticlesHandler handles GET /articles
+// @Summary Get articles
+// @Description Fetches a list of articles with optional filters
+// @Tags Articles
+// @Accept json
+// @Produce json
+// @Param source query string false "Filter by source (e.g., CNN, Fox)"
+// @Param leaning query string false "Filter by political leaning"
+// @Param limit query int false "Maximum number of articles to return" default(20) minimum(1) maximum(100)
+// @Param offset query int false "Number of articles to skip" default(0) minimum(0)
+// @Success 200 {object} StandardResponse{data=[]db.Article} "Success"
+// @Failure 400 {object} ErrorResponse "Invalid parameters"
+// @Failure 500 {object} ErrorResponse "Server error"
+// @Router /articles [get]
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -270,6 +281,18 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// getArticleByIDHandler handles GET /articles/:id
+// @Summary Get article by ID
+// @Description Fetches a specific article by its ID with scores and metadata
+// @Tags Articles
+// @Accept json
+// @Produce json
+// @Param id path int true "Article ID" minimum(1)
+// @Success 200 {object} StandardResponse "Success with article details"
+// @Failure 400 {object} ErrorResponse "Invalid article ID"
+// @Failure 404 {object} ErrorResponse "Article not found"
+// @Failure 500 {object} ErrorResponse "Server error"
+// @Router /articles/{id} [get]
 func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -337,6 +360,11 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Trigger RSS feed refresh
+// @Description Initiates a manual RSS feed refresh job
+// @Tags Feeds
+// @Success 200 {object} StandardResponse "Refresh started"
+// @Router /api/refresh [post]
 func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -347,6 +375,19 @@ func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 }
 
 // Refactored reanalyzeHandler to use ScoreManager for scoring, storage, and progress
+// @Summary Reanalyze article
+// @Description Initiates a reanalysis of an article's political bias or directly updates the score
+// @Tags Analysis
+// @Accept json
+// @Produce json
+// @Param id path int true "Article ID" minimum(1)
+// @Param request body ManualScoreRequest false "Optional score to set directly"
+// @Success 200 {object} StandardResponse "Success - reanalysis queued or score updated"
+// @Failure 400 {object} ErrorResponse "Invalid article ID or score"
+// @Failure 404 {object} ErrorResponse "Article not found"
+// @Failure 429 {object} ErrorResponse "Rate limit exceeded"
+// @Failure 500 {object} ErrorResponse "Internal server error or LLM service unavailable"
+// @Router /llm/reanalyze/{id} [post]
 func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
@@ -456,7 +497,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 
 		// Initial progress state
 		if scoreManager != nil {
-			scoreManager.SetProgress(articleID, &llm.ProgressState{
+			scoreManager.SetProgress(articleID, &models.ProgressState{
 				Step:        "Starting",
 				Message:     "Scoring job queued",
 				Percent:     0,
@@ -469,7 +510,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			defer func() {
 				if r := recover(); r != nil {
 					errMsg := fmt.Sprintf("Internal panic: %v", r)
-					setProgress(articleID, &ProgressState{
+					setProgress(articleID, &models.ProgressState{
 						Step:        "Error",
 						Message:     "Internal error occurred",
 						Percent:     0,
@@ -485,7 +526,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			stepNum := 1
 
 			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &llm.ProgressState{
+				scoreManager.SetProgress(articleID, &models.ProgressState{
 					Step:        "Preparing",
 					Message:     "Deleting old scores",
 					Percent:     percent(stepNum, totalSteps),
@@ -495,7 +536,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			}
 			if err := llmClient.DeleteScores(articleID); err != nil {
 				errMsg := fmt.Sprintf("Failed to delete old scores: %v", err)
-				setProgress(articleID, &ProgressState{
+				setProgress(articleID, &models.ProgressState{
 					Step:        "Error",
 					Message:     errMsg,
 					Percent:     percent(stepNum, totalSteps),
@@ -511,7 +552,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			for _, m := range cfg.Models {
 				label := fmt.Sprintf("Scoring with %s", m.ModelName)
 				if scoreManager != nil {
-					scoreManager.SetProgress(articleID, &llm.ProgressState{
+					scoreManager.SetProgress(articleID, &models.ProgressState{
 						Step:        label,
 						Message:     label,
 						Percent:     percent(stepNum, totalSteps),
@@ -525,7 +566,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 					if errors.Is(scoreErr, llm.ErrBothLLMKeysRateLimited) {
 						userMsg = "Rate limit exceeded"
 					}
-					setProgress(articleID, &ProgressState{
+					setProgress(articleID, &models.ProgressState{
 						Step:        "Error",
 						Message:     userMsg,
 						Percent:     percent(stepNum, totalSteps),
@@ -540,7 +581,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			}
 
 			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &llm.ProgressState{
+				scoreManager.SetProgress(articleID, &models.ProgressState{
 					Step:        "Calculating",
 					Message:     "Computing final score",
 					Percent:     percent(stepNum, totalSteps),
@@ -552,7 +593,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			scores, fetchErr := llmClient.FetchScores(articleID)
 			if fetchErr != nil {
 				errMsg := fmt.Sprintf("Failed to fetch scores: %v", fetchErr)
-				setProgress(articleID, &ProgressState{
+				setProgress(articleID, &models.ProgressState{
 					Step:        "Error",
 					Message:     errMsg,
 					Percent:     percent(stepNum, totalSteps),
@@ -566,7 +607,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			stepNum++
 
 			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &llm.ProgressState{
+				scoreManager.SetProgress(articleID, &models.ProgressState{
 					Step:        "Storing",
 					Message:     "Saving results",
 					Percent:     percent(stepNum, totalSteps),
@@ -577,7 +618,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			finalScore, confidence, storeErr := scoreManager.UpdateArticleScore(articleID, scores, cfg)
 			if storeErr != nil {
 				errMsg := fmt.Sprintf("Failed to store score: %v", storeErr)
-				setProgress(articleID, &ProgressState{
+				setProgress(articleID, &models.ProgressState{
 					Step:        "Error",
 					Message:     errMsg,
 					Percent:     percent(stepNum, totalSteps),
@@ -592,7 +633,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			// Final success state with composite score
 			confidencePercent := int(confidence * 100)
 			message := fmt.Sprintf("Scoring complete (confidence: %d%%)", confidencePercent)
-			setProgress(articleID, &ProgressState{
+			setProgress(articleID, &models.ProgressState{
 				Step:        "Complete",
 				Message:     message,
 				Percent:     100,
@@ -610,7 +651,12 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 	}
 }
 
-// SSE handler for progress updates
+// @Summary Score progress SSE stream
+// @Description Server-Sent Events endpoint streaming scoring progress for an article
+// @Tags Analysis
+// @Param id path int true "Article ID" minimum(1)
+// @Success 200 {string} string "event-stream"
+// @Router /api/llm/score-progress/{id} [get]
 func scoreProgressSSEHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
@@ -672,7 +718,11 @@ func percent(step, total int) int {
 	return p
 }
 
-// feedHealthHandler returns the health status of all feed sources.
+// @Summary Get feed health status
+// @Description Returns the health of configured RSS feed sources
+// @Tags Feeds
+// @Success 200 {object} map[string]bool
+// @Router /api/feeds/healthz [get]
 func feedHealthHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := rssCollector.CheckFeedHealth()
@@ -680,6 +730,13 @@ func feedHealthHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get article summary
+// @Description Retrieves the text summary for an article
+// @Tags Summary
+// @Param id path int true "Article ID" minimum(1)
+// @Success 200 {object} StandardResponse
+// @Failure 404 {object} ErrorResponse "Summary not available"
+// @Router /api/articles/{id}/summary [get]
 func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -788,12 +845,26 @@ func sortResults(results []map[string]interface{}, order string) {
 }
 
 // biasHandler returns article bias scores and composite score.
+// @Summary Get article bias analysis
+// @Description Retrieves the political bias score and individual model results for an article
+// @Tags Analysis
+// @Accept json
+// @Produce json
+// @Param id path int true "Article ID" minimum(1)
+// @Param min_score query number false "Minimum score filter" default(-1) minimum(-1) maximum(1)
+// @Param max_score query number false "Maximum score filter" default(1) minimum(-1) maximum(1)
+// @Param sort query string false "Sort order (asc or desc)" Enums(asc, desc) default(desc)
+// @Success 200 {object} StandardResponse{data=ScoreResponse} "Success"
+// @Failure 400 {object} ErrorResponse "Invalid parameters"
+// @Failure 404 {object} ErrorResponse "Article not found"
+// @Failure 500 {object} ErrorResponse "Server error"
+// @Router /articles/{id}/bias [get]
 // If no valid LLM scores are available, the API responds with:
 //   - "composite_score": null
 //   - "status": "scoring_unavailable"
+//
 // instead of defaulting to zero values.
 // This indicates that scoring data is currently unavailable.
-
 func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -805,13 +876,13 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		minScore, err := strconv.ParseFloat(c.DefaultQuery("min_score", "-2"), 64)
+		minScore, err := strconv.ParseFloat(c.DefaultQuery("min_score", "-1"), 64)
 		if err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid min_score"))
 			LogError("biasHandler: invalid min_score", err)
 			return
 		}
-		maxScore, err := strconv.ParseFloat(c.DefaultQuery("max_score", "2"), 64)
+		maxScore, err := strconv.ParseFloat(c.DefaultQuery("max_score", "1"), 64)
 		if err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid max_score"))
 			LogError("biasHandler: invalid max_score", err)
@@ -825,7 +896,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Caching
-		cacheKey := "bias:" + idStr + ":" + c.DefaultQuery("min_score", "-2") + ":" + c.DefaultQuery("max_score", "2") + ":" + sortOrder
+		cacheKey := "bias:" + idStr + ":" + c.DefaultQuery("min_score", "-1") + ":" + c.DefaultQuery("max_score", "1") + ":" + sortOrder
 		articlesCacheLock.RLock()
 		if cached, found := articlesCache.Get(cacheKey); found {
 			articlesCacheLock.RUnlock()
@@ -934,6 +1005,13 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get ensemble scoring details
+// @Description Retrieves individual model results and aggregation for an article's ensemble score
+// @Tags Analysis
+// @Param id path int true "Article ID" minimum(1)
+// @Success 200 {object} StandardResponse
+// @Failure 404 {object} ErrorResponse "Ensemble data not found"
+// @Router /api/articles/{id}/ensemble [get]
 func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -1045,6 +1123,16 @@ func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 	return details
 }
 
+// @Summary Submit user feedback
+// @Description Submit user feedback on an article's political bias analysis
+// @Tags Feedback
+// @Accept json
+// @Produce json
+// @Param request body FeedbackRequest true "Feedback information"
+// @Success 200 {object} StandardResponse "Feedback received"
+// @Failure 400 {object} ErrorResponse "Invalid request data"
+// @Failure 500 {object} ErrorResponse "Server error"
+// @Router /feedback [post]
 func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -1139,7 +1227,14 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
-// --- Manual Score Handler ---
+// @Summary Manually set article score
+// @Description Updates an article's bias score manually
+// @Tags Analysis
+// @Param id path int true "Article ID" minimum(1)
+// @Param request body ManualScoreRequest true "Score value between -1.0 and 1.0"
+// @Success 200 {object} StandardResponse
+// @Failure 400 {object} ErrorResponse
+// @Router /api/manual-score/{id} [post]
 func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")

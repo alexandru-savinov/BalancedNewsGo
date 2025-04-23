@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -43,14 +44,14 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 
 	// Progress: Start
 	if sm.progressMgr != nil {
-		ps := &ProgressState{Step: "Start", Message: "Starting scoring", Percent: 0, Status: "InProgress", LastUpdated: time.Now().Unix()}
+		ps := &models.ProgressState{Step: "Start", Message: "Starting scoring", Percent: 0, Status: "InProgress", LastUpdated: time.Now().Unix()}
 		sm.progressMgr.SetProgress(articleID, ps)
 	}
 
 	tx, err := sm.db.BeginTxx(context.Background(), nil)
 	if err != nil {
 		if sm.progressMgr != nil {
-			ps := &ProgressState{Step: "DB Transaction", Message: "Failed to start DB transaction", Percent: 0, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
+			ps := &models.ProgressState{Step: "DB Transaction", Message: "Failed to start DB transaction", Percent: 0, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
 			sm.progressMgr.SetProgress(articleID, ps)
 		}
 		return 0, 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -63,7 +64,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 
 	// Progress: Calculating
 	if sm.progressMgr != nil {
-		ps := &ProgressState{Step: "Calculating", Message: "Calculating score", Percent: 20, Status: "InProgress", LastUpdated: time.Now().Unix()}
+		ps := &models.ProgressState{Step: "Calculating", Message: "Calculating score", Percent: 20, Status: "InProgress", LastUpdated: time.Now().Unix()}
 		sm.progressMgr.SetProgress(articleID, ps)
 	}
 
@@ -71,7 +72,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 	if calcErr != nil {
 		tx.Rollback()
 		if sm.progressMgr != nil {
-			ps := &ProgressState{Step: "Calculation", Message: "Score calculation failed", Percent: 20, Status: "Error", Error: calcErr.Error(), LastUpdated: time.Now().Unix()}
+			ps := &models.ProgressState{Step: "Calculation", Message: "Score calculation failed", Percent: 20, Status: "Error", Error: calcErr.Error(), LastUpdated: time.Now().Unix()}
 			sm.progressMgr.SetProgress(articleID, ps)
 		}
 		return 0, 0, fmt.Errorf("score calculation failed: %w", calcErr)
@@ -79,7 +80,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 
 	// Progress: Storing ensemble score
 	if sm.progressMgr != nil {
-		ps := &ProgressState{Step: "Storing", Message: "Storing ensemble score", Percent: 60, Status: "InProgress", LastUpdated: time.Now().Unix()}
+		ps := &models.ProgressState{Step: "Storing", Message: "Storing ensemble score", Percent: 60, Status: "InProgress", LastUpdated: time.Now().Unix()}
 		sm.progressMgr.SetProgress(articleID, ps)
 	}
 
@@ -100,7 +101,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 	if err != nil {
 		tx.Rollback()
 		if sm.progressMgr != nil {
-			ps := &ProgressState{Step: "DB Insert", Message: "Failed to insert ensemble score", Percent: 70, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
+			ps := &models.ProgressState{Step: "DB Insert", Message: "Failed to insert ensemble score", Percent: 70, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
 			sm.progressMgr.SetProgress(articleID, ps)
 		}
 		return 0, 0, fmt.Errorf("failed to insert ensemble score: %w", err)
@@ -108,7 +109,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 
 	// Progress: Updating article
 	if sm.progressMgr != nil {
-		ps := &ProgressState{Step: "Updating", Message: "Updating article score", Percent: 80, Status: "InProgress", LastUpdated: time.Now().Unix()}
+		ps := &models.ProgressState{Step: "Updating", Message: "Updating article score", Percent: 80, Status: "InProgress", LastUpdated: time.Now().Unix()}
 		sm.progressMgr.SetProgress(articleID, ps)
 	}
 
@@ -116,7 +117,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 	if err != nil {
 		tx.Rollback()
 		if sm.progressMgr != nil {
-			ps := &ProgressState{Step: "DB Update", Message: "Failed to update article", Percent: 90, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
+			ps := &models.ProgressState{Step: "DB Update", Message: "Failed to update article", Percent: 90, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
 			sm.progressMgr.SetProgress(articleID, ps)
 		}
 		return 0, 0, fmt.Errorf("failed to update article: %w", err)
@@ -124,7 +125,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 
 	if err := tx.Commit(); err != nil {
 		if sm.progressMgr != nil {
-			ps := &ProgressState{Step: "DB Commit", Message: "Failed to commit transaction", Percent: 95, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
+			ps := &models.ProgressState{Step: "DB Commit", Message: "Failed to commit transaction", Percent: 95, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
 			sm.progressMgr.SetProgress(articleID, ps)
 		}
 		return 0, 0, fmt.Errorf("failed to commit transaction: %w", err)
@@ -139,7 +140,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 
 	// Progress: Success
 	if sm.progressMgr != nil {
-		ps := &ProgressState{Step: "Complete", Message: "Scoring complete", Percent: 100, Status: "Success", FinalScore: &score, LastUpdated: time.Now().Unix()}
+		ps := &models.ProgressState{Step: "Complete", Message: "Scoring complete", Percent: 100, Status: "Success", FinalScore: &score, LastUpdated: time.Now().Unix()}
 		sm.progressMgr.SetProgress(articleID, ps)
 	}
 
@@ -168,14 +169,14 @@ func (sm *ScoreManager) TrackProgress(articleID int64, step, status string) {
 }
 
 // SetProgress proxies to ProgressManager
-func (sm *ScoreManager) SetProgress(articleID int64, state *ProgressState) {
+func (sm *ScoreManager) SetProgress(articleID int64, state *models.ProgressState) {
 	if sm.progressMgr != nil {
 		sm.progressMgr.SetProgress(articleID, state)
 	}
 }
 
 // GetProgress proxies to ProgressManager
-func (sm *ScoreManager) GetProgress(articleID int64) *ProgressState {
+func (sm *ScoreManager) GetProgress(articleID int64) *models.ProgressState {
 	if sm.progressMgr != nil {
 		return sm.progressMgr.GetProgress(articleID)
 	}
