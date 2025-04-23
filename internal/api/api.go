@@ -47,8 +47,11 @@ func setProgress(articleID int64, state *ProgressState) {
 	defer progressMapLock.Unlock()
 	progressMap[articleID] = state
 	// Log the progress update for debugging
-	log.Printf("[Progress Update] Article %d: Status=%s, Step=%s, Message=%s", 
-		articleID, state.Status, state.Step, state.Message)
+	if state.Status == "Success" || state.Status == "Error" {
+		log.Printf("[SetProgress] FINAL: ArticleID=%d Status=%s Step=%s Message=%s", articleID, state.Status, state.Step, state.Message)
+	} else {
+		log.Printf("[SetProgress] ArticleID=%d Status=%s Step=%s Message=%s", articleID, state.Status, state.Step, state.Message)
+	}
 }
 
 func getProgress(articleID int64) *ProgressState {
@@ -353,6 +356,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			return
 		}
 		articleID := int64(id)
+		log.Printf("[POST /api/llm/reanalyze] ArticleID=%d", articleID)
 
 		// Check if article exists
 		article, err := db.FetchArticleByID(dbConn, articleID)
@@ -465,16 +469,15 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			defer func() {
 				if r := recover(); r != nil {
 					errMsg := fmt.Sprintf("Internal panic: %v", r)
-					if scoreManager != nil {
-						scoreManager.SetProgress(articleID, &llm.ProgressState{
-							Step:        "Error",
-							Message:     "Internal error occurred",
-							Percent:     0,
-							Status:      "Error",
-							Error:       errMsg,
-							LastUpdated: time.Now().Unix(),
-						})
-					}
+					setProgress(articleID, &ProgressState{
+						Step:        "Error",
+						Message:     "Internal error occurred",
+						Percent:     0,
+						Status:      "Error",
+						Error:       errMsg,
+						LastUpdated: time.Now().Unix(),
+					})
+					log.Printf("[Goroutine Panic] ArticleID=%d: %s", articleID, errMsg)
 				}
 			}()
 
@@ -492,16 +495,15 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			}
 			if err := llmClient.DeleteScores(articleID); err != nil {
 				errMsg := fmt.Sprintf("Failed to delete old scores: %v", err)
-				if scoreManager != nil {
-					scoreManager.SetProgress(articleID, &llm.ProgressState{
-						Step:        "Error",
-						Message:     errMsg,
-						Percent:     percent(stepNum, totalSteps),
-						Status:      "Error",
-						Error:       errMsg,
-						LastUpdated: time.Now().Unix(),
-					})
-				}
+				setProgress(articleID, &ProgressState{
+					Step:        "Error",
+					Message:     errMsg,
+					Percent:     percent(stepNum, totalSteps),
+					Status:      "Error",
+					Error:       errMsg,
+					LastUpdated: time.Now().Unix(),
+				})
+				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
 				return
 			}
 			stepNum++
@@ -523,16 +525,15 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 					if errors.Is(scoreErr, llm.ErrBothLLMKeysRateLimited) {
 						userMsg = "Rate limit exceeded"
 					}
-					if scoreManager != nil {
-						scoreManager.SetProgress(articleID, &llm.ProgressState{
-							Step:        "Error",
-							Message:     userMsg,
-							Percent:     percent(stepNum, totalSteps),
-							Status:      "Error",
-							Error:       scoreErr.Error(),
-							LastUpdated: time.Now().Unix(),
-						})
-					}
+					setProgress(articleID, &ProgressState{
+						Step:        "Error",
+						Message:     userMsg,
+						Percent:     percent(stepNum, totalSteps),
+						Status:      "Error",
+						Error:       scoreErr.Error(),
+						LastUpdated: time.Now().Unix(),
+					})
+					log.Printf("[SetProgress] ArticleID=%d: %s", articleID, userMsg)
 					return
 				}
 				stepNum++
@@ -545,21 +546,21 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 					Percent:     percent(stepNum, totalSteps),
 					Status:      "InProgress",
 					LastUpdated: time.Now().Unix(),
+					FinalScore:  nil,
 				})
 			}
 			scores, fetchErr := llmClient.FetchScores(articleID)
 			if fetchErr != nil {
 				errMsg := fmt.Sprintf("Failed to fetch scores: %v", fetchErr)
-				if scoreManager != nil {
-					scoreManager.SetProgress(articleID, &llm.ProgressState{
-						Step:        "Error",
-						Message:     errMsg,
-						Percent:     percent(stepNum, totalSteps),
-						Status:      "Error",
-						Error:       errMsg,
-						LastUpdated: time.Now().Unix(),
-					})
-				}
+				setProgress(articleID, &ProgressState{
+					Step:        "Error",
+					Message:     errMsg,
+					Percent:     percent(stepNum, totalSteps),
+					Status:      "Error",
+					Error:       errMsg,
+					LastUpdated: time.Now().Unix(),
+				})
+				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
 				return
 			}
 			stepNum++
@@ -576,32 +577,30 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			finalScore, confidence, storeErr := scoreManager.UpdateArticleScore(articleID, scores, cfg)
 			if storeErr != nil {
 				errMsg := fmt.Sprintf("Failed to store score: %v", storeErr)
-				if scoreManager != nil {
-					scoreManager.SetProgress(articleID, &llm.ProgressState{
-						Step:        "Error",
-						Message:     errMsg,
-						Percent:     percent(stepNum, totalSteps),
-						Status:      "Error",
-						Error:       errMsg,
-						LastUpdated: time.Now().Unix(),
-					})
-				}
+				setProgress(articleID, &ProgressState{
+					Step:        "Error",
+					Message:     errMsg,
+					Percent:     percent(stepNum, totalSteps),
+					Status:      "Error",
+					Error:       errMsg,
+					LastUpdated: time.Now().Unix(),
+				})
+				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
 				return
 			}
 
 			// Final success state with composite score
-			if scoreManager != nil {
-				confidencePercent := int(confidence * 100)
-				message := fmt.Sprintf("Scoring complete (confidence: %d%%)", confidencePercent)
-				scoreManager.SetProgress(articleID, &llm.ProgressState{
-					Step:        "Complete",
-					Message:     message,
-					Percent:     100,
-					Status:      "Success",
-					FinalScore:  &finalScore,
-					LastUpdated: time.Now().Unix(),
-				})
-			}
+			confidencePercent := int(confidence * 100)
+			message := fmt.Sprintf("Scoring complete (confidence: %d%%)", confidencePercent)
+			setProgress(articleID, &ProgressState{
+				Step:        "Complete",
+				Message:     message,
+				Percent:     100,
+				Status:      "Success",
+				FinalScore:  &finalScore,
+				LastUpdated: time.Now().Unix(),
+			})
+			log.Printf("[SetProgress] ArticleID=%d: %s", articleID, message)
 		}()
 
 		RespondSuccess(c, gin.H{
@@ -621,6 +620,7 @@ func scoreProgressSSEHandler() gin.HandlerFunc {
 			return
 		}
 		articleID := int64(id)
+		log.Printf("[SSE GET /api/llm/score-progress] ArticleID=%d", articleID)
 
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")

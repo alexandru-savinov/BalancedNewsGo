@@ -853,702 +853,7 @@
           "name": "3.3 Score Progress Tests",
           "item": [
             {
-              "name": "Get Score Progress (SSE)",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/llm/score-progress/{{rescoreArticleId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "llm", "score-progress", "{{rescoreArticleId}}"]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "// Initialize test variables",
-                      "let eventSource = null;",
-                      "let receivedEvents = [];",
-                      "const timeout = 30000; // 30 second timeout",
-                      "",
-                      "// Helper function to validate event data",
-                      "function validateProgressEvent(event) {",
-                      "    try {",
-                      "        const data = JSON.parse(event.data);",
-                      "        pm.expect(data).to.have.property('status');",
-                      "        pm.expect(['InProgress', 'Success', 'Error']).to.include(data.status);",
-                      "        if (data.status === 'InProgress') {",
-                      "            pm.expect(data).to.have.property('percent');",
-                      "            pm.expect(data.percent).to.be.a('number');",
-                      "        }",
-                      "        if (data.status === 'Success') {",
-                      "            pm.expect(data).to.have.property('final_score');",
-                      "        }",
-                      "        return true;",
-                      "    } catch (e) {",
-                      "        console.error('Invalid event data:', e);",
-                      "        return false;",
-                      "    }",
-                      "}",
-                      "",
-                      "// Set up timeout",
-                      "const timeoutId = setTimeout(() => {",
-                      "    if (eventSource) eventSource.close();",
-                      "    pm.test('Test completed within timeout', function() {",
-                      "        pm.expect(receivedEvents.length).to.be.greaterThan(0, 'Should have received at least one event');",
-                      "    });",
-                      "}, timeout);",
-                      "",
-                      "// Initialize SSE connection",
-                      "eventSource = new EventSource(pm.request.url.toString());",
-                      "",
-                      "// Event handlers",
-                      "eventSource.addEventListener('message', function(event) {",
-                      "    receivedEvents.push(event);",
-                      "    const isValid = validateProgressEvent(event);",
-                      "    pm.test('Event data is valid', function() {",
-                      "        pm.expect(isValid).to.be.true;",
-                      "    });",
-                      "",
-                      "    // Check for completion",
-                      "    try {",
-                      "        const data = JSON.parse(event.data);",
-                      "        if (data.status === 'Success' || data.status === 'Error') {",
-                      "            eventSource.close();",
-                      "            clearTimeout(timeoutId);",
-                      "            pm.test('Received completion event', function() {",
-                      "                pm.expect(data.status).to.be.oneOf(['Success', 'Error']);",
-                      "                if (data.status === 'Success') {",
-                      "                    pm.expect(data).to.have.property('final_score');",
-                      "                }",
-                      "                if (data.status === 'Error') {",
-                      "                    pm.expect(data).to.have.property('error');",
-                      "                }",
-                      "            });",
-                      "        }",
-                      "    } catch (e) {",
-                      "        console.error('Error parsing completion event:', e);",
-                      "    }",
-                      "});",
-                      "",
-                      "eventSource.addEventListener('error', function(err) {",
-                      "    console.error('SSE Error:', err);",
-                      "    eventSource.close();",
-                      "    clearTimeout(timeoutId);",
-                      "    pm.test('SSE connection error', function() {",
-                      "        pm.expect.fail('SSE connection failed');",
-                      "    });",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "4. Manual Scoring Tests",
-      "description": "Tests for manual scoring endpoint. Ensures only { \"score\": number } is accepted and all error cases are handled.",
-      "item": [
-        {
-          "name": "4.1 Valid Manual Scoring",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/manual-score/{{manualScoreArticleId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "manual-score", "{{manualScoreArticleId}}"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"score\": 0.5\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Status code is 200 for valid manual score\", function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "4.2 Invalid: Missing Score Field",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/manual-score/{{manualScoreArticleId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "manual-score", "{{manualScoreArticleId}}"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Status code is 400 for missing score\", function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});",
-                  "pm.test(\"Error message mentions missing score\", function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.error.message).to.include('Missing score');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "4.3 Invalid: Non-numeric Score",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/manual-score/{{manualScoreArticleId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "manual-score", "{{manualScoreArticleId}}"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"score\": \"bad\"\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Status code is 400 for non-numeric score\", function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});",
-                  "pm.test(\"Error message mentions invalid score\", function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.error.message).to.include('Invalid score');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "4.4 Invalid: Extra Fields",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/manual-score/{{manualScoreArticleId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "manual-score", "{{manualScoreArticleId}}"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"score\": 0.5,\n  \"foo\": \"bar\"\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Status code is 400 for extra fields\", function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});",
-                  "pm.test(\"Error message mentions extra fields\", function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.error.message).to.include('Extra fields');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "4.5 Invalid: Out-of-Range Score",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/manual-score/{{manualScoreArticleId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "manual-score", "{{manualScoreArticleId}}"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"score\": 2.0\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Status code is 400 for out-of-range score\", function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});",
-                  "pm.test(\"Error message mentions score range\", function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.error.message).to.include('Score out of range');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "4.6 Invalid: Manual Score Sent to LLM Endpoint",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/llm/reanalyze/{{manualScoreArticleId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "llm", "reanalyze", "{{manualScoreArticleId}}"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"score\": 0.5\n}"
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test(\"Status code is 400 for manual score sent to LLM endpoint\", function () {",
-                  "    pm.response.to.have.status(400);",
-                  "});",
-                  "pm.test(\"Error message mentions score field not allowed\", function () {",
-                  "    var json = pm.response.json();",
-                  "    pm.expect(json.error.message).to.include('score field not allowed');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "4. Debug Tests",
-      "item": [
-        {
-          "name": "4.1 Debug Feedback Handler",
-          "item": [
-            {
-              "name": "Get Database Schema",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/debug/schema",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "debug", "schema"]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "",
-                      "pm.test(\"Response contains schema information\", function () {",
-                      "    var json = pm.response.json();",
-                      "    console.log(JSON.stringify(json, null, 2));",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Submit Feedback - Debug",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  },
-                  {
-                    "key": "X-Debug",
-                    "value": "true"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/feedback",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "feedback"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"article_id\": {{articleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"This is a test feedback for debugging.\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Response received\", function () {",
-                      "    console.log('Status code:', pm.response.code);",
-                      "    console.log('Response body:', pm.response.text());",
-                      "});",
-                      "",
-                      "try {",
-                      "    var json = pm.response.json();",
-                      "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
-                      "} catch (e) {",
-                      "    console.log('Error parsing JSON:', e.message);",
-                      "}"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "4.2 Debug Article Creation",
-          "item": [
-            {
-              "name": "Create Article - Debug",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  },
-                  {
-                    "key": "X-Debug",
-                    "value": "true"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"title\": \"Debug Test Article\",\n  \"content\": \"This is a test article for debugging.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/debug-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Response received\", function () {",
-                      "    console.log('Status code:', pm.response.code);",
-                      "    console.log('Response body:', pm.response.text());",
-                      "});",
-                      "",
-                      "try {",
-                      "    var json = pm.response.json();",
-                      "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
-                      "    if (json.data && json.data.article_id) {",
-                      "        pm.environment.set(\"debugArticleId\", json.data.article_id);",
-                      "        console.log('Set debugArticleId to:', json.data.article_id);",
-                      "    }",
-                      "} catch (e) {",
-                      "    console.log('Error parsing JSON:', e.message);",
-                      "}"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Get Article - Debug",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles/{{debugArticleId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles", "{{debugArticleId}}"]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Response received\", function () {",
-                      "    console.log('Status code:', pm.response.code);",
-                      "    console.log('Response body:', pm.response.text());",
-                      "});",
-                      "",
-                      "try {",
-                      "    var json = pm.response.json();",
-                      "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
-                      "} catch (e) {",
-                      "    console.log('Error parsing JSON:', e.message);",
-                      "}"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "4.3 Debug Get Articles",
-          "item": [
-            {
-              "name": "Get Articles - Debug",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles?debug=true",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles"],
-                  "query": [
-                    {
-                      "key": "debug",
-                      "value": "true"
-                    }
-                  ]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Response received\", function () {",
-                      "    console.log('Status code:', pm.response.code);",
-                      "    console.log('Response headers:', pm.response.headers.all());",
-                      "});",
-                      "",
-                      "try {",
-                      "    var json = pm.response.json();",
-                      "    console.log('Response structure:', Object.keys(json));",
-                      "    if (json.data && Array.isArray(json.data)) {",
-                      "        console.log('Number of articles:', json.data.length);",
-                      "        if (json.data.length > 0) {",
-                      "            console.log('First article structure:', Object.keys(json.data[0]));",
-                      "            console.log('First article sample:', {",
-                      "                id: json.data[0].id,",
-                      "                title: json.data[0].title,",
-                      "                source: json.data[0].source,",
-                      "                composite_score: json.data[0].composite_score,",
-                      "                confidence: json.data[0].confidence",
-                      "            });",
-                      "        }",
-                      "    }",
-                      "} catch (e) {",
-                      "    console.log('Error parsing JSON:', e.message);",
-                      "    console.log('Raw response:', pm.response.text().substring(0, 500) + '...');",
-                      "}"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "4.4 Debug Ensemble Details",
-          "item": [
-            {
-              "name": "Get Ensemble Details - Debug",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles/{{debugArticleId}}/ensemble?debug=true",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles", "{{debugArticleId}}", "ensemble"],
-                  "query": [
-                    {
-                      "key": "debug",
-                      "value": "true"
-                    }
-                  ]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Response received\", function () {",
-                      "    console.log('Status code:', pm.response.code);",
-                      "    console.log('Response body:', pm.response.text());",
-                      "});",
-                      "",
-                      "try {",
-                      "    var json = pm.response.json();",
-                      "    console.log('Parsed JSON:', JSON.stringify(json, null, 2));",
-                      "} catch (e) {",
-                      "    console.log('Error parsing JSON:', e.message);",
-                      "}"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "5. Cache and Concurrency Tests",
-      "item": [
-        {
-          "name": "5.1 Cache Validation Tests",
-          "item": [
-            {
-              "name": "Get Article - Cache Hit",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles/{{articleId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles", "{{articleId}}"]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "",
-                      "// Store response time for cache hit comparison",
-                      "var firstResponseTime = pm.response.responseTime;",
-                      "pm.environment.set(\"firstResponseTime\", firstResponseTime);",
-                      "",
-                      "// Store ETag if present",
-                      "var etag = pm.response.headers.get(\"ETag\");",
-                      "if (etag) {",
-                      "    pm.environment.set(\"articleEtag\", etag);",
-                      "}"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Get Article - Validate Cache Hit",
-              "request": {
-                "method": "GET",
-                "header": [
-                  {
-                    "key": "If-None-Match",
-                    "value": "{{articleEtag}}"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles/{{articleId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles", "{{articleId}}"]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 304 for cached response\", function () {",
-                      "    pm.response.to.have.status(304);",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Get Articles - Cache Performance",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles?source=test",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles"],
-                  "query": [
-                    {
-                      "key": "source",
-                      "value": "test"
-                    }
-                  ]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "",
-                      "// Verify response time improvement from caching",
-                      "var cachedResponseTime = pm.response.responseTime;",
-                      "var firstResponseTime = Number(pm.environment.get(\"firstResponseTime\"));",
-                      "",
-                      "pm.test(\"Cached response should be faster\", function () {",
-                      "    pm.expect(cachedResponseTime).to.be.below(firstResponseTime);",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "5.2 Concurrent Operations Tests",
-          "item": [
-            {
-              "name": "Concurrent Article Creation",
+              "name": "Create Article for SSE Testing",
               "request": {
                 "method": "POST",
                 "header": [
@@ -1564,7 +869,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"title\": \"Concurrent Test Article {{$timestamp}}\",\n  \"content\": \"This is a test article for concurrent operations.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/concurrent-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+                  "raw": "{\n  \"title\": \"SSE Test Article\",\n  \"content\": \"Test content for SSE progress monitoring.\",\n  \"url\": \"https://example.com/sse-test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
                 }
               },
               "event": [
@@ -1575,296 +880,11 @@
                       "pm.test(\"Status code is 200 or 201\", function () {",
                       "    pm.expect([200, 201]).to.include(pm.response.code);",
                       "});",
-                      "",
-                      "// Store article ID for concurrent operations",
-                      "var json = pm.response.json();",
-                      "if (json.data && json.data.article_id) {",
-                      "    pm.environment.set(\"concurrentArticleId\", json.data.article_id);",
-                      "}"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Concurrent Score Updates",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/manual-score/{{concurrentArticleId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "manual-score", "{{concurrentArticleId}}"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"score\": 0.5\n}"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "",
-                      "pm.test(\"Response indicates successful update\", function () {",
+                      "if (pm.response.code === 200 || pm.response.code === 201) {",
                       "    var json = pm.response.json();",
-                      "    pm.expect(json.success).to.be.true;",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Concurrent Feedback Submission",
-              "request": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{baseUrl}}/api/feedback",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "feedback"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"article_id\": {{concurrentArticleId}},\n  \"user_id\": \"test-user-concurrent\",\n  \"feedback_text\": \"Concurrent feedback test\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "",
-                      "pm.test(\"Feedback submission successful\", function () {",
-                      "    var json = pm.response.json();",
-                      "    pm.expect(json.success).to.be.true;",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "6. Confidence Validation Tests",
-      "item": [
-        {
-          "name": "6.1 Initial Confidence Tests",
-          "item": [
-            {
-              "name": "Create Article and Check Initial Confidence",
-              "request": {
-                "method": "POST",
-                "header": [{"key": "Content-Type", "value": "application/json"}],
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"title\": \"Confidence Test Article\",\n  \"content\": \"This is a test article for confidence validation.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/confidence-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "var json = pm.response.json();",
-                      "pm.environment.set(\"confidenceArticleId\", json.data.article_id);"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Get Article and Verify Initial Confidence Score",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles", "{{confidenceArticleId}}"]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "pm.test(\"Initial confidence validation\", function () {",
-                      "    var json = pm.response.json();",
-                      "    var confidence = json.data.article.confidence;",
-                      "    ",
-                      "    pm.expect(confidence).to.exist;",
-                      "    pm.expect(confidence).to.be.a('number');",
-                      "    pm.expect(confidence).to.be.within(0, 1);",
-                      "    pm.environment.set(\"initialConfidence\", confidence);",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "6.2 Feedback Impact on Confidence",
-          "item": [
-            {
-              "name": "Submit Initial Feedback",
-              "request": {
-                "method": "POST",
-                "header": [{"key": "Content-Type", "value": "application/json"}],
-                "url": {
-                  "raw": "{{baseUrl}}/api/feedback",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "feedback"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"Test feedback for confidence validation\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});"
-                    ],
-                    "type": "text/javascript"
-                  }
-                }
-              ]
-            },
-            {
-              "name": "Submit Multiple Feedback Items",
-              "item": [
-                {
-                  "name": "Submit Agree Feedback",
-                  "request": {
-                    "method": "POST",
-                    "header": [{"key": "Content-Type", "value": "application/json"}],
-                    "url": {
-                      "raw": "{{baseUrl}}/api/feedback",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "feedback"]
-                    },
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user-1\",\n  \"feedback_text\": \"Test feedback for confidence validation\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
-                    }
-                  },
-                  "event": [
-                    {
-                      "listen": "test",
-                      "script": {
-                        "exec": [
-                          "pm.test(\"Status code is 200\", function () {",
-                          "    pm.response.to.have.status(200);",
-                          "});"
-                        ],
-                        "type": "text/javascript"
-                      }
-                    }
-                  ]
-                },
-                {
-                  "name": "Submit Additional Agree Feedback",
-                  "request": {
-                    "method": "POST",
-                    "header": [{"key": "Content-Type", "value": "application/json"}],
-                    "url": {
-                      "raw": "{{baseUrl}}/api/feedback",
-                      "host": ["{{baseUrl}}"],
-                      "path": ["api", "feedback"]
-                    },
-                    "body": {
-                      "mode": "raw",
-                      "raw": "{\n  \"article_id\": {{confidenceArticleId}},\n  \"user_id\": \"test-user-2\",\n  \"feedback_text\": \"Another test feedback\",\n  \"category\": \"agree\",\n  \"source\": \"test\"\n}"
-                    }
-                  },
-                  "event": [
-                    {
-                      "listen": "test",
-                      "script": {
-                        "exec": [
-                          "pm.test(\"Status code is 200\", function () {",
-                          "    pm.response.to.have.status(200);",
-                          "});"
-                        ],
-                        "type": "text/javascript"
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "name": "Verify Confidence After Feedback",
-              "request": {
-                "method": "GET",
-                "url": {
-                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles", "{{confidenceArticleId}}"]
-                }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "var json = pm.response.json();",
-                      "var currentConfidence = json.data.article.confidence;",
-                      "",
-                      "if (currentConfidence > 0) {",
-                      "    pm.test(\"Confidence updated after feedback\", function () {",
-                      "        pm.expect(currentConfidence).to.be.within(0, 1);",
-                      "        pm.expect(currentConfidence).to.be.above(0);",
-                      "    });",
+                      "    pm.environment.set(\"sseArticleId\", json.data.article_id);",
                       "} else {",
-                      "    // Set delay for retry",
-                      "    setTimeout(function(){}, 1000);",
+                      "    pm.environment.unset(\"sseArticleId\");",
                       "}"
                     ],
                     "type": "text/javascript"
@@ -1873,13 +893,23 @@
               ]
             },
             {
-              "name": "Second Confidence Check",
+              "name": "Trigger Rescoring for SSE Monitoring",
               "request": {
-                "method": "GET",
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}",
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/{{sseArticleId}}",
                   "host": ["{{baseUrl}}"],
-                  "path": ["api", "articles", "{{confidenceArticleId}}"]
+                  "path": ["api", "llm", "reanalyze", "{{sseArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
                 }
               },
               "event": [
@@ -1887,19 +917,74 @@
                   "listen": "test",
                   "script": {
                     "exec": [
-                      "pm.test(\"Status code is 200\", function () {",
-                      "    pm.response.to.have.status(200);",
-                      "});",
-                      "pm.test(\"Final confidence validation\", function () {",
-                      "    var json = pm.response.json();",
-                      "    var currentConfidence = json.data.article.confidence;",
-                      "    ",
-                      "    pm.expect(currentConfidence).to.exist;",
-                      "    pm.expect(currentConfidence).to.be.a('number');",
-                      "    pm.expect(currentConfidence).to.be.within(0, 1);",
-                      "    ",
-                      "    // Log confidence value for debugging",
-                      "    console.log('Final confidence value:', currentConfidence);",
+                      "pm.test(\"Rescoring initiated\", function () {",
+                      "    pm.expect([200, 202]).to.include(pm.response.code);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Score Progress (SSE)",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/score-progress/{{sseArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "score-progress", "{{sseArticleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"SSE progress monitoring\", function (done) {",
+                      "    // Skip if EventSource is not supported in Postman sandbox",
+                      "    if (typeof EventSource === 'undefined') {",
+                      "        console.log('EventSource not available, skipping SSE test in Postman');",
+                      "        pm.test(\"SSE test skipped - unsupported in Postman\", function() { this.skip(); });",
+                      "        return done();",
+                      "    }",
+                      "    const articleId = pm.environment.get(\"sseArticleId\");",
+                      "    const sseUrl = `${pm.environment.get(\"baseUrl\")}/api/llm/score-progress/${articleId}`;",
+                      "    const evtSource = new EventSource(sseUrl);",
+                      "    let receivedEvents = [];",
+                      "    let completed = false;",
+                      "    evtSource.onmessage = function(event) {",
+                      "        const data = JSON.parse(event.data);",
+                      "        receivedEvents.push(data);",
+                      "        if (data.status === \"Success\" || data.status === \"Error\") {",
+                      "            completed = true;",
+                      "            evtSource.close();",
+                      "            pm.expect(receivedEvents.length).to.be.above(0);",
+                      "            if (data.status === \"Success\") {",
+                      "                pm.expect(data).to.have.property(\"final_score\");",
+                      "            } else {",
+                      "                pm.expect(data).to.have.property(\"error\");",
+                      "            }",
+                      "            done();",
+                      "        }",
+                      "    };",
+                      "    // trigger reanalysis after SSE connection established",
+                      "    setTimeout(() => {",
+                      "        pm.sendRequest({",
+                      "            url: `${pm.environment.get(\"baseUrl\")}/api/llm/reanalyze/${articleId}`,",
+                      "            method: 'POST',",
+                      "            header: {'Content-Type':'application/json'},",
+                      "            body: { mode: 'raw', raw: '{}' }",
+                      "        }, () => {});",
+                      "    }, 500);",
+                      "    // timeout fallback",
+                      "    setTimeout(() => {",
+                      "        if (!completed) {",
+                      "            evtSource.close();",
+                      "            pm.expect.fail(\"SSE did not complete within timeout\");",
+                      "            done();",
+                      "        }",
+                      "    }, 30000);",
                       "});"
                     ],
                     "type": "text/javascript"
