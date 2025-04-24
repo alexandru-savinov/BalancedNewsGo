@@ -3,23 +3,13 @@ package llm
 import (
 	"sync"
 	"time"
-)
 
-// ProgressState mirrors the structure used in internal/api/api.go
-// (Step, Message, Percent, Status, Error, FinalScore, LastUpdated)
-type ProgressState struct {
-	Step        string   `json:"step"`
-	Message     string   `json:"message"`
-	Percent     int      `json:"percent"`
-	Status      string   `json:"status"`
-	Error       string   `json:"error,omitempty"`
-	FinalScore  *float64 `json:"final_score,omitempty"`
-	LastUpdated int64    `json:"last_updated"`
-}
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
+)
 
 // ProgressManager tracks scoring progress with cleanup
 type ProgressManager struct {
-	progressMap     map[int64]*ProgressState
+	progressMap     map[int64]*models.ProgressState
 	progressMapLock sync.RWMutex
 	cleanupInterval time.Duration
 }
@@ -27,7 +17,7 @@ type ProgressManager struct {
 // NewProgressManager creates a progress manager with cleanup
 func NewProgressManager(cleanupInterval time.Duration) *ProgressManager {
 	pm := &ProgressManager{
-		progressMap:     make(map[int64]*ProgressState),
+		progressMap:     make(map[int64]*models.ProgressState),
 		cleanupInterval: cleanupInterval,
 	}
 	go pm.startCleanupRoutine()
@@ -35,14 +25,14 @@ func NewProgressManager(cleanupInterval time.Duration) *ProgressManager {
 }
 
 // SetProgress sets the progress state for an article
-func (pm *ProgressManager) SetProgress(articleID int64, state *ProgressState) {
+func (pm *ProgressManager) SetProgress(articleID int64, state *models.ProgressState) {
 	pm.progressMapLock.Lock()
 	defer pm.progressMapLock.Unlock()
 	pm.progressMap[articleID] = state
 }
 
 // GetProgress retrieves the progress state for an article
-func (pm *ProgressManager) GetProgress(articleID int64) *ProgressState {
+func (pm *ProgressManager) GetProgress(articleID int64) *models.ProgressState {
 	pm.progressMapLock.RLock()
 	defer pm.progressMapLock.RUnlock()
 	return pm.progressMap[articleID]

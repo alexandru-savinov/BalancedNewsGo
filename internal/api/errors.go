@@ -14,13 +14,18 @@ const (
 	ErrConflict   = "conflict_error"
 )
 
-const errInvalidArticleID = "Invalid article ID"
+// Error constants for consistent error messages
+const (
+	errFailedToFetchArticle = "Failed to fetch article"
+	errInvalidArticleID     = "Invalid article ID"
+	errProgressState        = "[SetProgress] ArticleID=%d: %s"
+)
 
 // Pre-defined API errors
 var (
 	ErrInvalidArticleID = &apperrors.AppError{
 		Code:    ErrValidation,
-		Message: "Invalid article ID",
+		Message: errInvalidArticleID,
 	}
 
 	ErrArticleNotFound = &apperrors.AppError{
