@@ -25,11 +25,30 @@ func TestComputeCompositeScore(t *testing.T) {
 		}
 	}
 
+	// Add test cases for edge scenarios
 	testCases := []struct {
 		name     string
 		scores   []db.LLMScore
 		expected float64
 	}{
+		{
+			name: "Error loading configuration",
+			scores: []db.LLMScore{
+				{Model: "left", Score: -0.8},
+				{Model: "center", Score: 0.0},
+				{Model: "right", Score: 0.8},
+			},
+			expected: 0.0, // Assuming default behavior when config fails
+		},
+		{
+			name: "Empty configuration",
+			scores: []db.LLMScore{
+				{Model: "left", Score: -0.8},
+				{Model: "center", Score: 0.0},
+				{Model: "right", Score: 0.8},
+			},
+			expected: 0.0, // Assuming default behavior for empty config
+		},
 		{
 			name: "All valid scores",
 			scores: []db.LLMScore{
@@ -66,7 +85,22 @@ func TestComputeCompositeScore(t *testing.T) {
 		},
 	}
 
+	// Mock LoadCompositeScoreConfig for edge cases
+	originalLoadConfig := LoadCompositeScoreConfig
+	defer func() { LoadCompositeScoreConfig = originalLoadConfig }()
+
 	for _, tc := range testCases {
+		if tc.name == "Error loading configuration" {
+			LoadCompositeScoreConfig = func() (CompositeScoreConfig, error) {
+				return CompositeScoreConfig{}, fmt.Errorf("mock error")
+			}
+		} else if tc.name == "Empty configuration" {
+			LoadCompositeScoreConfig = func() (CompositeScoreConfig, error) {
+				return CompositeScoreConfig{Models: []ModelConfig{}}, nil
+			}
+		} else {
+			LoadCompositeScoreConfig = originalLoadConfig
+		}
 		t.Run(tc.name, func(t *testing.T) {
 			score := ComputeCompositeScore(tc.scores)
 			if score != tc.expected {
