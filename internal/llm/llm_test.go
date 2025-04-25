@@ -9,15 +9,72 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func init() {
-	testEnsureProjectRoot()
-}
+func TestComputeCompositeScore(t *testing.T) {
+	os.Setenv("LLM_API_KEY", "test-key")
 
-func TestNewLLMClient(t *testing.T) {
-	// Set up test environment variables
-	os.Setenv("LLM_API_KEY", "test-primary-key")
-	os.Setenv("LLM_API_KEY_SECONDARY", "test-backup-key")
-	os.Setenv("LLM_BASE_URL", "https://openrouter.ai/api/v1/chat/completions")
+	// Add debug logging
+	t.Log("Starting TestComputeCompositeScore")
+	// Load configuration for debugging
+	config, err := LoadCompositeScoreConfig()
+	if err != nil {
+		t.Logf("Warning: Failed to load composite score config: %v", err)
+	} else {
+		t.Logf("Loaded config with %d models", len(config.Models))
+		for _, model := range config.Models {
+			t.Logf("Configured model: %s", model.Perspective)
+		}
+	}
+
+	testCases := []struct {
+		name     string
+		scores   []db.LLMScore
+		expected float64
+	}{
+		{
+			name: "All valid scores",
+			scores: []db.LLMScore{
+				{Model: "left", Score: -0.8},
+				{Model: "center", Score: 0.0},
+				{Model: "right", Score: 0.8},
+			},
+			expected: 0.0,
+		},
+		{
+			name: "Missing scores",
+			scores: []db.LLMScore{
+				{Model: "left", Score: -0.8},
+				{Model: "right", Score: 0.8},
+			},
+			expected: 0.0, 
+		},
+		{
+			name: "Case insensitive models",
+			scores: []db.LLMScore{
+				{Model: "LEFT", Score: -0.8},
+				{Model: "Center", Score: 0.0},
+				{Model: "RiGhT", Score: 0.8},
+			},
+			expected: 0.0,
+		},
+		{
+			name: "Invalid model names",
+			scores: []db.LLMScore{
+				{Model: "unknown", Score: 0.5},
+				{Model: "", Score: 0.3},
+			},
+			expected: 0.0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			score := ComputeCompositeScore(tc.scores)
+			if score != tc.expected {
+				t.Errorf("Expected score %v, got %v", tc.expected, score)
+			}
+		})
+	}
+}
 
 	client := NewLLMClient((*sqlx.DB)(nil))
 

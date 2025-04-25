@@ -52,18 +52,141 @@ func getProgress(articleID int64) *models.ProgressState {
 
 // RegisterRoutes registers all API routes on the provided router
 func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) {
-	// API routes
+	// Articles endpoints
+	// @Summary Get all articles
+	// @Description Get a list of all articles with optional filtering
+	// @Tags Articles
+	// @Accept json
+	// @Produce json
+	// @Param source query string false "Filter by news source"
+	// @Param offset query integer false "Pagination offset"
+	// @Param limit query integer false "Number of items per page"
+	// @Success 200 {array} models.Article
+	// @Failure 500 {object} ErrorResponse
+	// @Router /articles [get]
 	router.GET("/api/articles", SafeHandler(getArticlesHandler(dbConn)))
+
+	// @Summary Get article by ID
+	// @Description Get detailed information about a specific article
+	// @Tags Articles
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Article ID"
+	// @Success 200 {object} models.Article
+	// @Failure 404 {object} ErrorResponse
+	// @Router /articles/{id} [get]
 	router.GET("/api/articles/:id", SafeHandler(getArticleByIDHandler(dbConn)))
+
+	// @Summary Create article
+	// @Description Create a new article
+	// @Tags Articles
+	// @Accept json
+	// @Produce json
+	// @Param article body models.CreateArticleRequest true "Article object"
+	// @Success 200 {object} StandardResponse{data=models.Article}
+	// @Failure 400 {object} ErrorResponse
+	// @Router /articles [post]
 	router.POST("/api/articles", SafeHandler(createArticleHandler(dbConn)))
+
+	// Feed management
+	// @Summary Refresh feeds
+	// @Description Trigger a refresh of all RSS feeds
+	// @Tags Feeds
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /refresh [post]
 	router.POST("/api/refresh", SafeHandler(refreshHandler(rssCollector)))
+
+	// LLM Analysis
+	// @Summary Reanalyze article
+	// @Description Trigger a new LLM analysis for a specific article
+	// @Tags LLM
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Article ID"
+	// @Success 202 {object} StandardResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Router /llm/reanalyze/{id} [post]
 	router.POST("/api/llm/reanalyze/:id", SafeHandler(reanalyzeHandler(llmClient, dbConn, scoreManager)))
+
+	// Scoring
+	// @Summary Add manual score
+	// @Description Add a manual bias score for an article
+	// @Tags Scoring
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Article ID"
+	// @Param score body models.ManualScoreRequest true "Score information"
+	// @Success 200 {object} StandardResponse
+	// @Failure 400 {object} ErrorResponse
+	// @Router /manual-score/{id} [post]
 	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(dbConn)))
+
+	// Article analysis
+	// @Summary Get article summary
+	// @Description Get the summary analysis for an article
+	// @Tags Analysis
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Article ID"
+	// @Success 200 {object} models.SummaryResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Router /articles/{id}/summary [get]
 	router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(dbConn)))
+
+	// @Summary Get bias analysis
+	// @Description Get the bias analysis for an article
+	// @Tags Analysis
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Article ID"
+	// @Success 200 {object} models.BiasResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Router /articles/{id}/bias [get]
 	router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(dbConn)))
+
+	// @Summary Get ensemble details
+	// @Description Get detailed ensemble analysis results for an article
+	// @Tags Analysis
+	// @Param id path integer true "Article ID"
+	// @Success 200 {object} models.EnsembleResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Router /articles/{id}/ensemble [get]
 	router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(dbConn)))
+
+	// Feedback
+	// @Summary Submit feedback
+	// @Description Submit user feedback for an article analysis
+	// @Tags Feedback
+	// @Accept json
+	// @Produce json
+	// @Param feedback body models.FeedbackRequest true "Feedback information"
+	// @Success 200 {object} StandardResponse
+	// @Failure 400 {object} ErrorResponse
+	// @Router /feedback [post]
 	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn)))
+
+	// Health checks
+	// @Summary Feed health check
+	// @Description Check the health status of RSS feeds
+	// @Tags Health
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Router /feeds/healthz [get]
 	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
+
+	// Progress tracking
+	// @Summary Score progress
+	// @Description Get real-time progress updates for article scoring
+	// @Tags LLM
+	// @Accept json
+	// @Produce text/event-stream
+	// @Param id path integer true "Article ID"
+	// @Success 200 {object} models.ProgressResponse
+	// @Router /llm/score-progress/{id} [get]
 	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler()))
 }
 
