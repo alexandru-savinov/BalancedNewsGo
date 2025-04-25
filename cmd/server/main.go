@@ -18,14 +18,14 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 
-	swaggerFiles "github.com/swaggo/files"        // Correct swagger embed files import
-	ginSwagger "github.com/swaggo/gin-swagger"    // Swagger UI
-	_ "github.com/swaggo/swag/example/basic/docs" // Swaggo docs generation
+	_ "github.com/alexandru-savinov/BalancedNewsGo/docs" // This will import the generated docs
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 // @title           NewsBalancer API
 // @version         1.0
-// @description     API for the NewsBalancer application which analyzes political bias in news articles
+// @description     API for the NewsBalancer application which analyzes political bias in news articles using LLM models
 // @termsOfService  http://swagger.io/terms/
 
 // @contact.name   NewsBalancer Support
@@ -37,7 +37,6 @@ import (
 
 // @host      localhost:8080
 // @BasePath  /api
-// @schemes   http
 
 func main() {
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
