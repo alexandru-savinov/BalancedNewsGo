@@ -3,9 +3,11 @@
 package llm
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -64,7 +66,7 @@ func TestComputeCompositeScore(t *testing.T) {
 				{Model: "left", Score: -0.8},
 				{Model: "right", Score: 0.8},
 			},
-			expected: 0.0, 
+			expected: 0.0,
 		},
 		{
 			name: "Case insensitive models",
@@ -109,6 +111,10 @@ func TestComputeCompositeScore(t *testing.T) {
 		})
 	}
 }
+
+func TestLLMClientInitialization(t *testing.T) {
+	os.Setenv("LLM_API_KEY", "test-primary-key")
+	os.Setenv("LLM_API_KEY_SECONDARY", "test-backup-key")
 
 	client := NewLLMClient((*sqlx.DB)(nil))
 

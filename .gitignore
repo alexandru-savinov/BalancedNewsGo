@@ -41,4 +41,4 @@ cypress/
 playwright-tests/
 frontend/
 cypress.config.js
-playwright.config.ts
+playwright.config.tsnews.db*
