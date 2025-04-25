@@ -1,0 +1,578 @@
+basePath: /api
+definitions:
+  api.CreateArticleRequest:
+    description: Request body for creating a new article
+    properties:
+      content:
+        description: Article content
+        example: Article content...
+        type: string
+      pub_date:
+        description: Publication date in RFC3339 format
+        example: "2023-01-01T12:00:00Z"
+        type: string
+      source:
+        description: News source name
+        example: CNN
+        type: string
+      title:
+        description: Article title
+        example: Breaking News
+        type: string
+      url:
+        description: Article URL
+        example: https://example.com/article
+        type: string
+    required:
+    - content
+    - pub_date
+    - source
+    - title
+    - url
+    type: object
+  api.CreateArticleResponse:
+    description: Response from creating a new article
+    properties:
+      article_id:
+        description: ID of the created article
+        example: 42
+        type: integer
+      status:
+        description: Status of the operation
+        example: created
+        type: string
+    type: object
+  api.ErrorDetail:
+    description: Detailed error information
+    properties:
+      code:
+        description: Error code
+        example: validation_error
+        type: string
+      message:
+        description: Human-readable error message
+        example: Invalid input parameters
+        type: string
+    type: object
+  api.ErrorResponse:
+    description: Standard API error response
+    properties:
+      error:
+        allOf:
+        - $ref: '#/definitions/api.ErrorDetail'
+        description: Error details
+      success:
+        description: Always false for errors
+        example: false
+        type: boolean
+    type: object
+  api.FeedbackRequest:
+    description: Request body for submitting user feedback
+    properties:
+      article_id:
+        description: Article ID
+        type: integer
+      category:
+        description: 'Feedback category: agree, disagree, unclear, other'
+        example: agree
+        type: string
+      ensemble_output_id:
+        description: ID of specific ensemble output
+        type: integer
+      feedback_text:
+        description: Feedback content
+        type: string
+      source:
+        description: Source of the feedback
+        example: web
+        type: string
+      user_id:
+        description: User ID
+        type: string
+    required:
+    - article_id
+    - feedback_text
+    - user_id
+    type: object
+  api.IndividualScoreResult:
+    description: Individual model scoring result
+    properties:
+      confidence:
+        description: Model confidence
+        example: 0.8
+        type: number
+      created_at:
+        description: When the score was generated
+        type: string
+      explanation:
+        description: Explanation for the score
+        example: Reasoning
+        type: string
+      model:
+        description: Model name
+        example: claude-3
+        type: string
+      score:
+        description: Bias score
+        example: 0.3
+        type: number
+    type: object
+  api.ManualScoreRequest:
+    description: Request body for manually setting an article's bias score
+    properties:
+      score:
+        description: Score value between -1.0 and 1.0
+        example: 0.5
+        type: number
+    required:
+    - score
+    type: object
+  api.ScoreResponse:
+    description: Political bias score analysis result
+    properties:
+      composite_score:
+        description: Overall bias score
+        example: 0.25
+        type: number
+      results:
+        description: Individual model scores
+        items:
+          $ref: '#/definitions/api.IndividualScoreResult'
+        type: array
+      status:
+        description: Status message if applicable
+        example: scoring_unavailable
+        type: string
+    type: object
+  api.StandardResponse:
+    description: Standard API success response
+    properties:
+      data:
+        description: Response data payload
+      success:
+        description: Always true for success
+        example: true
+        type: boolean
+    type: object
+  db.Article:
+    properties:
+      compositeScore:
+        type: number
+      confidence:
+        type: number
+      content:
+        type: string
+      createdAt:
+        type: string
+      escalated:
+        type: boolean
+      failCount:
+        type: integer
+      id:
+        type: integer
+      lastAttempt:
+        type: string
+      pubDate:
+        type: string
+      scoreSource:
+        type: string
+      source:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@newsbalancer.example
+    name: NewsBalancer Support
+    url: https://github.com/alexandru-savinov/BalancedNewsGo
+  description: API for the NewsBalancer application which analyzes political bias
+    in news articles using LLM models
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: NewsBalancer API
+  version: "1.0"
+paths:
+  /api/articles/{id}/ensemble:
+    get:
+      description: Retrieves individual model results and aggregation for an article's
+        ensemble score
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StandardResponse'
+        "404":
+          description: Ensemble data not found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get ensemble scoring details
+      tags:
+      - Analysis
+  /api/articles/{id}/summary:
+    get:
+      description: Retrieves the text summary for an article
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StandardResponse'
+        "404":
+          description: Summary not available
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get article summary
+      tags:
+      - Summary
+  /api/feeds/healthz:
+    get:
+      description: Returns the health of configured RSS feed sources
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+      summary: Get feed health status
+      tags:
+      - Feeds
+  /api/llm/score-progress/{id}:
+    get:
+      description: Server-Sent Events endpoint streaming scoring progress for an article
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: event-stream
+          schema:
+            type: string
+      summary: Score progress SSE stream
+      tags:
+      - Analysis
+  /api/manual-score/{id}:
+    post:
+      description: Updates an article's bias score manually
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - description: Score value between -1.0 and 1.0
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ManualScoreRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StandardResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Manually set article score
+      tags:
+      - Analysis
+  /api/refresh:
+    post:
+      description: Initiates a manual RSS feed refresh job
+      responses:
+        "200":
+          description: Refresh started
+          schema:
+            $ref: '#/definitions/api.StandardResponse'
+      summary: Trigger RSS feed refresh
+      tags:
+      - Feeds
+  /articles:
+    get:
+      consumes:
+      - application/json
+      description: Fetches a list of articles with optional filters
+      parameters:
+      - description: Filter by source (e.g., CNN, Fox)
+        in: query
+        name: source
+        type: string
+      - description: Filter by political leaning
+        in: query
+        name: leaning
+        type: string
+      - default: 20
+        description: Maximum number of articles to return
+        in: query
+        maximum: 100
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 0
+        description: Number of articles to skip
+        in: query
+        minimum: 0
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.StandardResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/db.Article'
+                  type: array
+              type: object
+        "400":
+          description: Invalid parameters
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get articles
+      tags:
+      - Articles
+    post:
+      consumes:
+      - application/json
+      description: Creates a new article with the provided information
+      parameters:
+      - description: Article information
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateArticleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Article created successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.StandardResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.CreateArticleResponse'
+              type: object
+        "400":
+          description: Invalid request data
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Article URL already exists
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create article
+      tags:
+      - Articles
+  /articles/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Fetches a specific article by its ID with scores and metadata
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success with article details
+          schema:
+            $ref: '#/definitions/api.StandardResponse'
+        "400":
+          description: Invalid article ID
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Article not found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get article by ID
+      tags:
+      - Articles
+  /articles/{id}/bias:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the political bias score and individual model results
+        for an article
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - default: -1
+        description: Minimum score filter
+        in: query
+        maximum: 1
+        minimum: -1
+        name: min_score
+        type: number
+      - default: 1
+        description: Maximum score filter
+        in: query
+        maximum: 1
+        minimum: -1
+        name: max_score
+        type: number
+      - default: desc
+        description: Sort order (asc or desc)
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/api.StandardResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/api.ScoreResponse'
+              type: object
+        "400":
+          description: Invalid parameters
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Article not found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get article bias analysis
+      tags:
+      - Analysis
+  /feedback:
+    post:
+      consumes:
+      - application/json
+      description: Submit user feedback on an article's political bias analysis
+      parameters:
+      - description: Feedback information
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.FeedbackRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Feedback received
+          schema:
+            $ref: '#/definitions/api.StandardResponse'
+        "400":
+          description: Invalid request data
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Submit user feedback
+      tags:
+      - Feedback
+  /llm/reanalyze/{id}:
+    post:
+      consumes:
+      - application/json
+      description: Initiates a reanalysis of an article's political bias or directly
+        updates the score
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - description: Optional score to set directly
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/api.ManualScoreRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success - reanalysis queued or score updated
+          schema:
+            $ref: '#/definitions/api.StandardResponse'
+        "400":
+          description: Invalid article ID or score
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Article not found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "429":
+          description: Rate limit exceeded
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal server error or LLM service unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Reanalyze article
+      tags:
+      - Analysis
+swagger: "2.0"
