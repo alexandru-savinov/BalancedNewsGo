@@ -189,8 +189,6 @@ func ComputeCompositeScoreWithConfidence(scores []db.LLMScore) (float64, float64
 		composite = sum / 3.0
 	}
 
-	composite = 1.0 - abs(composite)
-
 	var confidence float64
 	switch cfg.ConfidenceMethod {
 	case "count_valid":

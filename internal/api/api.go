@@ -205,6 +205,19 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 	}
 }
 
+// Helper: Convert db.Article to Postman schema (TitleCase fields)
+func articleToPostmanSchema(a *db.Article) map[string]interface{} {
+	return map[string]interface{}{
+		"article_id":     a.ID,
+		"Title":          a.Title,
+		"Content":        a.Content,
+		"URL":            a.URL,
+		"Source":         a.Source,
+		"CompositeScore": a.CompositeScore,
+		"Confidence":     a.Confidence,
+	}
+}
+
 // Handler for POST /api/articles
 // @Summary Create article
 // @Description Creates a new article with the provided information
@@ -309,9 +322,16 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		RespondSuccess(c, map[string]interface{}{
-			"status":     "created",
-			"article_id": id,
+		// Fetch the full article object after creation
+		createdArticle, err := db.FetchArticleByID(dbConn, id)
+		if err != nil {
+			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch created article"))
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"success": true,
+			"data":    articleToPostmanSchema(createdArticle),
 		})
 	}
 }
@@ -395,10 +415,15 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			}
 		}
 
-		log.Printf("[INFO] getArticlesHandler: Successfully fetched %d articles", len(articles))
+		// Map to Postman schema
+		var out []map[string]interface{}
+		for i := range articles {
+			out = append(out, articleToPostmanSchema(&articles[i]))
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"data":    articles,
+			"data":    out,
 		})
 		LogPerformance("getArticlesHandler", start)
 	}
@@ -449,36 +474,18 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get latest ensemble score and confidence
-		ensembleScore, scoreErr := db.FetchLatestEnsembleScore(dbConn, id)
-		if scoreErr != nil {
-			log.Printf("[getArticleByIDHandler] Error fetching latest ensemble score for article %d: %v", id, scoreErr)
-			ensembleScore = 0.0
-		}
-
-		confidence, confErr := db.FetchLatestConfidence(dbConn, id)
-		if confErr != nil {
-			log.Printf("[getArticleByIDHandler] Error fetching confidence for article %d: %v", id, confErr)
-			confidence = 0.0
-		}
-
-		// Get all scores for detailed view
-		scores, _ := db.FetchLLMScores(dbConn, id)
-
-		result := map[string]interface{}{
-			"article":         article,
-			"scores":          scores,
-			"composite_score": ensembleScore,
-			"confidence":      confidence,
-			"score_source":    article.ScoreSource,
-		}
+		// Use the same schema as other endpoints
+		result := articleToPostmanSchema(article)
 
 		// Cache the result for 30 seconds
 		articlesCacheLock.Lock()
 		articlesCache.Set(cacheKey, result, 30*time.Second)
 		articlesCacheLock.Unlock()
 
-		RespondSuccess(c, result)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    result,
+		})
 		LogPerformance("getArticleByIDHandler", start)
 	}
 }

@@ -1,5 +1,3 @@
-//go:build test
-
 package llm
 
 import (
@@ -10,10 +8,6 @@ import (
 
 	"github.com/go-resty/resty/v2"
 )
-
-func init() {
-	testEnsureProjectRoot()
-}
 
 // TestHTTPLLMServiceUsesOpenRouterURL verifies HTTPLLMService uses the OpenRouter endpoint and parses the response
 func TestHTTPLLMServiceUsesOpenRouterURL(t *testing.T) {
@@ -30,7 +24,8 @@ func TestHTTPLLMServiceUsesOpenRouterURL(t *testing.T) {
 
 	client := resty.New()
 	client.SetBaseURL(ts.URL)
-	svc := NewHTTPLLMService(client, "dummy-key")
+	// Updated to match NewHTTPLLMService signature
+	svc := NewHTTPLLMService(client, "dummy-key", "backup-key", ts.URL+"/api/v1/chat/completions")
 
 	resp, err := svc.callLLMAPIWithKey("openai/gpt-3.5-turbo", "prompt", "dummy-key")
 	if err != nil {
