@@ -189,10 +189,6 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 		composite = sum / 3.0
 	}
 
-	// Composite favors balance (closer to center = higher score)
-	composite = 1.0 - abs(composite)
-
-	// Confidence metric
 	var confidence float64
 	switch cfg.ConfidenceMethod {
 	case "count_valid":

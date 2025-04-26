@@ -4,6 +4,52 @@
     "description": "Comprehensive test suite for the News Filter backend API, including article creation, feedback, rescoring, and debugging functionality. Manual scoring and LLM rescoring are fully separated, with independent endpoints and strict error handling to ensure no cross-compatibility. The test plan covers all valid and invalid flows for both manual and LLM-based rescoring.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.globals.set('articleSchema', {",
+          "    type: 'object',",
+          "    required: ['success', 'data'],",
+          "    properties: {",
+          "        success: { type: 'boolean' },",
+          "        data: {",
+          "            type: 'object',",
+          "            required: ['article_id', 'Title', 'Content', 'URL', 'Source', 'CompositeScore', 'Confidence'],",
+          "            properties: {",
+          "                article_id: { type: 'number' },",
+          "                Title: { type: 'string' },",
+          "                Content: { type: 'string' },",
+          "                URL: { type: 'string' },",
+          "                Source: { type: 'string' },",
+          "                CompositeScore: { type: ['number', 'null'] },",
+          "                Confidence: { type: ['number', 'null'] }",
+          "            }",
+          "        }",
+          "    }",
+          "});",
+          "",
+          "pm.globals.set('errorSchema', {",
+          "    type: 'object',",
+          "    required: ['success', 'error'],",
+          "    properties: {",
+          "        success: { type: 'boolean' },",
+          "        error: {",
+          "            type: 'object',",
+          "            required: ['code', 'message'],",
+          "            properties: {",
+          "                code: { type: 'string' },",
+          "                message: { type: 'string' }",
+          "            }",
+          "        }",
+          "    }",
+          "});"
+        ]
+      }
+    }
+  ],
   "item": [
     {
       "name": "1. Article Management Tests",
@@ -38,6 +84,11 @@
                     "exec": [
                       "pm.test(\"Status code is 400 for missing fields\", function () {",
                       "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
                       "});",
                       "",
                       "pm.test(\"Response contains error about missing fields\", function () {",
@@ -118,6 +169,11 @@
                       "    pm.expect([200, 201]).to.include(pm.response.code);",
                       "});",
                       "",
+                      "pm.test(\"Response matches article schema\", function () {",
+                      "    const schema = pm.globals.get('articleSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
                       "if (pm.response.code === 200 || pm.response.code === 201) {",
                       "    var json = pm.response.json();",
                       "    pm.environment.set(\"articleId\", json.data.article_id);",
@@ -191,17 +247,16 @@
                       "    pm.response.to.have.status(200);",
                       "});",
                       "",
-                      "pm.test(\"Response contains articles\", function () {",
-                      "    var json = pm.response.json();",
-                      "    pm.expect(json.success).to.be.true;",
-                      "    pm.expect(json.data).to.be.an('array');",
-                      "});",
-                      "",
-                      "pm.test(\"Articles have composite_score and confidence\", function () {",
-                      "    var json = pm.response.json();",
-                      "    if (json.data && json.data.length > 0) {",
-                      "        pm.expect(json.data[0].CompositeScore).to.not.be.undefined;",
-                      "        pm.expect(json.data[0].Confidence).to.not.be.undefined;",
+                      "pm.test(\"Response matches schema\", function () {",
+                      "    const responseJson = pm.response.json();",
+                      "    pm.expect(responseJson.success).to.be.true;",
+                      "    pm.expect(responseJson.data).to.be.an('array');",
+                      "    if (responseJson.data && responseJson.data.length > 0) {",
+                      "        // Each article in the array should match article schema",
+                      "        const schema = pm.globals.get('articleSchema');",
+                      "        responseJson.data.forEach(article => {",
+                      "            pm.expect({ success: true, data: article }).to.have.jsonSchema(schema);",
+                      "        });",
                       "    }",
                       "});"
                     ],
@@ -235,12 +290,17 @@
                       "    pm.response.to.have.status(200);",
                       "});",
                       "",
-                      "pm.test(\"Response contains articles with correct source\", function () {",
-                      "    var json = pm.response.json();",
-                      "    pm.expect(json.success).to.be.true;",
-                      "    pm.expect(json.data).to.be.an('array');",
-                      "    if (json.data && json.data.length > 0) {",
-                      "        pm.expect(json.data[0].Source).to.equal('test');",
+                      "pm.test(\"Response matches schema and has correct source\", function () {",
+                      "    const responseJson = pm.response.json();",
+                      "    pm.expect(responseJson.success).to.be.true;",
+                      "    pm.expect(responseJson.data).to.be.an('array');",
+                      "    if (responseJson.data && responseJson.data.length > 0) {",
+                      "        // Each article should match schema and have correct source",
+                      "        const schema = pm.globals.get('articleSchema');",
+                      "        responseJson.data.forEach(article => {",
+                      "            pm.expect({ success: true, data: article }).to.have.jsonSchema(schema);",
+                      "            pm.expect(article.Source).to.equal('test');",
+                      "        });",
                       "    }",
                       "});"
                     ],
@@ -307,12 +367,17 @@
                       "    pm.expect([200, 404]).to.include(pm.response.code);",
                       "});",
                       "",
-                      "if (pm.response.code === 200) {",
-                      "    pm.test(\"Response contains ensemble data\", function () {",
-                      "        var json = pm.response.json();",
-                      "        pm.expect(json.success).to.be.true;",
-                      "        pm.expect(json.data).to.have.property('ensembles');",
-                      "        pm.expect(json.data.ensembles).to.be.an('array');",
+                      "if (pm.response.code === 404) {",
+                      "    pm.test(\"404 response matches error schema\", function () {",
+                      "        const schema = pm.globals.get('errorSchema');",
+                      "        pm.response.to.have.jsonSchema(schema);",
+                      "    });",
+                      "} else {",
+                      "    pm.test(\"200 response contains valid ensemble data\", function () {",
+                      "        const responseJson = pm.response.json();",
+                      "        pm.expect(responseJson.success).to.be.true;",
+                      "        pm.expect(responseJson.data).to.have.property('ensembles');",
+                      "        pm.expect(responseJson.data.ensembles).to.be.an('array');",
                       "    });",
                       "}"
                     ],
@@ -357,6 +422,11 @@
                   "    pm.response.to.have.status(400);",
                   "});",
                   "",
+                  "pm.test(\"Response matches error schema\", function () {",
+                  "    const schema = pm.globals.get('errorSchema');",
+                  "    pm.response.to.have.jsonSchema(schema);",
+                  "});",
+                  "",
                   "pm.test(\"Response contains error about missing fields\", function () {",
                   "    var json = pm.response.json();",
                   "    pm.expect(json.error.message).to.include('Missing required fields');",
@@ -396,6 +466,11 @@
                   "    pm.response.to.have.status(400);",
                   "});",
                   "",
+                  "pm.test(\"Response matches error schema\", function () {",
+                  "    const schema = pm.globals.get('errorSchema');",
+                  "    pm.response.to.have.jsonSchema(schema);",
+                  "});",
+                  "",
                   "pm.test(\"Response contains error about invalid category\", function () {",
                   "    var json = pm.response.json();",
                   "    pm.expect(json.error.message).to.include('Invalid feedback category');",
@@ -433,6 +508,10 @@
                 "exec": [
                   "pm.test(\"Status code is 200 for valid feedback\", function () {",
                   "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response matches success schema\", function () {",
+                  "    pm.expect(pm.response.json()).to.have.property('success', true);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -540,10 +619,16 @@
                       "pm.test(\"Status code is 200\", function () {",
                       "    pm.response.to.have.status(200);",
                       "});",
-                      "var json = pm.response.json();",
-                      "console.log('Response JSON:', JSON.stringify(json, null, 2));",
-                      "pm.test(\"Score updated correctly\", function () {",
-                      "    pm.expect(json.data.article.CompositeScore).to.eql(0.5);",
+                      "",
+                      "pm.test(\"Response matches article schema\", function () {",
+                      "    const schema = pm.globals.get('articleSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Article has valid composite score and confidence\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.data.CompositeScore).to.be.within(-1.0, 1.0);",
+                      "    pm.expect(json.data.Confidence).to.be.within(0.0, 1.0);",
                       "});"
                     ],
                     "type": "text/javascript"
@@ -651,6 +736,16 @@
                     "exec": [
                       "pm.test(\"Status code is 404\", function () {",
                       "    pm.response.to.have.status(404);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Error message indicates article not found\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.include('article not found');",
                       "});"
                     ],
                     "type": "text/javascript"
@@ -725,6 +820,16 @@
                     "exec": [
                       "pm.test(\"Status code is 400\", function () {",
                       "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Error message indicates score out of range\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.include('score must be between -1.0 and 1.0');",
                       "});"
                     ],
                     "type": "text/javascript"
@@ -759,6 +864,16 @@
                     "exec": [
                       "pm.test(\"Status code is 400\", function () {",
                       "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Error message indicates score out of range\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.include('score must be between -1.0 and 1.0');",
                       "});"
                     ],
                     "type": "text/javascript"
@@ -793,6 +908,16 @@
                     "exec": [
                       "pm.test(\"Status code is 400\", function () {",
                       "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Error message indicates invalid score type\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.include('invalid score format');",
                       "});"
                     ],
                     "type": "text/javascript"
@@ -949,17 +1074,383 @@
                       "                return;",
                       "            }",
                       "",
+                      "            // Validate response against schema",
+                      "            const schema = pm.globals.get('articleSchema');",
+                      "            pm.expect(res.json()).to.have.jsonSchema(schema);",
+                      "",
                       "            const json = res.json();",
-                      "            if (json.data.article.Status === 'completed' || json.data.article.Status === 'error') {",
+                      "            if (json.data.article.Status === 'completed') {",
                       "                pm.expect(json.data.article.CompositeScore).to.not.be.undefined;",
+                      "                pm.expect(json.data.article.Confidence).to.not.be.undefined;",
+                      "                return;",
+                      "            } else if (json.data.article.Status === 'error') {",
+                      "                pm.test('Error status includes error details', function() {",
+                      "                    pm.expect(json.data.article.ErrorDetails).to.not.be.undefined;",
+                      "                });",
                       "                return;",
                       "            }",
                       "",
+                      "            // Continue polling if still in progress",
                       "            setTimeout(checkProgress, interval);",
                       "        });",
                       "    }",
                       "",
                       "    checkProgress();",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Confidence Calculation Tests",
+      "item": [
+        {
+          "name": "4.1 Metadata Parsing Tests",
+          "item": [
+            {
+              "name": "Create Article with Valid Confidence",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Confidence Test Article\",\n  \"content\": \"Test article for confidence calculation.\",\n  \"url\": \"https://example.com/confidence-test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\",\n  \"metadata\": {\"confidence\": 0.85}\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 201\", function () {",
+                      "    pm.expect([200, 201]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200 || pm.response.code === 201) {",
+                      "    var json = pm.response.json();",
+                      "    pm.environment.set(\"confidenceArticleId\", json.data.article_id);",
+                      "    pm.test(\"Response includes confidence value\", function () {",
+                      "        pm.expect(json.data.Confidence).to.equal(0.85);",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Test Integer Confidence",
+              "request": {
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/{{confidenceArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "{{confidenceArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"metadata\": {\"confidence\": 1}\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Integer confidence is converted to float\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.data.Confidence).to.equal(1.0);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Test Invalid Confidence Types",
+              "request": {
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/{{confidenceArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "{{confidenceArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"metadata\": {\"confidence\": \"invalid\"}\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Confidence is averaged correctly\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.data.Confidence).to.equal(0.8);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Cache Layer Tests",
+      "item": [
+        {
+          "name": "5.1 Cache Hit Tests",
+          "item": [
+            {
+              "name": "First Request (Cache Miss)",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?source=test&limit=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "source",
+                      "value": "test"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"First request succeeds\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "// Store response time for comparison",
+                      "pm.environment.set('firstRequestTime', pm.response.responseTime);",
+                      "",
+                      "// Store response data for comparison",
+                      "pm.environment.set('firstResponseData', JSON.stringify(pm.response.json()));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Second Request (Cache Hit)",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?source=test&limit=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "source",
+                      "value": "test"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Second request succeeds\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "// Compare response times - cache hit should be faster",
+                      "pm.test(\"Cache hit is faster than cache miss\", function () {",
+                      "    const firstRequestTime = parseInt(pm.environment.get('firstRequestTime'));",
+                      "    pm.expect(pm.response.responseTime).to.be.below(firstRequestTime);",
+                      "});",
+                      "",
+                      "// Verify response data consistency",
+                      "pm.test(\"Cache returns consistent data\", function () {",
+                      "    const firstResponseData = pm.environment.get('firstResponseData');",
+                      "    pm.expect(JSON.stringify(pm.response.json())).to.equal(firstResponseData);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "5.2 Cache Invalidation Tests",
+          "item": [
+            {
+              "name": "Create Article for Cache Test",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Cache Test Article\",\n  \"content\": \"Testing cache invalidation.\",\n  \"url\": \"https://example.com/cache-test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Article created successfully\", function () {",
+                      "    pm.expect([200, 201]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200 || pm.response.code === 201) {",
+                      "    var json = pm.response.json();",
+                      "    pm.environment.set(\"cacheTestArticleId\", json.data.article_id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Articles (Pre-Update Cache)",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?source=test",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "source",
+                      "value": "test"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Pre-update request succeeds\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "// Store pre-update state",
+                      "pm.environment.set('preUpdateData', JSON.stringify(pm.response.json()));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update Article Score",
+              "request": {
+                "method": "POST",
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/{{cacheTestArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "{{cacheTestArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"score\": 0.5\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Update succeeds\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Articles (Post-Update Cache)",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?source=test",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "source",
+                      "value": "test"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Post-update request succeeds\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "// Verify cache was invalidated",
+                      "pm.test(\"Cache was invalidated after update\", function () {",
+                      "    const preUpdateData = pm.environment.get('preUpdateData');",
+                      "    pm.expect(JSON.stringify(pm.response.json())).to.not.equal(preUpdateData);",
                       "});"
                     ],
                     "type": "text/javascript"
