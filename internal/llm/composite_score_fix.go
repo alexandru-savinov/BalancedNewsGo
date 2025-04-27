@@ -52,10 +52,27 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 	weightTotal := 0.0
 	validModels := make(map[string]bool)
 
+	// Added: Track meaningful scores to detect all-zero responses
+	var hasNonZeroScore bool
+	var hasNonZeroConfidence bool
+
 	// Log the scores we're processing
 	log.Printf("ComputeCompositeScoreWithConfidenceFixed: Processing %d scores", len(scores))
 	for i, s := range scores {
 		log.Printf("Score[%d]: Model=%s, Score=%.2f", i, s.Model, s.Score)
+
+		// Check if we have at least one non-zero score
+		if s.Score != 0.0 {
+			hasNonZeroScore = true
+		}
+
+		// Extract confidence from metadata
+		var metadata map[string]interface{}
+		if err := json.Unmarshal([]byte(s.Metadata), &metadata); err == nil {
+			if confidence, ok := metadata["confidence"].(float64); ok && confidence > 0.001 {
+				hasNonZeroConfidence = true
+			}
+		}
 	}
 
 	// First pass: Map models to their perspectives and count valid models per perspective
@@ -152,6 +169,13 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 
 	if validCount == 0 {
 		return 0, 0, fmt.Errorf("no valid model scores to compute composite score (input count: %d)", len(scores))
+	}
+
+	// Added: Improved validation for all-zero responses
+	// Check if all LLMs returned empty or zero responses
+	if !hasNonZeroScore && !hasNonZeroConfidence && len(scores) > 0 {
+		log.Printf("Critical warning: All %d LLM models returned empty responses or zero values", len(scores))
+		return 0, 0, fmt.Errorf("all LLMs returned empty or zero-confidence responses (count: %d)", len(scores))
 	}
 
 	// Use weights if formula is weighted
