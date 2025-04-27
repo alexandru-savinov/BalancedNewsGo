@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,10 +13,14 @@ import (
 	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
+
+// Import mock.Anything directly to make it accessible in test methods
+var Anything = mock.Anything
 
 // Constants for commonly used values
 const (
@@ -31,104 +36,130 @@ const (
 	reanalyzeEndpoint   = "/api/llm/reanalyze/:id"
 )
 
-// DBOperations defines the interface for database operations
-type DBOperations interface {
-	ArticleExistsByURL(*sqlx.DB, string) (bool, error)
-	InsertArticle(*sqlx.DB, *db.Article) (int64, error)
-	FetchArticles(*sqlx.DB, string, string, int, int) ([]db.Article, error)
-	FetchArticleByID(*sqlx.DB, int64) (*db.Article, error)
-	FetchLLMScores(*sqlx.DB, int64) ([]db.LLMScore, error)
-	FetchLatestEnsembleScore(*sqlx.DB, int64) (float64, error)
-	FetchLatestConfidence(*sqlx.DB, int64) (float64, error)
-	UpdateArticleScore(*sqlx.DB, int64, float64, int) error
-	InsertFeedback(*sqlx.DB, *db.Feedback) error
+// MockLLMClient is a mock implementation of the llm.Client interface
+type MockLLMClient struct {
+	mock.Mock
 }
 
-// mockDB implements DBOperations for testing
-type mockDB struct {
-	ArticleExistsByURLFunc       func(*sqlx.DB, string) (bool, error)
-	InsertArticleFunc            func(*sqlx.DB, *db.Article) (int64, error)
-	FetchArticlesFunc            func(*sqlx.DB, string, string, int, int) ([]db.Article, error)
-	FetchArticleByIDFunc         func(*sqlx.DB, int64) (*db.Article, error)
-	FetchLLMScoresFunc           func(*sqlx.DB, int64) ([]db.LLMScore, error)
-	FetchLatestEnsembleScoreFunc func(*sqlx.DB, int64) (float64, error)
-	FetchLatestConfidenceFunc    func(*sqlx.DB, int64) (float64, error)
-	UpdateArticleScoreFunc       func(*sqlx.DB, int64, float64, int) error
-	InsertFeedbackFunc           func(*sqlx.DB, *db.Feedback) error
-}
-
-// Mock implementations
-func (m *mockDB) ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
-	if m.ArticleExistsByURLFunc == nil {
-		return false, nil
+// AnalyzeArticle mocks the llm.Client.AnalyzeArticle method
+func (m *MockLLMClient) AnalyzeArticle(ctx context.Context, article *db.Article) (*llm.ArticleAnalysis, error) {
+	args := m.Called(ctx, article)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return m.ArticleExistsByURLFunc(db, url)
+	return args.Get(0).(*llm.ArticleAnalysis), args.Error(1)
 }
 
-func (m *mockDB) InsertArticle(db *sqlx.DB, a *db.Article) (int64, error) {
-	if m.InsertArticleFunc == nil {
-		return 0, nil
-	}
-	return m.InsertArticleFunc(db, a)
+// MockDBOperations is a mock implementation of the DBOperations interface
+type MockDBOperations struct {
+	mock.Mock
 }
 
-func (m *mockDB) FetchArticles(db *sqlx.DB, source, leaning string, limit, offset int) ([]db.Article, error) {
-	if m.FetchArticlesFunc == nil {
-		return nil, nil
+// GetArticleByID mocks the DBOperations.GetArticleByID method
+func (m *MockDBOperations) GetArticleByID(ctx context.Context, id int64) (*db.Article, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return m.FetchArticlesFunc(db, source, leaning, limit, offset)
+	return args.Get(0).(*db.Article), args.Error(1)
 }
 
-func (m *mockDB) FetchArticleByID(db *sqlx.DB, id int64) (*db.Article, error) {
-	if m.FetchArticleByIDFunc == nil {
-		return nil, nil
+// FetchArticleByID mocks the DBOperations.FetchArticleByID method
+func (m *MockDBOperations) FetchArticleByID(ctx context.Context, id int64) (*db.Article, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return m.FetchArticleByIDFunc(db, id)
+	return args.Get(0).(*db.Article), args.Error(1)
 }
 
-func (m *mockDB) FetchLLMScores(db *sqlx.DB, id int64) ([]db.LLMScore, error) {
-	if m.FetchLLMScoresFunc == nil {
-		return nil, nil
-	}
-	return m.FetchLLMScoresFunc(db, id)
+// ArticleExistsByURL mocks the DBOperations.ArticleExistsByURL method
+func (m *MockDBOperations) ArticleExistsByURL(ctx context.Context, url string) (bool, error) {
+	args := m.Called(ctx, url)
+	return args.Bool(0), args.Error(1)
 }
 
-func (m *mockDB) FetchLatestEnsembleScore(db *sqlx.DB, id int64) (float64, error) {
-	if m.FetchLatestEnsembleScoreFunc == nil {
-		return 0, nil
+// GetArticles mocks the DBOperations.GetArticles method
+func (m *MockDBOperations) GetArticles(ctx context.Context, filter db.ArticleFilter) ([]*db.Article, error) {
+	args := m.Called(ctx, filter)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return m.FetchLatestEnsembleScoreFunc(db, id)
+	return args.Get(0).([]*db.Article), args.Error(1)
 }
 
-func (m *mockDB) FetchLatestConfidence(db *sqlx.DB, id int64) (float64, error) {
-	if m.FetchLatestConfidenceFunc == nil {
-		return 0, nil
+// FetchArticles mocks the DBOperations.FetchArticles method
+func (m *MockDBOperations) FetchArticles(ctx context.Context, source, leaning string, limit, offset int) ([]*db.Article, error) {
+	args := m.Called(ctx, source, leaning, limit, offset)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return m.FetchLatestConfidenceFunc(db, id)
+	
+	// Handle both []db.Article and []*db.Article
+	switch result := args.Get(0).(type) {
+	case []db.Article:
+		// Convert []db.Article to []*db.Article
+		articles := make([]*db.Article, len(result))
+		for i := range result {
+			articles[i] = &result[i]
+		}
+		return articles, args.Error(1)
+	case []*db.Article:
+		return result, args.Error(1)
+	default:
+		return nil, fmt.Errorf("unexpected type for FetchArticles result: %T", args.Get(0))
+	}
 }
 
-func (m *mockDB) UpdateArticleScore(db *sqlx.DB, id int64, score float64, conf int) error {
-	if m.UpdateArticleScoreFunc == nil {
-		return nil
-	}
-	return m.UpdateArticleScoreFunc(db, id, score, conf)
+// InsertArticle mocks the DBOperations.InsertArticle method
+func (m *MockDBOperations) InsertArticle(ctx context.Context, article *db.Article) (int64, error) {
+	args := m.Called(ctx, article)
+	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *mockDB) InsertFeedback(db *sqlx.DB, f *db.Feedback) error {
-	if m.InsertFeedbackFunc == nil {
-		return nil
+// UpdateArticleScore mocks the DBOperations.UpdateArticleScore method
+func (m *MockDBOperations) UpdateArticleScore(ctx context.Context, articleID int64, score float64, confidence float64) error {
+	args := m.Called(ctx, articleID, score, confidence)
+	return args.Error(0)
+}
+
+// UpdateArticleScoreObj mocks the DBOperations.UpdateArticleScoreObj method
+func (m *MockDBOperations) UpdateArticleScoreObj(ctx context.Context, articleID int64, score *db.ArticleScore, confidence float64) error {
+	args := m.Called(ctx, articleID, score, confidence)
+	return args.Error(0)
+}
+
+// SaveArticleFeedback mocks the DBOperations.SaveArticleFeedback method
+func (m *MockDBOperations) SaveArticleFeedback(ctx context.Context, feedback *db.ArticleFeedback) error {
+	args := m.Called(ctx, feedback)
+	return args.Error(0)
+}
+
+// InsertFeedback mocks the DBOperations.InsertFeedback method 
+func (m *MockDBOperations) InsertFeedback(ctx context.Context, feedback *db.Feedback) error {
+	args := m.Called(ctx, feedback)
+	return args.Error(0)
+}
+
+// FetchLLMScores mocks the DBOperations.FetchLLMScores method
+func (m *MockDBOperations) FetchLLMScores(ctx context.Context, articleID int64) ([]db.LLMScore, error) {
+	args := m.Called(ctx, articleID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return m.InsertFeedbackFunc(db, f)
+	return args.Get(0).([]db.LLMScore), args.Error(1)
 }
 
 // Test helper functions
-func setupTestRouter(mock DBOperations) *gin.Engine {
+func setupTestRouter(mock db.DBOperations) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
 	// Set up routes with the mock DB
 	router.POST(articlesEndpoint, createArticleHandlerWithDB(mock))
 	router.GET(articlesEndpoint, getArticlesHandlerWithDB(mock))
+	// Add article detail route
+	router.GET(articlesEndpoint+"/:id", getArticleByIDHandlerWithDB(mock))
 	router.POST(manualScoreEndpoint, manualScoreHandlerWithDB(mock))
 	router.POST(feedbackEndpoint, feedbackHandlerWithDB(mock))
 	router.GET(biasEndpoint, biasHandlerWithDB(mock))
@@ -142,7 +173,7 @@ func setupTestRouter(mock DBOperations) *gin.Engine {
 }
 
 // Handler wrappers that use the DB interface
-func createArticleHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
+func createArticleHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Source  string `json:"source"`
@@ -232,7 +263,7 @@ func createArticleHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 	}
 }
 
-func getArticlesHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
+func getArticlesHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		source := c.Query("source")
 		leaning := c.Query("leaning")
@@ -260,7 +291,7 @@ func getArticlesHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 	}
 }
 
-func manualScoreHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
+func manualScoreHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
@@ -319,7 +350,7 @@ func manualScoreHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 	}
 }
 
-func feedbackHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
+func feedbackHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			ArticleID        int64  `json:"article_id" form:"article_id"`
@@ -387,7 +418,7 @@ func feedbackHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 	}
 }
 
-func biasHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
+func biasHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
 		articleID, err := strconv.ParseInt(idStr, 10, 64)
@@ -450,7 +481,7 @@ func biasHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 	}
 }
 
-func summaryHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
+func summaryHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
@@ -487,7 +518,7 @@ func summaryHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 	}
 }
 
-func ensembleDetailsHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
+func ensembleDetailsHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
@@ -524,10 +555,9 @@ func ensembleDetailsHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 
 // --- Tests ---
 func TestCreateArticleValidation(t *testing.T) {
-	mock := &mockDB{
-		ArticleExistsByURLFunc: func(_ *sqlx.DB, url string) (bool, error) { return false, nil },
-		InsertArticleFunc:      func(_ *sqlx.DB, a *db.Article) (int64, error) { return 1, nil },
-	}
+	mock := &MockDBOperations{}
+	mock.On("ArticleExistsByURL", Anything, Anything).Return(false, nil)
+	mock.On("InsertArticle", Anything, Anything).Return(int64(1), nil)
 
 	router := setupTestRouter(mock)
 	var w *httptest.ResponseRecorder
@@ -561,9 +591,8 @@ func TestCreateArticleValidation(t *testing.T) {
 }
 
 func TestCreateArticleDuplicate(t *testing.T) {
-	mock := &mockDB{
-		ArticleExistsByURLFunc: func(_ *sqlx.DB, url string) (bool, error) { return true, nil },
-	}
+	mock := &MockDBOperations{}
+	mock.On("ArticleExistsByURL", Anything, Anything).Return(true, nil)
 	router := setupTestRouter(mock)
 
 	body := `{"source":"src","pub_date":"2022-01-01T00:00:00Z","url":"http://good","title":"t","content":"c"}`
@@ -576,11 +605,8 @@ func TestCreateArticleDuplicate(t *testing.T) {
 }
 
 func TestGetArticlesLimitOffsetValidation(t *testing.T) {
-	mock := &mockDB{
-		FetchArticlesFunc: func(_ *sqlx.DB, source, leaning string, limit, offset int) ([]db.Article, error) {
-			return []db.Article{}, nil
-		},
-	}
+	mock := &MockDBOperations{}
+	mock.On("FetchArticles", Anything, Anything, Anything, Anything, Anything).Return([]db.Article{}, nil)
 	router := setupTestRouter(mock)
 
 	// Invalid limit
@@ -597,14 +623,9 @@ func TestGetArticlesLimitOffsetValidation(t *testing.T) {
 }
 
 func TestManualScoreValidation(t *testing.T) {
-	mock := &mockDB{
-		FetchArticleByIDFunc: func(_ *sqlx.DB, id int64) (*db.Article, error) {
-			return &db.Article{ID: id}, nil
-		},
-		UpdateArticleScoreFunc: func(_ *sqlx.DB, id int64, score float64, conf int) error {
-			return nil
-		},
-	}
+	mock := &MockDBOperations{}
+	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
+	mock.On("UpdateArticleScore", Anything, Anything, Anything, Anything).Return(nil)
 	router := setupTestRouter(mock)
 
 	// Invalid article ID
@@ -633,11 +654,8 @@ func TestManualScoreValidation(t *testing.T) {
 
 func TestManualScoreDatabaseErrors(t *testing.T) {
 	// Article not found case
-	mock1 := &mockDB{
-		FetchArticleByIDFunc: func(_ *sqlx.DB, id int64) (*db.Article, error) {
-			return nil, db.ErrArticleNotFound
-		},
-	}
+	mock1 := &MockDBOperations{}
+	mock1.On("FetchArticleByID", Anything, Anything).Return(nil, db.ErrArticleNotFound)
 
 	router := setupTestRouter(mock1)
 	body := `{"score":0.5}`
@@ -648,14 +666,9 @@ func TestManualScoreDatabaseErrors(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 
 	// DB error when updating score
-	mock2 := &mockDB{
-		FetchArticleByIDFunc: func(_ *sqlx.DB, id int64) (*db.Article, error) {
-			return &db.Article{ID: id}, nil
-		},
-		UpdateArticleScoreFunc: func(_ *sqlx.DB, id int64, score float64, conf int) error {
-			return fmt.Errorf("database error")
-		},
-	}
+	mock2 := &MockDBOperations{}
+	mock2.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
+	mock2.On("UpdateArticleScore", Anything, Anything, Anything, Anything).Return(fmt.Errorf("database error"))
 
 	router = setupTestRouter(mock2)
 	req, _ = http.NewRequest("POST", strings.Replace(manualScoreEndpoint, ":id", "1", 1), bytes.NewBuffer([]byte(body)))
@@ -666,10 +679,9 @@ func TestManualScoreDatabaseErrors(t *testing.T) {
 }
 
 func TestFeedbackValidation(t *testing.T) {
-	mock := &mockDB{
-		InsertFeedbackFunc: func(_ *sqlx.DB, f *db.Feedback) error { return nil },
-		FetchLLMScoresFunc: func(_ *sqlx.DB, id int64) ([]db.LLMScore, error) { return nil, nil },
-	}
+	mock := &MockDBOperations{}
+	mock.On("InsertFeedback", Anything, Anything).Return(nil)
+	mock.On("FetchLLMScores", Anything, Anything).Return(nil, nil)
 	router := setupTestRouter(mock)
 
 	// Missing fields
@@ -773,13 +785,10 @@ func TestBiasInvalidScoreParams(t *testing.T) {
 }
 
 func TestBiasSuccessNoEnsemble(t *testing.T) {
-	mock := &mockDB{
-		FetchLLMScoresFunc: func(_ *sqlx.DB, id int64) ([]db.LLMScore, error) {
-			return []db.LLMScore{
-				{Model: "gpt", Score: 0.5, Metadata: "{}", CreatedAt: time.Now()},
-			}, nil
-		},
-	}
+	mock := &MockDBOperations{}
+	mock.On("FetchLLMScores", Anything, Anything).Return([]db.LLMScore{
+		{Model: "gpt", Score: 0.5, Metadata: "{}", CreatedAt: time.Now()},
+	}, nil)
 	router := setupTestRouter(mock)
 
 	req, _ := http.NewRequest("GET", strings.Replace(biasEndpoint, ":id", "1", 1), nil)
@@ -814,11 +823,8 @@ func TestEnsembleDetailsInvalidId(t *testing.T) {
 }
 
 func TestEnsembleDetailsNotFound(t *testing.T) {
-	mock := &mockDB{
-		FetchLLMScoresFunc: func(_ *sqlx.DB, id int64) ([]db.LLMScore, error) {
-			return []db.LLMScore{}, nil
-		},
-	}
+	mock := &MockDBOperations{}
+	mock.On("FetchLLMScores", Anything, Anything).Return([]db.LLMScore{}, nil)
 	router := setupTestRouter(mock)
 
 	req, _ := http.NewRequest("GET", strings.Replace(ensembleEndpoint, ":id", "1", 1), nil)
@@ -828,10 +834,9 @@ func TestEnsembleDetailsNotFound(t *testing.T) {
 }
 
 func TestCreateArticleExtraFields(t *testing.T) {
-	mock := &mockDB{
-		ArticleExistsByURLFunc: func(_ *sqlx.DB, url string) (bool, error) { return false, nil },
-		InsertArticleFunc:      func(_ *sqlx.DB, a *db.Article) (int64, error) { return 1, nil },
-	}
+	mock := &MockDBOperations{}
+	mock.On("ArticleExistsByURL", Anything, Anything).Return(false, nil)
+	mock.On("InsertArticle", Anything, Anything).Return(int64(1), nil)
 	router := setupTestRouter(mock)
 	// Extra field should be rejected
 	body := `{"source":"src","pub_date":"2022-01-01T00:00:00Z","url":"http://good","title":"t","content":"c","extra":"field"}`
@@ -843,14 +848,9 @@ func TestCreateArticleExtraFields(t *testing.T) {
 }
 
 func TestManualScoreExtraFields(t *testing.T) {
-	mock := &mockDB{
-		FetchArticleByIDFunc: func(_ *sqlx.DB, id int64) (*db.Article, error) {
-			return &db.Article{ID: id}, nil
-		},
-		UpdateArticleScoreFunc: func(_ *sqlx.DB, id int64, score float64, conf int) error {
-			return nil
-		},
-	}
+	mock := &MockDBOperations{}
+	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
+	mock.On("UpdateArticleScore", Anything, Anything, Anything, Anything).Return(nil)
 	router := setupTestRouter(mock)
 	// Extra field should be rejected
 	body := `{"score":0.5,"extra":"field"}`
@@ -862,10 +862,9 @@ func TestManualScoreExtraFields(t *testing.T) {
 }
 
 func TestCreateArticleMalformedJSON(t *testing.T) {
-	mock := &mockDB{
-		ArticleExistsByURLFunc: func(_ *sqlx.DB, url string) (bool, error) { return false, nil },
-		InsertArticleFunc:      func(_ *sqlx.DB, a *db.Article) (int64, error) { return 1, nil },
-	}
+	mock := &MockDBOperations{}
+	mock.On("ArticleExistsByURL", Anything, Anything).Return(false, nil)
+	mock.On("InsertArticle", Anything, Anything).Return(int64(1), nil)
 	router := setupTestRouter(mock)
 	body := `{"source":"src","pub_date":"2022-01-01T00:00:00Z","url":"http://good","title":"t","content":"c",` // Malformed JSON
 	req, _ := http.NewRequest("POST", articlesEndpoint, bytes.NewBuffer([]byte(body)))
@@ -876,14 +875,9 @@ func TestCreateArticleMalformedJSON(t *testing.T) {
 }
 
 func TestManualScoreMalformedJSON(t *testing.T) {
-	mock := &mockDB{
-		FetchArticleByIDFunc: func(_ *sqlx.DB, id int64) (*db.Article, error) {
-			return &db.Article{ID: id}, nil
-		},
-		UpdateArticleScoreFunc: func(_ *sqlx.DB, id int64, score float64, conf int) error {
-			return nil
-		},
-	}
+	mock := &MockDBOperations{}
+	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
+	mock.On("UpdateArticleScore", Anything, Anything, Anything, Anything).Return(nil)
 	router := setupTestRouter(mock)
 	body := `{"score":0.5,` // Malformed JSON
 	req, _ := http.NewRequest("POST", strings.Replace(manualScoreEndpoint, ":id", "1", 1), bytes.NewBuffer([]byte(body)))
@@ -937,11 +931,8 @@ func TestCreateArticleWithStrictFieldValidation(t *testing.T) {
 }
 
 func TestFeedbackDatabaseError(t *testing.T) {
-	mock := &mockDB{
-		InsertFeedbackFunc: func(_ *sqlx.DB, f *db.Feedback) error {
-			return fmt.Errorf("database error")
-		},
-	}
+	mock := &MockDBOperations{}
+	mock.On("InsertFeedback", Anything, Anything).Return(fmt.Errorf("database error"))
 	router := setupTestRouter(mock)
 
 	// Test DB error when inserting feedback
@@ -1102,4 +1093,101 @@ func TestReanalyzeHandlerValidation(t *testing.T) {
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "reanalyze queued")
+}
+
+// Test summaryHandlerWithDB
+func TestSummaryHandlerWithDBSuccess(t *testing.T) {
+	// Setup mock DB to return existing article and a summarizer score
+	mock := &MockDBOperations{}
+	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
+	mock.On("FetchLLMScores", Anything, Anything).Return([]db.LLMScore{{Model: "summarizer", Metadata: "my summary", CreatedAt: time.Now()}}, nil)
+	r := setupTestRouter(mock)
+	req, _ := http.NewRequest("GET", strings.Replace(summaryEndpoint, ":id", "42", 1), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "my summary")
+}
+
+func TestSummaryHandlerWithDBNotFound(t *testing.T) {
+	// Article exists but no summarizer score
+	mock := &MockDBOperations{}
+	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
+	mock.On("FetchLLMScores", Anything, Anything).Return([]db.LLMScore{}, nil)
+	r := setupTestRouter(mock)
+	req, _ := http.NewRequest("GET", strings.Replace(summaryEndpoint, ":id", "100", 1), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// Test ensembleDetailsHandlerWithDB success
+func TestEnsembleDetailsHandlerWithDBSuccess(t *testing.T) {
+	mock := &MockDBOperations{}
+	mock.On("FetchLLMScores", Anything, Anything).Return([]db.LLMScore{{Model: "ensemble", Score: 0.8, Metadata: "{}", CreatedAt: time.Now()}}, nil)
+	r := setupTestRouter(mock)
+	req, _ := http.NewRequest("GET", strings.Replace(ensembleEndpoint, ":id", "7", 1), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "0.8")
+}
+
+// Test getArticlesHandlerWithDB success and error
+func TestGetArticlesHandlerWithDB(t *testing.T) {
+	// Success case
+	mock := &MockDBOperations{}
+	mock.On("FetchArticles", Anything, Anything, Anything, Anything, Anything).Return([]db.Article{{ID: 1, Title: "x"}}, nil)
+	r := setupTestRouter(mock)
+	req, _ := http.NewRequest("GET", articlesEndpoint+"?source=a&leaning=right&limit=1&offset=0", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var body map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.Len(t, body["data"].([]interface{}), 1)
+
+	// Error case invalid limit
+	req, _ = http.NewRequest("GET", articlesEndpoint+"?limit=0", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// Test getArticleByIDHandlerWithDB success and error
+func TestGetArticleByIDHandlerWithDB(t *testing.T) {
+	// Success case
+	mockSuccess := &MockDBOperations{}
+	mockSuccess.On("FetchArticleByID", Anything, Anything).Return(&db.Article{ID: 5, Title: "t"}, nil)
+	mockSuccess.On("FetchLLMScores", Anything, Anything).Return([]db.LLMScore{{Model: "x", Score: 0.2, Metadata: "{}", CreatedAt: time.Now()}}, nil)
+	mockSuccess.On("FetchLatestEnsembleScore", Anything, Anything).Return(0.2, nil)
+	mockSuccess.On("FetchLatestConfidence", Anything, Anything).Return(0.3, nil)
+	rSuccess := setupTestRouter(mockSuccess)
+	req, _ := http.NewRequest("GET", strings.Replace(articlesEndpoint+"/:id", ":id", "5", 1), nil)
+	w := httptest.NewRecorder()
+	rSuccess.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	var body map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &body)
+	assert.NoError(t, err)
+	assert.True(t, body["success"].(bool))
+
+	// Not found case
+	mockNotFound := &MockDBOperations{}
+	mockNotFound.On("FetchArticleByID", Anything, Anything).Return(nil, db.ErrArticleNotFound)
+	rNotFound := setupTestRouter(mockNotFound)
+	req, _ = http.NewRequest("GET", strings.Replace(articlesEndpoint+"/:id", ":id", "99", 1), nil)
+	w = httptest.NewRecorder()
+	rNotFound.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	// DB error case
+	mockError := &MockDBOperations{}
+	mockError.On("FetchArticleByID", Anything, Anything).Return(nil, fmt.Errorf("db error"))
+	rError := setupTestRouter(mockError)
+	req, _ = http.NewRequest("GET", strings.Replace(articlesEndpoint+"/:id", ":id", "7", 1), nil)
+	w = httptest.NewRecorder()
+	rError.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

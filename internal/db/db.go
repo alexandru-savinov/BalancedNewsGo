@@ -1,212 +1,230 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
-
-	"context"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
 
-// Error codes
-const (
-	ErrDBConnection = "db_connection_error"
-	ErrDBQuery      = "db_query_error"
-	ErrDBConstraint = "db_constraint_error"
-	ErrDBMigration  = "db_migration_error"
-	ErrInvalidInput = "db_invalid_input"
-)
-
-// Pre-defined database errors
+// Errors
 var (
-	ErrDuplicateURL    = apperrors.New("Article with this URL already exists", "conflict")
-	ErrInvalidScore    = apperrors.New("Invalid score value", "validation_error")
-	ErrArticleNotFound = errors.New("not found")
+	ErrArticleNotFound  = errors.New("article not found")
+	ErrFeedbackNotFound = errors.New("feedback not found")
+	ErrDuplicateURL     = errors.New("article with this URL already exists")
 )
 
+// Article represents a news article with bias information
 type Article struct {
-	ID             int64      `db:"id"`
-	Source         string     `db:"source"`
-	PubDate        time.Time  `db:"pub_date"`
-	URL            string     `db:"url"`
-	Title          string     `db:"title"`
-	Content        string     `db:"content"`
-	CompositeScore *float64   `db:"composite_score"`
-	Confidence     *float64   `db:"confidence"`
-	CreatedAt      time.Time  `db:"created_at"`
-	Status         *string    `db:"status"`
-	FailCount      *int       `db:"fail_count"`
-	LastAttempt    *time.Time `db:"last_attempt"`
-	Escalated      *bool      `db:"escalated"`
-	ScoreSource    *string    `db:"score_source"`
+	ID             int64     `db:"id" json:"id"`
+	Source         string    `db:"source" json:"source"`
+	PubDate        time.Time `db:"pub_date" json:"pub_date"`
+	URL            string    `db:"url" json:"url"`
+	Title          string    `db:"title" json:"title"`
+	Content        string    `db:"content" json:"content"`
+	CreatedAt      time.Time `db:"created_at" json:"created_at"`
+	CompositeScore *float64  `db:"composite_score" json:"composite_score,omitempty"`
+	Confidence     *float64  `db:"confidence" json:"confidence,omitempty"`
+	ScoreSource    *string   `db:"score_source" json:"score_source,omitempty"`
 }
 
+// LLMScore represents a political bias score from an LLM model
 type LLMScore struct {
-	ID        int64     `db:"id"`
-	ArticleID int64     `db:"article_id"`
-	Model     string    `db:"model"`
-	Score     float64   `db:"score"`
-	Metadata  string    `db:"metadata"`
-	Version   int       `db:"version"`
-	CreatedAt time.Time `db:"created_at"`
+	ID        int64     `db:"id" json:"id"`
+	ArticleID int64     `db:"article_id" json:"article_id"`
+	Model     string    `db:"model" json:"model"`
+	Score     float64   `db:"score" json:"score"`
+	Metadata  string    `db:"metadata" json:"metadata"`
+	Version   string    `db:"version" json:"version"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
+// Feedback represents user feedback on an article
 type Feedback struct {
-	ID               int64     `db:"id"`
-	ArticleID        int64     `db:"article_id"`
-	UserID           string    `db:"user_id"`
-	FeedbackText     string    `db:"feedback_text"`
-	Category         string    `db:"category"`
-	EnsembleOutputID *int64    `db:"ensemble_output_id"`
-	Source           string    `db:"source"`
-	CreatedAt        time.Time `db:"created_at"`
+	ID               int64     `db:"id" json:"id"`
+	ArticleID        int64     `db:"article_id" json:"article_id"`
+	UserID           string    `db:"user_id" json:"user_id"`
+	FeedbackText     string    `db:"feedback_text" json:"feedback_text"`
+	Category         string    `db:"category" json:"category"`
+	EnsembleOutputID *int64    `db:"ensemble_output_id" json:"ensemble_output_id,omitempty"`
+	Source           string    `db:"source" json:"source,omitempty"`
+	CreatedAt        time.Time `db:"created_at" json:"created_at"`
 }
 
+// Label represents a training label for the system
 type Label struct {
-	ID          int64     `db:"id"`
-	Data        string    `db:"data"`
-	Label       string    `db:"label"`
-	Source      string    `db:"source"`
-	DateLabeled time.Time `db:"date_labeled"`
-	Labeler     string    `db:"labeler"`
-	Confidence  float64   `db:"confidence"`
-	CreatedAt   time.Time `db:"created_at"`
+	ID          int64     `db:"id" json:"id"`
+	Data        string    `db:"data" json:"data"`
+	Label       string    `db:"label" json:"label"`
+	Source      string    `db:"source" json:"source"`
+	DateLabeled time.Time `db:"date_labeled" json:"date_labeled"`
+	Labeler     string    `db:"labeler" json:"labeler"`
+	Confidence  float64   `db:"confidence" json:"confidence"`
+	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 }
 
-// InitDB initializes the database with all required tables
-func InitDB(dbPath string) (*sqlx.DB, error) {
-	db, err := sqlx.Open("sqlite", dbPath)
+// ArticleFilter defines filters for retrieving articles
+type ArticleFilter struct {
+	Source  string
+	Leaning string
+	Limit   int
+	Offset  int
+}
+
+// ArticleScore represents a score update for an article
+type ArticleScore struct {
+	Score      float64 `json:"score"`
+	Confidence float64 `json:"confidence"`
+	Source     string  `json:"source"`
+}
+
+// ArticleFeedback represents feedback for an article
+type ArticleFeedback struct {
+	ArticleID        int64     `json:"article_id"`
+	UserID           string    `json:"user_id"`
+	FeedbackText     string    `json:"feedback_text"`
+	Category         string    `json:"category"`
+	EnsembleOutputID *int64    `json:"ensemble_output_id,omitempty"`
+	Source           string    `json:"source,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// DBOperations defines the interface for database operations
+type DBOperations interface {
+	// Article retrieval operations
+	GetArticleByID(ctx context.Context, id int64) (*Article, error)
+	FetchArticleByID(ctx context.Context, id int64) (*Article, error) // Alias for GetArticleByID
+	GetArticles(ctx context.Context, filter ArticleFilter) ([]*Article, error)
+	FetchArticles(ctx context.Context, source, leaning string, limit, offset int) ([]*Article, error) // Used in handlers
+
+	// Article creation/update operations
+	InsertArticle(ctx context.Context, article *Article) (int64, error)
+	UpdateArticleScore(ctx context.Context, articleID int64, score float64, confidence float64) error
+	UpdateArticleScoreObj(ctx context.Context, articleID int64, score *ArticleScore, confidence float64) error
+	ArticleExistsByURL(ctx context.Context, url string) (bool, error)
+
+	// Feedback operations
+	SaveArticleFeedback(ctx context.Context, feedback *ArticleFeedback) error
+	InsertFeedback(ctx context.Context, feedback *Feedback) error
+
+	// LLM Score operations
+	FetchLLMScores(ctx context.Context, articleID int64) ([]LLMScore, error)
+}
+
+// DBInstance implements the DBOperations interface
+type DBInstance struct {
+	DB *sqlx.DB
+}
+
+// GetArticleByID retrieves an article by ID
+func (d *DBInstance) GetArticleByID(ctx context.Context, id int64) (*Article, error) {
+	return FetchArticleByID(d.DB, id)
+}
+
+// FetchArticleByID is an alias for GetArticleByID
+func (d *DBInstance) FetchArticleByID(ctx context.Context, id int64) (*Article, error) {
+	return FetchArticleByID(d.DB, id)
+}
+
+// GetArticles retrieves articles based on filter criteria
+func (d *DBInstance) GetArticles(ctx context.Context, filter ArticleFilter) ([]*Article, error) {
+	articles, err := FetchArticles(d.DB, filter.Source, filter.Leaning, filter.Limit, filter.Offset)
 	if err != nil {
-		return nil, apperrors.New(ErrDBConnection, "Failed to open database")
-	}
-
-	// Configure connection pool
-	db.SetMaxOpenConns(1) // SQLite only supports one writer at a time
-	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(30 * time.Minute)
-
-	if err := db.Ping(); err != nil {
-		return nil, apperrors.New(ErrDBConnection, "Failed to connect to database")
-	}
-
-	// Enable WAL mode for better concurrency
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		log.Printf("Warning: Failed to enable WAL mode: %v", err)
-	}
-
-	// Set busy timeout to handle concurrent access
-	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
-		log.Printf("Warning: Failed to set busy timeout: %v", err)
-	}
-
-	if err := createTables(db); err != nil {
 		return nil, err
 	}
 
-	if err := migrateSchema(db); err != nil {
+	// Convert from []Article to []*Article
+	result := make([]*Article, len(articles))
+	for i := range articles {
+		result[i] = &articles[i]
+	}
+	return result, nil
+}
+
+// FetchArticles retrieves articles using source, leaning, limit and offset parameters
+func (d *DBInstance) FetchArticles(ctx context.Context, source, leaning string, limit, offset int) ([]*Article, error) {
+	articles, err := FetchArticles(d.DB, source, leaning, limit, offset)
+	if err != nil {
 		return nil, err
 	}
 
-	return db, nil
+	// Convert from []Article to []*Article
+	result := make([]*Article, len(articles))
+	for i := range articles {
+		result[i] = &articles[i]
+	}
+	return result, nil
 }
 
-func createTables(db *sqlx.DB) error {
-	schema := `
-CREATE TABLE IF NOT EXISTS articles (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	source TEXT,
-	pub_date DATETIME,
-	url TEXT UNIQUE,
-	title TEXT,
-	content TEXT,
-	composite_score REAL,
-	confidence REAL,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-	status TEXT DEFAULT 'pending',
-	fail_count INTEGER DEFAULT 0,
-	last_attempt DATETIME,
-	escalated BOOLEAN DEFAULT 0,
-	score_source TEXT
-);
+// InsertArticle inserts a new article
+func (d *DBInstance) InsertArticle(ctx context.Context, article *Article) (int64, error) {
+	return InsertArticle(d.DB, article)
+}
 
-CREATE TABLE IF NOT EXISTS llm_scores (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	article_id INTEGER,
-	model TEXT,
-	score REAL,
-	metadata TEXT,
-	version INTEGER DEFAULT 1,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-	FOREIGN KEY(article_id) REFERENCES articles(id)
-);
+// UpdateArticleScore updates an article's score
+func (d *DBInstance) UpdateArticleScore(ctx context.Context, articleID int64, score float64, confidence float64) error {
+	return UpdateArticleScore(d.DB, articleID, score, confidence)
+}
 
-CREATE INDEX IF NOT EXISTS idx_llm_scores_article_version ON llm_scores(article_id, version);
+// UpdateArticleScoreObj updates an article's score using an ArticleScore object
+func (d *DBInstance) UpdateArticleScoreObj(ctx context.Context, articleID int64, score *ArticleScore, confidence float64) error {
+	if score == nil {
+		return errors.New("score cannot be nil")
+	}
+	return UpdateArticleScore(d.DB, articleID, score.Score, confidence)
+}
 
-CREATE TABLE IF NOT EXISTS feedback (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	article_id INTEGER,
-	user_id TEXT,
-	feedback_text TEXT NOT NULL,
-	category TEXT,
-	ensemble_output_id INTEGER,
-	source TEXT,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-	FOREIGN KEY(article_id) REFERENCES articles(id)
-);
+// ArticleExistsByURL checks if an article exists by URL
+func (d *DBInstance) ArticleExistsByURL(ctx context.Context, url string) (bool, error) {
+	return ArticleExistsByURL(d.DB, url)
+}
 
-CREATE TABLE IF NOT EXISTS labels (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	data TEXT,
-	label TEXT,
-	source TEXT,
-	date_labeled DATETIME,
-	labeler TEXT,
-	confidence REAL,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-`
-	_, err := db.Exec(schema)
+// SaveArticleFeedback saves article feedback
+func (d *DBInstance) SaveArticleFeedback(ctx context.Context, feedback *ArticleFeedback) error {
+	if feedback == nil {
+		return errors.New("feedback cannot be nil")
+	}
+	dbFeedback := &Feedback{
+		ArticleID:        feedback.ArticleID,
+		UserID:           feedback.UserID,
+		FeedbackText:     feedback.FeedbackText,
+		Category:         feedback.Category,
+		EnsembleOutputID: feedback.EnsembleOutputID,
+		Source:           feedback.Source,
+		CreatedAt:        time.Now(),
+	}
+	return InsertFeedback(d.DB, dbFeedback)
+}
+
+// InsertFeedback inserts article feedback
+func (d *DBInstance) InsertFeedback(ctx context.Context, feedback *Feedback) error {
+	return InsertFeedback(d.DB, feedback)
+}
+
+// FetchLLMScores retrieves LLM scores for an article
+func (d *DBInstance) FetchLLMScores(ctx context.Context, articleID int64) ([]LLMScore, error) {
+	return FetchLLMScores(d.DB, articleID)
+}
+
+// New creates a new database connection
+func New(connString string) (*DBInstance, error) {
+	db, err := sqlx.Open("sqlite", connString)
 	if err != nil {
-		return apperrors.New(ErrDBMigration, "Failed to create tables")
+		return nil, err
 	}
-	return nil
+	return &DBInstance{DB: db}, nil
 }
 
-func migrateSchema(db *sqlx.DB) error {
-	alterStatements := []string{
-		"ALTER TABLE articles ADD COLUMN status TEXT DEFAULT 'pending';",
-		"ALTER TABLE articles ADD COLUMN fail_count INTEGER DEFAULT 0;",
-		"ALTER TABLE articles ADD COLUMN last_attempt DATETIME;",
-		"ALTER TABLE articles ADD COLUMN escalated BOOLEAN DEFAULT 0;",
-		"ALTER TABLE articles ADD COLUMN composite_score REAL;",
-		"ALTER TABLE articles ADD COLUMN confidence REAL;",
-		"ALTER TABLE articles ADD COLUMN score_source TEXT;",
-		"ALTER TABLE feedback ADD COLUMN category TEXT;",
-		"ALTER TABLE feedback ADD COLUMN source TEXT;",
-		"ALTER TABLE feedback ADD COLUMN ensemble_output_id INTEGER;",
-	}
-
-	for _, stmt := range alterStatements {
-		_, err := db.Exec(stmt)
-		if err != nil && !isDuplicateColumnError(err) {
-			return apperrors.New(ErrDBMigration, "Failed to migrate schema")
-		}
-	}
-	return nil
-}
-
-func isDuplicateColumnError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "duplicate column name") || strings.Contains(msg, "already exists")
+// Close closes the database connection
+func (d *DBInstance) Close() error {
+	return d.DB.Close()
 }
 
 // handleError is a helper to wrap database errors with appropriate context
@@ -298,21 +316,20 @@ func FetchLatestConfidence(db *sqlx.DB, articleID int64) (float64, error) {
 
 // ArticleExistsBySimilarTitle checks if an article with a similar title exists
 func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
-	// Use SQLite's LIKE operator with wildcards to find similar titles
-	// Remove common punctuation and spaces for comparison
-	cleanTitle := strings.TrimSpace(strings.ToLower(title))
-	cleanTitle = strings.ReplaceAll(cleanTitle, "'", "")
-	cleanTitle = strings.ReplaceAll(cleanTitle, "\"", "")
+	// Normalize input title: lowercase and remove punctuation/spaces
+	cleanTitle := strings.ToLower(strings.TrimSpace(title))
+	for _, r := range []string{"'", `"`, ",", "!", ".", "?", ";", ":", " "} {
+		cleanTitle = strings.ReplaceAll(cleanTitle, r, "")
+	}
 
 	var exists bool
 	err := db.Get(&exists, `
-        SELECT EXISTS(
-            SELECT 1 FROM articles 
-            WHERE LOWER(REPLACE(REPLACE(REPLACE(title, "'", ""), '"', ""), ' ', '')) 
-            LIKE '%' || ? || '%'
-        )`,
-		strings.ReplaceAll(cleanTitle, " ", ""))
-
+	    SELECT EXISTS(
+	        SELECT 1 FROM articles
+	        WHERE LOWER(
+	            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(title, "'", ""), '"', ""), ' ', ""), ',', ""), '!', ""), '.', ""), '?', ""), ';', "")
+	        ) LIKE '%' || ? || '%'
+	    )`, cleanTitle)
 	if err != nil {
 		return false, handleError(err, "failed to check for similar title")
 	}
@@ -468,4 +485,27 @@ func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
 		return false, handleError(err, "failed to check article URL existence")
 	}
 	return exists, nil
+}
+
+// InitDB initializes and returns a database connection to the specified SQLite database file
+func InitDB(dbPath string) (*sqlx.DB, error) {
+	// Open SQLite database connection
+	db, err := sqlx.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Verify database connection is working
+	if err = db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Set connection properties
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
+
+	// Return the database connection
+	return db, nil
 }
