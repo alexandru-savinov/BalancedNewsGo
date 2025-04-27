@@ -1,4 +1,4 @@
-.PHONY: tidy lint test unit docs contract int e2e
+.PHONY: tidy lint test unit docs contract int e2e coverage-core
 
 tidy:          ## keep go.mod clean
 	go mod tidy
@@ -22,3 +22,10 @@ int: contract  ## spin real handler; hit it via httpexpect
 e2e: contract  ## full Docker stack + Playwright
 	docker compose -f infra/docker-compose.yml up -d
 	pnpm --filter=web test:e2e
+
+coverage-core:  ## measure coverage on core packages and enforce >=90%
+	@echo "Running core coverage check (internal/llm, internal/db, internal/api)"
+	@go test -coverpkg=./internal/llm,./internal/db,./internal/api \
+		-coverprofile=coverage-core.out ./internal/llm ./internal/db ./internal/api
+	@go tool cover -func=coverage-core.out | grep total: | awk '{print $$3}' | sed 's/%//' | \
+		awk '{ if ($$1 < 90) { printf("Core coverage %.1f%% < 90%%\n", $$1); exit 1 } else { printf("Core coverage %.1f%% >= 90%%\n", $$1) } }'

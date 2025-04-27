@@ -94,7 +94,7 @@ func (m *MockDBOperations) FetchArticles(ctx context.Context, source, leaning st
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	
+
 	// Handle both []db.Article and []*db.Article
 	switch result := args.Get(0).(type) {
 	case []db.Article:
@@ -135,7 +135,7 @@ func (m *MockDBOperations) SaveArticleFeedback(ctx context.Context, feedback *db
 	return args.Error(0)
 }
 
-// InsertFeedback mocks the DBOperations.InsertFeedback method 
+// InsertFeedback mocks the DBOperations.InsertFeedback method
 func (m *MockDBOperations) InsertFeedback(ctx context.Context, feedback *db.Feedback) error {
 	args := m.Called(ctx, feedback)
 	return args.Error(0)

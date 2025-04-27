@@ -241,13 +241,13 @@ type LLMClient struct {
 
 // ArticleAnalysis represents the full analysis results for an article
 type ArticleAnalysis struct {
-	ArticleID       int64                    `json:"article_id"`
-	Scores          []db.LLMScore            `json:"scores"`
-	CompositeScore  float64                  `json:"composite_score"`
-	Confidence      float64                  `json:"confidence"`
-	CategoryScores  map[string]float64       `json:"category_scores"`
-	DetailedResults map[string]interface{}   `json:"detailed_results"`
-	CreatedAt       time.Time                `json:"created_at"`
+	ArticleID       int64                  `json:"article_id"`
+	Scores          []db.LLMScore          `json:"scores"`
+	CompositeScore  float64                `json:"composite_score"`
+	Confidence      float64                `json:"confidence"`
+	CategoryScores  map[string]float64     `json:"category_scores"`
+	DetailedResults map[string]interface{} `json:"detailed_results"`
+	CreatedAt       time.Time              `json:"created_at"`
 }
 
 func (c *LLMClient) SetHTTPLLMTimeout(timeout time.Duration) {

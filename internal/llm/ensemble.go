@@ -70,15 +70,15 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 			if errorField, ok := genericResponse["error"].(map[string]interface{}); ok {
 				if message, msgOK := errorField["message"].(string); msgOK && message != "" {
 					errType, _ := errorField["type"].(string)
-					errCode, _ := errorField["code"].(interface{})
-					isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", errCode) == "429"
+					codeVal := errorField["code"]
+					isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", codeVal) == "429"
 
 					if isRateLimit {
 						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded rate limit: %s", articleID, modelName, promptHash, message)
 						lastErr = ErrBothLLMKeysRateLimited // Use sentinel error
 					} else {
 						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded API error: %s", articleID, modelName, promptHash, message)
-						lastErr = fmt.Errorf("API error: %s (type: %s, code: %v)", message, errType, errCode)
+						lastErr = fmt.Errorf("API error: %s (type: %s, code: %v)", message, errType, codeVal)
 					}
 					continue // Skip parsing, retry loop
 				}

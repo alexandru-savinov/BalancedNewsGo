@@ -1,36 +1,78 @@
 package db
 
 import (
-	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/stretchr/testify/assert"
 )
 
-const testDBFile = "test.db"
-
 func setupTestDB(t *testing.T) *sqlx.DB {
-	if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
-		t.Logf("Warning: failed to remove test DB file: %v", err)
-	}
+	testDBFile := filepath.Join(t.TempDir(), "test.db")
+	dbInstance, err := New(testDBFile)
+	assert.NoError(t, err)
 
-	dbConn, err := InitDB(testDBFile)
-	if err != nil {
-		t.Fatalf("Failed to init test DB: %v", err)
-	}
+	// Create necessary tables for testing
+	_, err = dbInstance.DB.Exec(`
+		CREATE TABLE IF NOT EXISTS articles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source TEXT NOT NULL,
+			pub_date TIMESTAMP NOT NULL,
+			url TEXT NOT NULL UNIQUE,
+			title TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			composite_score REAL,
+			confidence REAL,
+			score_source TEXT
+		);
+		
+		CREATE TABLE IF NOT EXISTS llm_scores (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			article_id INTEGER NOT NULL,
+			model TEXT NOT NULL,
+			score REAL NOT NULL,
+			metadata TEXT,
+			version TEXT,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (article_id) REFERENCES articles (id)
+		);
+		
+		CREATE TABLE IF NOT EXISTS feedback (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			article_id INTEGER NOT NULL,
+			user_id TEXT,
+			feedback_text TEXT,
+			category TEXT,
+			ensemble_output_id INTEGER,
+			source TEXT,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (article_id) REFERENCES articles (id)
+		);
+		
+		CREATE TABLE IF NOT EXISTS labels (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			data TEXT NOT NULL,
+			label TEXT NOT NULL,
+			source TEXT NOT NULL,
+			date_labeled TIMESTAMP NOT NULL,
+			labeler TEXT NOT NULL,
+			confidence REAL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	assert.NoError(t, err)
 
-	return dbConn
+	return dbInstance.DB
 }
 
 func TestInsertDuplicateArticle(t *testing.T) {
 	dbConn := setupTestDB(t)
 	t.Cleanup(func() {
 		dbConn.Close()
-		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
-			t.Logf("Warning: failed to remove test DB file: %v", err)
-		}
 	})
 
 	url := "https://example.com/test-article-" + strconv.FormatInt(time.Now().UnixNano(), 10)
@@ -65,9 +107,6 @@ func TestArticlePagination(t *testing.T) {
 	dbConn := setupTestDB(t)
 	t.Cleanup(func() {
 		dbConn.Close()
-		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
-			t.Logf("Warning: failed to remove test DB file: %v", err)
-		}
 	})
 
 	_, err := FetchArticles(dbConn, "test", "", 10, 0)
@@ -80,13 +119,6 @@ func TestInsertAndFetchLLMScore(t *testing.T) {
 	dbConn := setupTestDB(t)
 	// Ensure the database connection is closed after the test
 	defer dbConn.Close()
-
-	// Defer the removal of the test database file
-	defer func() {
-		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
-			t.Logf("Warning: failed to remove test DB file: %v", err)
-		}
-	}()
 
 	article := &Article{
 		Source:  "Test Source",
@@ -128,9 +160,6 @@ func TestArticleWithNullFields(t *testing.T) {
 	dbConn := setupTestDB(t)
 	t.Cleanup(func() {
 		dbConn.Close()
-		if err := os.Remove(testDBFile); err != nil && !os.IsNotExist(err) {
-			t.Logf("Warning: failed to remove test DB file: %v", err)
-		}
 	})
 
 	// Create an article with null score_source
@@ -178,9 +207,6 @@ func TestArticleWithNullFields(t *testing.T) {
 func TestTransactionRollback(t *testing.T) {
 	dbConn := setupTestDB(t)
 	defer dbConn.Close()
-	defer func() {
-		_ = os.Remove(testDBFile)
-	}()
 
 	tx, err := dbConn.Beginx()
 	if err != nil {
@@ -220,9 +246,6 @@ func TestTransactionRollback(t *testing.T) {
 func TestConcurrentInserts(t *testing.T) {
 	dbConn := setupTestDB(t)
 	defer dbConn.Close()
-	defer func() {
-		_ = os.Remove(testDBFile)
-	}()
 
 	n := 5
 	done := make(chan bool, n)
@@ -248,4 +271,94 @@ func TestConcurrentInserts(t *testing.T) {
 	if count != n {
 		t.Errorf("Expected %d successful inserts, got %d", n, count)
 	}
+}
+
+func TestInsertAndFetchArticle(t *testing.T) {
+	dbConn := setupTestDB(t)
+	article := &Article{
+		Source:    "test",
+		PubDate:   time.Now().UTC(),
+		URL:       "http://example.com/1",
+		Title:     "Title 1",
+		Content:   "Content",
+		CreatedAt: time.Now().UTC(),
+	}
+	id, err := InsertArticle(dbConn, article)
+	assert.NoError(t, err)
+	assert.Greater(t, id, int64(0))
+
+	fetched, err := FetchArticleByID(dbConn, id)
+	assert.NoError(t, err)
+	assert.Equal(t, article.URL, fetched.URL)
+	assert.Equal(t, article.Title, fetched.Title)
+}
+
+func TestArticleExistsByURL(t *testing.T) {
+	dbConn := setupTestDB(t)
+	exists, err := ArticleExistsByURL(dbConn, "http://nope")
+	assert.NoError(t, err)
+	assert.False(t, exists)
+
+	// Insert one and test exists
+	article := &Article{Source: "test", PubDate: time.Now(), URL: "http://test", Title: "t", Content: "c", CreatedAt: time.Now()}
+	_, err = InsertArticle(dbConn, article)
+	assert.NoError(t, err)
+	exists, err = ArticleExistsByURL(dbConn, "http://test")
+	assert.NoError(t, err)
+	assert.True(t, exists)
+}
+
+func TestInsertAndFetchLLMScores(t *testing.T) {
+	dbConn := setupTestDB(t)
+	// insert article first
+	article := &Article{Source: "src", PubDate: time.Now(), URL: "u2", Title: "t2", Content: "c2", CreatedAt: time.Now()}
+	artID, err := InsertArticle(dbConn, article)
+	assert.NoError(t, err)
+
+	score := &LLMScore{ArticleID: artID, Model: "left", Score: 0.5, Metadata: "meta", CreatedAt: time.Now()}
+	sid, err := InsertLLMScore(dbConn, score)
+	assert.NoError(t, err)
+	assert.Greater(t, sid, int64(0))
+
+	scores, err := FetchLLMScores(dbConn, artID)
+	assert.NoError(t, err)
+	assert.Len(t, scores, 1)
+	assert.Equal(t, "left", scores[0].Model)
+}
+
+func TestUpdateArticleScoreAndFetchConfidence(t *testing.T) {
+	dbConn := setupTestDB(t)
+	// insert article
+	article := &Article{Source: "src", PubDate: time.Now(), URL: "u3", Title: "t3", Content: "c3", CreatedAt: time.Now()}
+	artID, err := InsertArticle(dbConn, article)
+	assert.NoError(t, err)
+
+	err = UpdateArticleScore(dbConn, artID, 1.23, 0.45)
+	assert.NoError(t, err)
+
+	conf, err := FetchLatestConfidence(dbConn, artID)
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.45, conf, 1e-6)
+}
+
+func TestFetchLatestEnsembleScore(t *testing.T) {
+	dbConn := setupTestDB(t)
+	// insert article
+	article := &Article{Source: "s", PubDate: time.Now(), URL: "u4", Title: "t4", Content: "c4", CreatedAt: time.Now()}
+	artID, err := InsertArticle(dbConn, article)
+	assert.NoError(t, err)
+
+	// no ensemble score yet
+	s, err := FetchLatestEnsembleScore(dbConn, artID)
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, s)
+
+	// insert ensemble
+	es := &LLMScore{ArticleID: artID, Model: "ensemble", Score: 2.5, Metadata: "{}", CreatedAt: time.Now()}
+	_, err = InsertLLMScore(dbConn, es)
+	assert.NoError(t, err)
+
+	s2, err := FetchLatestEnsembleScore(dbConn, artID)
+	assert.NoError(t, err)
+	assert.Equal(t, 2.5, s2)
 }
