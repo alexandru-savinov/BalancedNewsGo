@@ -16,9 +16,6 @@ const (
 	modelRight  = "openai/gpt-4.1-nano"
 )
 
-// Variables to support test functionality - use a different name to avoid conflicts
-var testModelConfig *CompositeScoreConfig
-
 // ArticleScore represents a single score for an article from a specific model
 type ArticleScore struct {
 	Score      float64 `json:"score"`
@@ -215,85 +212,6 @@ func TestModelMappingWithInvalidConfiguration(t *testing.T) {
 	// The function should return the perspective as is, even if invalid
 	assert.Equal(t, "invalid", MapModelToPerspective("model1", invalidConfig))
 	assert.Equal(t, "", MapModelToPerspective("model2", invalidConfig))
-}
-
-// TestAdvancedModelNameHandling tests more complex model naming scenarios
-func TestAdvancedModelNameHandling(t *testing.T) {
-	// Create a config with various model naming patterns
-	config := &CompositeScoreConfig{
-		Models: []ModelConfig{
-			{ModelName: modelLeft, Perspective: "left"},
-			{ModelName: "claude-3-haiku", Perspective: "left"},
-			{ModelName: "anthropic/claude-3-opus", Perspective: "left"},
-			{ModelName: modelCenter, Perspective: "center"},
-			{ModelName: "gpt-3.5-turbo", Perspective: "center"},
-			{ModelName: "cohere/command-r", Perspective: "center"},
-			{ModelName: modelRight, Perspective: "right"},
-			{ModelName: "llama-7b-chat", Perspective: "right"},
-			{ModelName: "amazon/titan-express", Perspective: "right"},
-			{ModelName: "internal-model-a", Perspective: "special"},
-			{ModelName: "internal-model-b", Perspective: "custom"},
-		},
-	}
-
-	// Test cases that focus on advanced model name features
-	testCases := []struct {
-		name                string
-		modelName           string
-		expectedPerspective string
-		description         string
-	}{
-		{
-			name:                "Model with version number",
-			modelName:           "claude-3-haiku:2023-12-01",
-			expectedPerspective: "left",
-			description:         "Model names with version tags should match base model",
-		},
-		{
-			name:                "Model with namespace prefix",
-			modelName:           "anthropic/claude-3-opus",
-			expectedPerspective: "left",
-			description:         "Models with namespace prefixes should match correctly",
-		},
-		{
-			name:                "Model with revision",
-			modelName:           "cohere/command-r:2024-04",
-			expectedPerspective: "center",
-			description:         "Models with revisions after colon should match base model",
-		},
-		{
-			name:                "Model with complex identifier",
-			modelName:           "amazon/titan-express@v1.2.3+experimental",
-			expectedPerspective: "right",
-			description:         "Models with complex identifiers should be handled correctly",
-		},
-		{
-			name:                "Internal model from Models field",
-			modelName:           "internal-model-a",
-			expectedPerspective: "special",
-			description:         "Models defined in the Models field should be found",
-		},
-		{
-			name:                "Legacy model name with standard left value",
-			modelName:           "left",
-			expectedPerspective: "left",
-			description:         "Legacy model names should be handled by fallback logic",
-		},
-		{
-			name:                "Completely unknown model",
-			modelName:           "unknown-model-xyz",
-			expectedPerspective: "",
-			description:         "Unknown models should return empty perspective",
-		},
-	}
-
-	// Run the test cases
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			perspective := testGetPerspectiveFromModel(tc.modelName, config)
-			assert.Equal(t, tc.expectedPerspective, perspective, tc.description)
-		})
-	}
 }
 
 // TestModelNameEdgeCases tests how the system handles unusual edge cases

@@ -72,9 +72,17 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 		return 0, 0, err
 	}
 
-	cfg, err := LoadCompositeScoreConfig()
-	if err != nil {
-		return 0, 0, fmt.Errorf("loading composite score config: %w", err)
+	// Use the global test config if available (for tests), otherwise load from file
+	var cfg *CompositeScoreConfig
+	var err error
+
+	if testModelConfig != nil {
+		cfg = testModelConfig
+	} else {
+		cfg, err = LoadCompositeScoreConfig()
+		if err != nil {
+			return 0, 0, fmt.Errorf("loading composite score config: %w", err)
+		}
 	}
 
 	// Map for left/center/right
@@ -149,13 +157,22 @@ func processScoresByPerspective(
 
 		// Use the best score for this perspective
 		val := bestScore.Score
-		if cfg.HandleInvalid == "ignore" && (isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore) {
+
+		// Only consider a score invalid if it's truly invalid (NaN, +/-Inf)
+		// or outside the configured range when specified
+		hasScoreRange := cfg.MinScore > -1e9 || cfg.MaxScore < 1e9
+		isOutsideRange := hasScoreRange && (val < cfg.MinScore || val > cfg.MaxScore)
+
+		if cfg.HandleInvalid == "ignore" && (isInvalid(val) || isOutsideRange) {
 			log.Printf("Ignoring invalid score %.2f for perspective %s", val, perspective)
 			continue
 		}
-		if isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore {
+
+		if isInvalid(val) || isOutsideRange {
 			val = cfg.DefaultMissing
 			log.Printf("Using default value %.2f for invalid score from perspective %s", val, perspective)
+		} else {
+			log.Printf("Using actual score %.2f for perspective %s from model %s", val, perspective, bestScore.Model)
 		}
 
 		log.Printf("Adding score %.2f for perspective %s from model %s", val, perspective, bestScore.Model)
@@ -177,15 +194,20 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 		// First try to map the model to its perspective
 		perspective := MapModelToPerspective(s.Model, cfg)
 
-		// If mapping failed, try the old way
+		// If mapping failed, try the old way (legacy model names)
 		if perspective == "" {
 			model := strings.ToLower(s.Model)
-			if model == LabelLeft || model == "left" {
+			// Direct check for legacy model names - these are the model names themselves
+			if model == "left" {
 				perspective = "left"
-			} else if model == LabelRight || model == "right" {
-				perspective = "right"
 			} else if model == "center" {
 				perspective = "center"
+			} else if model == "right" {
+				perspective = "right"
+			} else if model == LabelLeft {
+				perspective = "left"
+			} else if model == LabelRight {
+				perspective = "right"
 			} else {
 				// Skip unknown models
 				log.Printf("Skipping unknown model: %s", s.Model)
@@ -283,6 +305,7 @@ func calculateConfidence(cfg *CompositeScoreConfig, validModels *map[string]bool
 	default:
 		confidence = float64(len(*validModels)) / 3.0
 	}
+
 	if confidence < cfg.MinConfidence {
 		confidence = cfg.MinConfidence
 	}

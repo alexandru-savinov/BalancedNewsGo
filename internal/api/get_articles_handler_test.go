@@ -63,7 +63,7 @@ func setupArticlesTestRouter(mockDB *MockArticlesDB) *gin.Engine {
 	return router
 }
 
-func TestGetArticlesHandler_WhenSuccess(t *testing.T) {
+func TestGetArticlesHandlerSuccess(t *testing.T) {
 	ctx := context.Background()
 	mockDB := &MockArticlesDB{}
 	mockDB.On("FetchArticles", ctx, "", "", 20, 0).Return([]*db.Article{{ID: 1}}, nil)
@@ -78,7 +78,7 @@ func TestGetArticlesHandler_WhenSuccess(t *testing.T) {
 	mockDB.AssertExpectations(t)
 }
 
-func TestGetArticlesHandler_WhenError(t *testing.T) {
+func TestGetArticlesHandlerError(t *testing.T) {
 	ctx := context.Background()
 	mockDB := &MockArticlesDB{}
 	mockDB.On("FetchArticles", ctx, "", "", 20, 0).Return(nil, assert.AnError)

@@ -6,13 +6,7 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
-
-// Mock config for testing
-type mockConfigLoader struct {
-	mock.Mock
-}
 
 // TestMapModelToPerspective tests the mapping of model names to perspectives
 func TestMapModelToPerspective(t *testing.T) {
