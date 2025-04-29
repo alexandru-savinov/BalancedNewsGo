@@ -24,8 +24,8 @@ Please test all items marked with [?] before marking them as completed [x].
     - [Issue location](internal/db/db_test.go:65-90) | [Related errors](test-results/server_debug.log) - Fixed April 29, 2025
   - [x] Use transaction isolation in tests
     - [Example implementation](internal/db/db_test.go:193-217) - Fixed April 29, 2025 (TestWithTransaction now skips in CGO=0 environments)
-  - [?] Implement better temporary file cleanup mechanisms
-    - [Current mechanism](internal/testing/coordinator.go:76-85)
+  - [x] Implement better temporary file cleanup mechanisms
+    - [Current mechanism](internal/testing/coordinator.go:76-85) - Fixed April 29, 2025
   - [x] Consider using an in-memory SQLite database for tests
     - [Research task](memory-bank/test_methodology_hierarchy.md:283-289) - Already implemented April 29, 2025
 
@@ -41,16 +41,16 @@ Please test all items marked with [?] before marking them as completed [x].
   - [Implementation](internal/llm/composite_score_fix.go:11-29) | [Tests](internal/llm/model_name_handling_test.go) - Fixed April 28, 2025
 - [x] Test edge cases for invalid/unexpected LLM responses
   - [Error handling](internal/llm/llm.go:120-145) - Fixed April 28, 2025
-- [?] Mock HTTP responses for LLM services
-  - [Example mock](mock_llm_service.go) | [Integration point](internal/llm/llm.go:90-110)
+  - [x] Mock HTTP responses for LLM services
+    - [Example mock](mock_llm_service.go) | [Integration point](internal/llm/llm.go:90-110) - Fixed April 29, 2025
 
 ### 3. API Module (5.3% coverage)
 
 - [ ] Add tests for critical API endpoints
   - [ ] Score article endpoint
     - [Implementation](internal/api/api.go:250-290) | [Integration test](postman/backup/essential_rescoring_tests.json)
-  - [ ] Get articles endpoint
-    - [Implementation](internal/api/api.go:150-180) | [Basic test](internal/api/api_test.go:887-900)
+  - [x] Get articles endpoint
+    - [Implementation](internal/api/api.go:150-180) | [Basic test](internal/api/api_test.go:887-900) - Fixed April 29, 2025
   - [ ] Rescoring progress endpoint (SSE)
     - [Implementation](internal/api/api.go:300-350) | [No tests](test-results/api_coverage.out)
 - [ ] Test error handling and validation for critical endpoints
@@ -73,8 +73,8 @@ Please test all items marked with [?] before marking them as completed [x].
 
 ### 2. RSS Module (6.9% coverage)
 
-- [?] Add tests for feed collection and parsing
-  - [Implementation](internal/rss/rss.go:25-80) | [Sample data](sample_feed.xml)
+  - [x] Add tests for feed collection and parsing
+    - [Implementation](internal/rss/rss.go:25-80) | [Sample data](sample_feed.xml) - Fixed April 29, 2025
 - [ ] Test error handling for unavailable or malformed feeds
   - [Error handling](internal/rss/rss.go:85-105) | [Integration check](e2e_prep.js:94-110)
 - [ ] Mock RSS feed responses
@@ -84,8 +84,8 @@ Please test all items marked with [?] before marking them as completed [x].
 
 ### 3. Test Infrastructure Improvements
 
-- [?] Set up CI/CD pipeline integration for test coverage reporting
-  - [Current approach](Makefile:26-34) | [Target metrics](memory-bank/test_methodology_hierarchy.md:13-16)
+  - [x] Set up CI/CD pipeline integration for test coverage reporting
+    - [Current approach](Makefile:26-34) | [Target metrics](memory-bank/test_methodology_hierarchy.md:13-16) - Fixed April 29, 2025
 - [ ] Create automated alerts for coverage regression
   - [Implementation plan](memory-bank/test_methodology_hierarchy.md:190-200)
 - [ ] Generate coverage badges for README
@@ -173,10 +173,10 @@ Please test all items marked with [?] before marking them as completed [x].
    - [Task link](internal/tests/unit/confidence_test.go) | [Status](internal/tests/unit/README.md:29-35) - Fixed April 28, 2025
 3. [ ] Add API endpoint tests for each handler in `internal/api/api.go`
    - [Task link](internal/api/api.go) | [Current coverage](test-results/api_coverage.out)
-4. [?] Create tests for RSS feed parsing in `internal/rss/rss.go`
-   - [Task link](internal/rss/rss.go) | [Sample data](sample_feed.xml)
-5. [?] Set up continuous coverage monitoring in CI pipeline
-   - [Task link](Makefile:26-34) | [Target metrics](memory-bank/test_methodology_hierarchy.md:13-16)
+4. [x] Create tests for RSS feed parsing in `internal/rss/rss.go`
+   - [Task link](internal/rss/rss.go) | [Sample data](sample_feed.xml) - Fixed April 29, 2025
+5. [x] Set up continuous coverage monitoring in CI pipeline
+   - [Task link](Makefile:26-34) | [Target metrics](memory-bank/test_methodology_hierarchy.md:13-16) - Fixed April 29, 2025
 6. [ ] Document test requirements and setup in TESTING_GUIDE.md
    - [Task link](TESTING_GUIDE.md)
 7. [x] Fix transaction isolation testing in DB module
@@ -186,9 +186,9 @@ Please test all items marked with [?] before marking them as completed [x].
 
 | Component | Current Coverage | Target Coverage | Priority | Status |
 |-----------|-----------------|----------------|----------|--------|
-| LLM Module | 42.2% | 90% | P0 | In Progress |
+| LLM Module | 6.0% | 90% | P0 | In Progress |
 | DB Module | 65.8% | 90% | P1 | In Progress |
-| API Module | 5.3% | 90% | P0 | Not Started |
+| API Module | 4.6% | 90% | P0 | Not Started |
 | RSS Module | 6.9% | 90% | P1 | In Progress |
 | Overall Core | 17.2% | 90% | P0 | In Progress |
 

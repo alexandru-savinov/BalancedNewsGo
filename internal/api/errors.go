@@ -19,6 +19,11 @@ const (
 	errFailedToFetchArticle = "Failed to fetch article"
 	errInvalidArticleID     = "Invalid article ID"
 	errProgressState        = "[SetProgress] ArticleID=%d: %s"
+	// New constants for duplicated strings in tests
+	ErrInvalidJSONBody         = "Invalid JSON body"
+	ErrPayloadFieldRestriction = "Payload must contain only 'score' field"
+	ErrContentTypeHeader       = "Content-Type"
+	ErrJSONContentType         = "application/json"
 )
 
 // Pre-defined API errors
