@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -306,7 +307,6 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 		return cached, nil
 	}
 
-	var score *db.LLMScore
 	var err error
 
 	generalPrompt := PromptVariant{
@@ -327,17 +327,13 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 
 	meta := fmt.Sprintf(`{"explanation": %q, "confidence": %.3f}`, explanation, confidence)
 
-	score = &db.LLMScore{
+	score := &db.LLMScore{
 		ArticleID: articleID,
 		Model:     model,
 		Score:     scoreVal,
 		Metadata:  meta,
 		CreatedAt: time.Now(),
 	}
-
-	score.ArticleID = articleID
-	score.Model = model
-	score.CreatedAt = time.Now()
 
 	c.cache.Set(contentHash, model, score)
 
@@ -514,16 +510,29 @@ func (c *LLMClient) FetchScores(articleID int64) ([]db.LLMScore, error) {
 
 // ScoreWithModel uses a single model to score content
 func (c *LLMClient) ScoreWithModel(article *db.Article, modelName string) (float64, error) {
-	score, _, _, _, err := c.callLLM(article.ID, modelName, DefaultPromptVariant, article.Content)
+	// Create a prompt variant with the specified model
+	promptVariant := DefaultPromptVariant
+	promptVariant.Model = modelName
+
+	// Use the LLM service directly to handle rate limiting properly
+	score, _, err := c.llmService.ScoreContent(context.Background(), promptVariant, article)
+	
 	if err != nil {
+		// Specifically check for rate limit errors first
 		if errors.Is(err, ErrBothLLMKeysRateLimited) {
 			return 0, ErrBothLLMKeysRateLimited
 		}
-		if strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "Service Unavailable") {
+		
+		// Check for service unavailable
+		if strings.Contains(strings.ToLower(err.Error()), "503") || 
+		   strings.Contains(strings.ToLower(err.Error()), "service unavailable") {
 			return 0, ErrLLMServiceUnavailable
 		}
-		return 0, apperrors.HandleError(err, fmt.Sprintf("scoring with model %s failed", modelName))
+		
+		// For any other errors, return a more descriptive error
+		return 0, fmt.Errorf("scoring with model %s failed: %w", modelName, err)
 	}
+	
 	return score, nil
 }
 
