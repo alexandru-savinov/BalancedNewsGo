@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,6 +25,7 @@ type MockDBOperationsScore struct {
 	mock.Mock
 }
 
+// Mock all required methods from db.DBOperations
 // FetchArticleByID mocks the db.FetchArticleByID function
 func (m *MockDBOperationsScore) FetchArticleByID(ctx any, articleID int64) (*db.Article, error) {
 	args := m.Called(ctx, articleID)
@@ -33,10 +35,56 @@ func (m *MockDBOperationsScore) FetchArticleByID(ctx any, articleID int64) (*db.
 	return args.Get(0).(*db.Article), args.Error(1)
 }
 
+// GetArticleByID is an alias for FetchArticleByID
+func (m *MockDBOperationsScore) GetArticleByID(ctx context.Context, id int64) (*db.Article, error) {
+	return m.FetchArticleByID(ctx, id)
+}
+
 // UpdateArticleScore mocks the db.UpdateArticleScore function
 func (m *MockDBOperationsScore) UpdateArticleScore(ctx any, articleID int64, score float64, confidence float64) error {
 	args := m.Called(ctx, articleID, score, confidence)
 	return args.Error(0)
+}
+
+// Implement remaining required methods from DBOperations interface with stub implementations
+func (m *MockDBOperationsScore) ArticleExistsByURL(ctx context.Context, url string) (bool, error) {
+	args := m.Called(ctx, url)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockDBOperationsScore) GetArticles(ctx context.Context, filter db.ArticleFilter) ([]*db.Article, error) {
+	args := m.Called(ctx, filter)
+	return args.Get(0).([]*db.Article), args.Error(1)
+}
+
+func (m *MockDBOperationsScore) FetchArticles(ctx context.Context, source, leaning string, limit, offset int) ([]*db.Article, error) {
+	args := m.Called(ctx, source, leaning, limit, offset)
+	return args.Get(0).([]*db.Article), args.Error(1)
+}
+
+func (m *MockDBOperationsScore) InsertArticle(ctx context.Context, article *db.Article) (int64, error) {
+	args := m.Called(ctx, article)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockDBOperationsScore) UpdateArticleScoreObj(ctx context.Context, articleID int64, score *db.ArticleScore, confidence float64) error {
+	args := m.Called(ctx, articleID, score, confidence)
+	return args.Error(0)
+}
+
+func (m *MockDBOperationsScore) SaveArticleFeedback(ctx context.Context, feedback *db.ArticleFeedback) error {
+	args := m.Called(ctx, feedback)
+	return args.Error(0)
+}
+
+func (m *MockDBOperationsScore) InsertFeedback(ctx context.Context, feedback *db.Feedback) error {
+	args := m.Called(ctx, feedback)
+	return args.Error(0)
+}
+
+func (m *MockDBOperationsScore) FetchLLMScores(ctx context.Context, articleID int64) ([]db.LLMScore, error) {
+	args := m.Called(ctx, articleID)
+	return args.Get(0).([]db.LLMScore), args.Error(1)
 }
 
 // Setup router with mock DB for manual score handler tests

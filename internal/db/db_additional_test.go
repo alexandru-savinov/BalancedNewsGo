@@ -65,6 +65,15 @@ func openTestDB(t *testing.T) *sqlx.DB {
 	`)
 	assert.NoError(t, err)
 
+	// Register cleanup to ensure connection is closed after test
+	t.Cleanup(func() {
+		if err := dbInstance.Close(); err != nil {
+			t.Logf("Error closing database connection: %v", err)
+		} else {
+			t.Logf("Database connection closed successfully")
+		}
+	})
+
 	return dbInstance.DB
 }
 
