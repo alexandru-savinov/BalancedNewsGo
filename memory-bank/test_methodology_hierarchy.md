@@ -160,33 +160,13 @@ _Deliverable: Unit test suite with >90% coverage for core business logic_
 
 ### 2.2. Integration Tests [Status: IMPLEMENTING]
 _Deliverable: Integration test suite validating component interactions_
-2.2.1. API Integration Tests [Status: NEEDS_REFACTOR]
-       - Deliverable: Unified API test collection
-       - Action Items:
-         * Consolidate all Postman collections
-         * Add missing endpoint coverage
-         * Standardize test structure
-       - Dependencies: 2.1
-       - Priority: MEDIUM
-2.2.2. Database Integration [Status: IMPLEMENTING]
-       - Deliverable: Database integration test suite
-       - Action Items:
-         * Complete persistence tests
-         * Add rollback scenarios
-         * Test cache invalidation
-       - Dependencies: 2.1.2, 2.2.1
-       - Priority: MEDIUM
-2.2.3. LLM Service Integration [Status: NEEDS_IMPLEMENTATION]
-       - Deliverable: LLM integration test suite
-       - Action Items:
-         * Implement reanalyze endpoint tests
-         * Add score progress monitoring
-         * Test error scenarios
-       - Dependencies: 2.2.1
-       - Priority: MEDIUM
+- Go-based tests (see `internal/api/api_handler_legacy_test.go`) cover only handler-level and progress/SSE edge cases. Coverage is currently 11% for handler-level API logic.
+- True workflow and E2E integration is validated via Postman collections and Playwright specs.
 
 ### 2.3. End-to-End Tests [Status: PLANNED]
 _Deliverable: E2E test suite covering critical user workflows_
+- E2E and workflow tests are implemented in Postman collections and Playwright specs, not in Go-based test files.
+
 2.3.1. Core User Workflows [Status: PLANNED]
        - Deliverable: Basic E2E test coverage
        - Action Items:

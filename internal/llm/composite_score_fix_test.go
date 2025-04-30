@@ -198,3 +198,100 @@ func TestComputeCompositeScoreWithConfidenceFixed(t *testing.T) {
 		})
 	}
 }
+
+// TestCalculateCompositeScore_Average tests the average formula in calculateCompositeScore
+func TestCalculateCompositeScore_Average(t *testing.T) {
+	// Define test cases for the average formula
+	testCases := []struct {
+		name     string
+		formula  string
+		scoreMap map[string]float64
+		sum      float64
+		expected float64
+	}{
+		{
+			name:    "Average with balanced scores",
+			formula: "average",
+			scoreMap: map[string]float64{
+				"left":   -0.5,
+				"center": 0.0,
+				"right":  0.5,
+			},
+			sum:      0.0, // -0.5 + 0.0 + 0.5
+			expected: 0.0, // Sum / 3.0
+		},
+		{
+			name:    "Average with all positive scores",
+			formula: "average",
+			scoreMap: map[string]float64{
+				"left":   0.3,
+				"center": 0.5,
+				"right":  0.7,
+			},
+			sum:      1.5, // 0.3 + 0.5 + 0.7
+			expected: 0.5, // Sum / 3.0
+		},
+		{
+			name:    "Average with all negative scores",
+			formula: "average",
+			scoreMap: map[string]float64{
+				"left":   -0.7,
+				"center": -0.5,
+				"right":  -0.3,
+			},
+			sum:      -1.5, // -0.7 + (-0.5) + (-0.3)
+			expected: -0.5, // Sum / 3.0
+		},
+		{
+			name:    "Average with extreme values",
+			formula: "average",
+			scoreMap: map[string]float64{
+				"left":   -1.0,
+				"center": 0.0,
+				"right":  1.0,
+			},
+			sum:      0.0, // -1.0 + 0.0 + 1.0
+			expected: 0.0, // Sum / 3.0
+		},
+		{
+			name:    "Average with decimal values",
+			formula: "average",
+			scoreMap: map[string]float64{
+				"left":   -0.33,
+				"center": 0.0,
+				"right":  0.33,
+			},
+			sum:      0.0, // -0.33 + 0.0 + 0.33
+			expected: 0.0, // Sum / 3.0
+		},
+		{
+			name:    "Default behavior (unknown formula falls back to average)",
+			formula: "unknown_formula",
+			scoreMap: map[string]float64{
+				"left":   -0.2,
+				"center": 0.0,
+				"right":  0.4,
+			},
+			sum:      0.2,   // -0.2 + 0.0 + 0.4
+			expected: 0.067, // Sum / 3.0 = 0.2/3 ≈ 0.067
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create config with specified formula
+			cfg := &CompositeScoreConfig{
+				Formula: tc.formula,
+			}
+
+			// These parameters are not used for average formula but need to be passed
+			weightedSum := 0.0
+			weightTotal := 0.0
+
+			result := calculateCompositeScore(cfg, tc.scoreMap, tc.sum, weightedSum, weightTotal)
+
+			// Use a small delta for floating point comparison
+			assert.InDelta(t, tc.expected, result, 0.001, "Average formula calculation incorrect")
+		})
+	}
+}

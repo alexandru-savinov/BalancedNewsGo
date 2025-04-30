@@ -7,10 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/go-resty/resty/v2"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(m *testing.M) {
@@ -190,5 +193,92 @@ func TestModelConfiguration(t *testing.T) {
 			t.Errorf("For perspective %s, expected model %s, got %s",
 				model.Perspective, expectedName, model.ModelName)
 		}
+	}
+}
+
+// TestSetHTTPLLMTimeout tests the SetHTTPLLMTimeout method of LLMClient
+func TestSetHTTPLLMTimeout(t *testing.T) {
+	// Create a test HTTP LLM service
+	restyClient := resty.New()
+	initialTimeout := 10 * time.Second
+	restyClient.SetTimeout(initialTimeout)
+
+	service := NewHTTPLLMService(restyClient, "test-key", "backup-key", "")
+
+	// Create a test LLMClient with the HTTP LLM service
+	client := &LLMClient{
+		llmService: service,
+	}
+
+	// Verify initial timeout
+	httpService, ok := client.llmService.(*HTTPLLMService)
+	assert.True(t, ok, "Expected llmService to be HTTPLLMService")
+	assert.Equal(t, initialTimeout, httpService.client.GetClient().Timeout, "Initial timeout should match")
+
+	// Set a new timeout
+	newTimeout := 20 * time.Second
+	client.SetHTTPLLMTimeout(newTimeout)
+
+	// Verify the timeout was updated
+	assert.Equal(t, newTimeout, httpService.client.GetClient().Timeout, "Timeout should be updated to new value")
+}
+
+// Utility function for test to simulate loading a config
+func loadTestCompositeScoreConfig() *CompositeScoreConfig {
+	return &CompositeScoreConfig{
+		Formula:          "average",
+		Weights:          map[string]float64{"left": 1.0, "center": 1.0, "right": 1.0},
+		MinScore:         -1.0,
+		MaxScore:         1.0,
+		DefaultMissing:   0.0,
+		HandleInvalid:    "default",
+		ConfidenceMethod: "count_valid",
+		MinConfidence:    0.0,
+		MaxConfidence:    1.0,
+		Models: []ModelConfig{
+			{Perspective: "left", ModelName: "left", URL: ""},
+			{Perspective: "center", ModelName: "center", URL: ""},
+			{Perspective: "right", ModelName: "right", URL: ""},
+		},
+	}
+}
+
+// TestCompositeScoreWithConfig tests the ComputeCompositeScore function with a specific test config
+func TestCompositeScoreWithConfig(t *testing.T) {
+	testCases := []struct {
+		name           string
+		scores         []db.LLMScore
+		expectedResult float64
+	}{
+		{
+			name: "Basic average calculation",
+			scores: []db.LLMScore{
+				{Model: "left", Score: -0.8},
+				{Model: "center", Score: 0.0},
+				{Model: "right", Score: 0.8},
+			},
+			expectedResult: 0.0, // Average of -0.8, 0.0, and 0.8
+		},
+		{
+			name: "Missing score uses default value (0.0)",
+			scores: []db.LLMScore{
+				{Model: "left", Score: -0.5},
+				{Model: "right", Score: 0.5},
+			},
+			expectedResult: 0.0, // Average of -0.5, 0.0 (default), and 0.5
+		},
+		{
+			name:           "Empty scores array",
+			scores:         []db.LLMScore{},
+			expectedResult: 0.0, // Average of three default values
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			compositeScoreConfig = loadTestCompositeScoreConfig() // Set the global config for testing
+			result := ComputeCompositeScore(tc.scores)
+			assert.InDelta(t, tc.expectedResult, result, 0.01, "Composite score calculation error")
+		})
 	}
 }

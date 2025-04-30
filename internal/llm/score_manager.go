@@ -163,9 +163,19 @@ func (sm *ScoreManager) InvalidateScoreCache(articleID int64) {
 	}
 }
 
-// TrackProgress is a stub for progress tracking
+// TrackProgress registers progress tracking for an article
 func (sm *ScoreManager) TrackProgress(articleID int64, step, status string) {
-	// TODO: Implement progress tracking
+	if sm.progressMgr != nil {
+		// Create an initial progress state with parameters
+		initialState := &models.ProgressState{
+			Step:        step,
+			Message:     fmt.Sprintf("Progress update: %s", step),
+			Percent:     0,
+			Status:      status,
+			LastUpdated: time.Now().Unix(),
+		}
+		sm.progressMgr.SetProgress(articleID, initialState)
+	}
 }
 
 // SetProgress proxies to ProgressManager
