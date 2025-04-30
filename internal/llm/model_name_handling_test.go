@@ -160,6 +160,8 @@ func TestModelNameFallbackLogic(t *testing.T) {
 		MinConfidence:    0.1,
 		MaxConfidence:    1.0,
 		HandleInvalid:    "replace",
+		MinScore:         -1.0, // Accept all valid scores
+		MaxScore:         1.0,  // Accept all valid scores
 	}
 
 	// Set our test config
@@ -186,8 +188,8 @@ func TestModelNameFallbackLogic(t *testing.T) {
 	// We expect the function to use left=0.2, center=0.5, right=0.9
 	// Average: (0.2 + 0.5 + 0.9) / 3 = 0.53
 	assert.InDelta(t, 0.53, score, 0.01)
-	// Update expected confidence - actual implementation returns 0.95 instead of 1.0
-	assert.InDelta(t, 0.95, confidence, 0.01) // Updated from 1.0 to 0.95
+	// Expect confidence to be 1.0 when all perspectives are present
+	assert.InDelta(t, 1.0, confidence, 0.01)
 }
 
 // TestModelMappingWithInvalidConfiguration tests model mapping with invalid configurations

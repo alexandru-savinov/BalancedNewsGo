@@ -43,43 +43,37 @@ func LoadCompositeScoreConfig() (*CompositeScoreConfig, error) {
 	return fileCompositeScoreConfig, nil
 }
 
-// minNonNil returns the minimum non-nil value from a map of pointers
-func minNonNil(m map[string]*float64, def float64) float64 {
+// minNonNil returns the minimum value from a map of float64s
+func minNonNil(m map[string]float64, def float64) float64 {
 	min := def
 	first := true
 	for _, v := range m {
-		if v != nil {
-			if first || *v < min {
-				min = *v
-				first = false
-			}
+		if first || v < min {
+			min = v
+			first = false
 		}
 	}
 	return min
 }
 
-// maxNonNil returns the maximum non-nil value from a map of pointers
-func maxNonNil(m map[string]*float64, def float64) float64 {
+// maxNonNil returns the maximum value from a map of float64s
+func maxNonNil(m map[string]float64, def float64) float64 {
 	max := def
 	first := true
 	for _, v := range m {
-		if v != nil {
-			if first || *v > max {
-				max = *v
-				first = false
-			}
+		if first || v > max {
+			max = v
+			first = false
 		}
 	}
 	return max
 }
 
 // scoreSpread calculates the difference between the maximum and minimum score
-func scoreSpread(m map[string]*float64) float64 {
+func scoreSpread(m map[string]float64) float64 {
 	vals := []float64{}
 	for _, v := range m {
-		if v != nil {
-			vals = append(vals, *v)
-		}
+		vals = append(vals, v)
 	}
 	if len(vals) < 2 {
 		return 0.0

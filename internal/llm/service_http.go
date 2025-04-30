@@ -69,6 +69,13 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 		if s.backupKey != "" {
 			// Try backup key if rate limited and backup key exists
 			resp, err = s.callLLMAPIWithKey(pv.Model, pv.FormatPrompt(art.Content), s.backupKey)
+			if (err != nil && strings.Contains(err.Error(), "rate limit")) || (resp != nil && resp.StatusCode() == 429) {
+				// Both keys are rate limited
+				return 0, 0, fmt.Errorf("rate limit exceeded on both keys: %w", ErrBothLLMKeysRateLimited)
+			}
+		} else {
+			// No backup key, propagate the original error
+			return 0, 0, fmt.Errorf("rate limit exceeded on primary key and no backup key provided")
 		}
 	}
 

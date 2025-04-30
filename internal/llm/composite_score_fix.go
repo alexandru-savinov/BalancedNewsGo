@@ -17,7 +17,6 @@ func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 		return ""
 	}
 
-	// Normalize model name for comparison
 	normalizedModelName := strings.ToLower(strings.TrimSpace(modelName))
 
 	// Look up the model in the configuration
@@ -27,7 +26,15 @@ func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 		}
 	}
 
-	// If not found, log a warning and return empty string
+	// Fallback to legacy names
+	if normalizedModelName == "left" {
+		return "left"
+	} else if normalizedModelName == "center" {
+		return "center"
+	} else if normalizedModelName == "right" {
+		return "right"
+	}
+
 	log.Printf("Warning: Model '%s' not found in composite score configuration", modelName)
 	return ""
 }
@@ -86,12 +93,12 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 	}
 
 	// Map for left/center/right
-	scoreMap := map[string]*float64{
-		"left":   nil,
-		"center": nil,
-		"right":  nil,
+	scoreMap := map[string]float64{
+		"left":   cfg.DefaultMissing,
+		"center": cfg.DefaultMissing,
+		"right":  cfg.DefaultMissing,
 	}
-	
+
 	validCount := 0
 	sum := 0.0
 	weightedSum := 0.0
@@ -114,10 +121,7 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 
 	// Calculate weighted sums
 	for k, v := range scoreMap {
-		score := cfg.DefaultMissing
-		if v != nil {
-			score = *v
-		}
+		score := v
 		w := 1.0
 		if cfg.Formula == "weighted" {
 			if weight, ok := cfg.Weights[k]; ok {
@@ -132,19 +136,8 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 	// Calculate composite score
 	composite := calculateCompositeScore(cfg, scoreMap, sum, weightedSum, weightTotal)
 
-	// Calculate confidence - for the TestModelNameFallbackLogic test
-	// This test expects a confidence of 1.0 when all three perspectives have valid scores
-	confidence := 1.0
-	if len(validModels) < 3 {
-		// If not all perspectives have valid scores, calculate confidence based on how many we have
-		confidence = float64(len(validModels)) / 3.0
-	}
-
-	// Just for the specific test case, return 0.53 for score and 0.95 for confidence to match test expectations
-	if composite > 0.52 && composite < 0.54 && confidence == 1.0 {
-		composite = 0.53
-		confidence = 0.95
-	}
+	// Calculate confidence using the proper calculation function
+	confidence := calculateConfidence(cfg, &validModels, scoreMap)
 
 	log.Printf("ComputeCompositeScoreWithConfidenceFixed: Final composite=%.2f, confidence=%.2f", composite, confidence)
 	return composite, confidence, nil
@@ -154,18 +147,25 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, fl
 func processScoresByPerspective(
 	perspectiveModels map[string][]db.LLMScore,
 	cfg *CompositeScoreConfig,
-	scoreMap map[string]*float64,
+	scoreMap map[string]float64,
 	validCount *int,
 	validModels *map[string]bool) {
 
 	// Use the best score from each perspective
 	for perspective, models := range perspectiveModels {
 		if len(models) == 0 {
+			log.Printf("No models found for perspective %s", perspective)
 			continue
+		}
+
+		log.Printf("Candidates for %s: ", perspective)
+		for _, m := range models {
+			log.Printf("  Model: %s, Score: %.2f, Metadata: %s", m.Model, m.Score, m.Metadata)
 		}
 
 		// Find the model with highest confidence
 		bestScore := findBestConfidenceScore(models)
+		log.Printf("Selected for %s: Model: %s, Score: %.2f", perspective, bestScore.Model, bestScore.Score)
 
 		// Use the best score for this perspective
 		val := bestScore.Score
@@ -188,8 +188,8 @@ func processScoresByPerspective(
 		}
 
 		log.Printf("Adding score %.2f for perspective %s from model %s", val, perspective, bestScore.Model)
-		scoreMap[perspective] = &val
-		*validCount++
+		scoreMap[perspective] = val
+		(*validCount)++
 		(*validModels)[perspective] = true
 	}
 }
@@ -234,6 +234,7 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 		}
 
 		// Add to perspective models map
+		log.Printf("Mapping model '%s' (score %.2f) to perspective '%s'", s.Model, s.Score, perspective)
 		perspectiveModels[perspective] = append(perspectiveModels[perspective], s)
 	}
 
@@ -247,16 +248,37 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 
 // findBestConfidenceScore selects the score with highest confidence from a group of models
 func findBestConfidenceScore(models []db.LLMScore) db.LLMScore {
+	if len(models) == 1 {
+		return models[0]
+	}
+
 	bestScore := models[0]
 	bestConfidence := extractConfidence(bestScore.Metadata)
+	allSameConfidence := true
 
 	for _, model := range models[1:] {
 		modelConfidence := extractConfidence(model.Metadata)
-
-		// Use the model with higher confidence
+		if modelConfidence != bestConfidence {
+			allSameConfidence = false
+		}
 		if modelConfidence > bestConfidence {
 			bestScore = model
 			bestConfidence = modelConfidence
+		} else if modelConfidence == bestConfidence {
+			if model.Score > bestScore.Score {
+				bestScore = model
+			}
+		}
+	}
+
+	// If all confidences are equal, pick the highest score
+	if allSameConfidence {
+		maxScore := bestScore.Score
+		for _, model := range models {
+			if model.Score > maxScore {
+				bestScore = model
+				maxScore = model.Score
+			}
 		}
 	}
 
@@ -280,7 +302,7 @@ func extractConfidence(metadata string) float64 {
 }
 
 // calculateCompositeScore computes the final score based on the configured formula
-func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]*float64,
+func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64,
 	sum, weightedSum, weightTotal float64) float64 {
 
 	var composite float64
@@ -306,7 +328,7 @@ func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]*flo
 
 // calculateConfidence determines the confidence level based on the configured method
 func calculateConfidence(cfg *CompositeScoreConfig, validModels *map[string]bool,
-	scoreMap map[string]*float64) float64 {
+	scoreMap map[string]float64) float64 {
 
 	var confidence float64
 	switch cfg.ConfidenceMethod {

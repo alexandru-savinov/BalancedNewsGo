@@ -516,23 +516,23 @@ func (c *LLMClient) ScoreWithModel(article *db.Article, modelName string) (float
 
 	// Use the LLM service directly to handle rate limiting properly
 	score, _, err := c.llmService.ScoreContent(context.Background(), promptVariant, article)
-	
+
 	if err != nil {
 		// Specifically check for rate limit errors first
 		if errors.Is(err, ErrBothLLMKeysRateLimited) {
 			return 0, ErrBothLLMKeysRateLimited
 		}
-		
+
 		// Check for service unavailable
-		if strings.Contains(strings.ToLower(err.Error()), "503") || 
-		   strings.Contains(strings.ToLower(err.Error()), "service unavailable") {
-			return 0, ErrLLMServiceUnavailable
+		if strings.Contains(strings.ToLower(err.Error()), "503") ||
+			strings.Contains(strings.ToLower(err.Error()), "service unavailable") {
+			return 0, apperrors.New("LLM service unavailable", "llm_service_error")
 		}
-		
-		// For any other errors, return a more descriptive error
-		return 0, fmt.Errorf("scoring with model %s failed: %w", modelName, err)
+
+		// For any other errors, return a more descriptive error with llm_service_error code
+		return 0, apperrors.Wrap(err, "llm_service_error", fmt.Sprintf("scoring with model %s failed", modelName))
 	}
-	
+
 	return score, nil
 }
 

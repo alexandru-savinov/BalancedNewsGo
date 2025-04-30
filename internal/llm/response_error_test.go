@@ -195,8 +195,8 @@ func TestHTTPAPIErrorHandling(t *testing.T) {
 
 	// Should get an error
 	assert.Error(t, err)
-	// The actual error is wrapped in "internal_error: scoring with model test-model failed"
-	assert.Contains(t, err.Error(), "internal_error")
+	// The actual error is wrapped in "llm_service_error: scoring with model test-model failed"
+	assert.Contains(t, err.Error(), "llm_service_error")
 }
 
 // TestAPIErrorResponseHandling tests handling of API error responses in JSON
@@ -250,7 +250,7 @@ func TestErrorRetryLogic(t *testing.T) {
 
 	// Should eventually fail with error after retries
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "internal_error")
+	assert.Contains(t, err.Error(), "llm_service_error")
 }
 
 // Mock retry service is no longer needed as we're testing different retry behavior
