@@ -1,13 +1,13 @@
 # Test Methodology Hierarchy
-Last Updated: April 25, 2025
-Version: 2.1.5
+Last Updated: April 27, 2025
+Version: 2.2.0
 
 ## Metadata
 - **Project**: News Filter Backend
 - **Repository**: newbalancer_go
 - **Test Environment**: Local Development & CI/CD Pipeline
 - **Test Frameworks**: Newman/Postman (Integration), Go Testing (Unit), Playwright (E2E)
-- **Build Status**: Production-Ready
+- **Build Status**: Development
 
 ## Success Criteria
 - Unit Test Coverage: ≥90% (Core Business Logic)
@@ -22,6 +22,7 @@ Version: 2.1.5
   - Cache Hit Rate: >95%
 
 ## Version History
+- v2.2.0 (2025-04-27): Updated with accurate coverage metrics; Added reference to test_coverage_todo.md
 - v2.1.5 (2025-04-25): Updated test metrics and progress; Added cache performance criteria
 - v2.1.4 (2025-04-25): Added comprehensive Git workflow validation suite
 - v2.1.3 (2025-04-22): Fixed article creation validation for extra fields
@@ -31,6 +32,23 @@ Version: 2.1.5
 - v2.0.0 (2025-04-20): Added comprehensive success criteria
 - v1.5.0 (2025-04-15): Integrated performance monitoring
 - v1.0.0 (2025-04-01): Initial test methodology structure
+
+## Current Coverage Status
+
+**Important Note**: Recent coverage measurements show significant discrepancies from previously reported metrics. Please refer to [test_coverage_todo.md](../test_coverage_todo.md) for the detailed and accurate coverage plan with specific implementation tasks.
+
+### Actual Measured Coverage (as of April 27, 2025):
+- Overall Core Coverage: 6.0% (Target: 90%)
+- LLM Module: 41.8% 
+- DB Module: 59.6%
+- API Module: 5.3%
+- RSS Module: 6.9%
+
+These metrics differ significantly from the previous reported coverage metrics and require immediate attention. The detailed action plan is maintained in [test_coverage_todo.md](../test_coverage_todo.md), which provides:
+- Prioritized task list (P0-P3)
+- Links to specific implementation locations
+- Weekly progress goals
+- Command references for coverage checks
 
 ## 1. Infrastructure Setup [Status: IMPLEMENTING]
 _Deliverable: Fully configured test environment with documented setup procedures_
@@ -85,32 +103,38 @@ _Deliverable: Test data management procedures and tools_
 ## 2. Core Testing Layers [Status: IMPLEMENTING]
 _Deliverable: Comprehensive test coverage across all system layers_
 
-### 2.1. Unit Tests [Status: IMPLEMENTING]
+### 2.1. Unit Tests [Status: NEEDS_SIGNIFICANT_WORK]
 _Deliverable: Unit test suite with >90% coverage for core business logic_
-2.1.1. Business Logic Tests [Status: IMPLEMENTING]
+2.1.1. Business Logic Tests [Status: IN_PROGRESS]
        - Deliverable: Complete test coverage for scoring logic
        - Action Items:
-         * Implement missing unit tests for score calculation
-         * Add boundary tests for score ranges
-         * Test score normalization functions
+         * Fix failing database tests (P0 priority)
+         * Complete confidence calculation tests
+         * Implement tests for ComputeCompositeScore function
+         * Test rate limiting and fallback behavior
+         * Add tests for model name handling and edge cases
        - Dependencies: 1.2.1
-       - Priority: HIGH
-2.1.2. Data Layer Tests [Status: IMPLEMENTING]
+       - Priority: CRITICAL
+       - See: [test_coverage_todo.md](../test_coverage_todo.md#critical-path-items-p0)
+2.1.2. Data Layer Tests [Status: IN_PROGRESS]
        - Deliverable: Database operation test coverage
        - Action Items:
-         * Complete transaction tests
-         * Add concurrency test cases
-         * Test cache operations
+         * Fix TestConcurrentInserts and file cleanup issues
+         * Test transaction handling and rollbacks
+         * Test connection pool management
+         * Add tests for different database states
        - Dependencies: 2.1.1
        - Priority: HIGH
-2.1.3. API Handler Tests [Status: IMPLEMENTING]
+       - See: [test_coverage_todo.md](../test_coverage_todo.md#high-priority-items-p1)
+2.1.3. API Handler Tests [Status: NEEDS_IMPLEMENTATION]
        - Deliverable: Handler unit test coverage
        - Action Items:
-         * Add missing handler tests
-         * Test request validation ✅
-         * Test error responses
+         * Add tests for critical API endpoints (Score article, Get articles, SSE progress)
+         * Test error handling and validation
+         * Implement comprehensive mock implementations
        - Dependencies: 2.1.1, 2.1.2
-       - Priority: HIGH
+       - Priority: CRITICAL
+       - See: [test_coverage_todo.md](../test_coverage_todo.md#critical-path-items-p0)
 
 ### 2.2. Integration Tests [Status: IMPLEMENTING]
 _Deliverable: Integration test suite validating component interactions_
@@ -157,217 +181,38 @@ _Deliverable: E2E test suite covering critical user workflows_
        - Dependencies: Production dataset
        - Priority: LOW
 
-## 3. Test Categories [Status: IMPLEMENTING]
-_Deliverable: Categorized test suites for each major functionality_
-
-### 3.1. Git Workflow Tests [Status: IMPLEMENTING]
-_Deliverable: Git workflow validation suite_
-3.1.1. Pre-Change Requirements [Status: DONE]
-       - Deliverable: Git workflow validation tests
-       - Dependencies: None
-       - Test Cases:
-         * Main branch sync validation
-           - git checkout main
-           - git pull origin main
-         * Feature branch creation
-           - git checkout -b feature/branch-name
-         * Clean state verification
-           - git status check
-           - No uncommitted changes
-3.1.2. Change Implementation [Status: IMPLEMENTING]
-       - Deliverable: Change validation suite
-       - Dependencies: 3.1.1
-       - Test Cases:
-         * Local testing requirements
-           - Run unit tests before commit
-           - Run integration tests if API changes
-           - Verify no failing tests
-         * Code review checklist
-           - Documentation updates
-           - Test coverage requirements
-         * Commit message standards
-           - Use conventional commit format
-           - Include ticket reference
-3.1.3. Pre-Push Requirements [Status: IMPLEMENTING]
-       - Deliverable: Push validation suite
-       - Dependencies: 3.1.2
-       - Test Cases:
-         * Staged changes validation
-           - git add relevant-files
-           - Commit message format check
-         * Pre-push test suite
-           - Full test suite execution
-           - No failing tests
-         * Code quality checks
-           - golangci-lint verification
-           - SonarQube analysis
-3.1.4. Pull Request Flow [Status: IMPLEMENTING]
-       - Deliverable: PR workflow test cases
-       - Dependencies: 3.1.3
-       - Test Cases:
-         * PR creation requirements
-           - Up-to-date with main
-           - Passing CI checks
-         * Review process validation
-           - Required approvals
-           - CI/CD pipeline success
-         * Documentation updates
-           - Updated test documentation
-           - Added change notes
-3.1.5. Merge Requirements [Status: IMPLEMENTING]
-       - Deliverable: Merge validation suite
-       - Dependencies: 3.1.4
-       - Test Cases:
-         * Pre-merge checks
-           - No merge conflicts
-           - Up-to-date status
-         * Post-merge validation
-           - Clean branch deletion
-           - Deployment verification
-           - Integration test pass
-
-### 3.2. Article Management Tests [Status: DONE]
-_Deliverable: Article management test suite_
-3.2.1. Creation Validation [Status: DONE]
-       - Deliverable: Article creation test cases (including extra fields validation) ✅
-       - Dependencies: 2.2.1
-3.2.2. Retrieval Tests [Status: DONE]
-       - Deliverable: Article retrieval test cases
-       - Dependencies: 3.2.1
-3.2.3. Update Operations [Status: DONE]
-       - Deliverable: Article update test cases
-       - Dependencies: 3.2.1
-3.2.4. Error Cases [Status: DONE]
-       - Deliverable: Error handling test cases
-       - Dependencies: 3.2.1, 3.2.2, 3.2.3
-
-### 3.3. Scoring System Tests [Status: IMPLEMENTING]
-_Deliverable: Comprehensive scoring system test suite_
-3.3.1. Manual Scoring [Status: DONE]
-       - Deliverable: Manual scoring test cases
-       - Dependencies: 3.2.1
-3.3.2. LLM Rescoring [Status: IMPLEMENTING]
-       - Deliverable: LLM rescoring test cases
-       - Dependencies: 3.3.1
-3.3.3. Boundary Testing [Status: DONE]
-       - Deliverable: Score boundary test cases
-       - Dependencies: 3.3.1
-3.3.4. Progress Monitoring [Status: IMPLEMENTING]
-       - Deliverable: SSE progress monitoring tests
-       - Dependencies: 3.3.2
-
-## 4. Validation Strategies [Status: IMPLEMENTING]
-_Deliverable: Comprehensive validation framework and documentation_
-
-### 4.1. Response Validation [Status: IMPLEMENTING]
-_Deliverable: Response validation test suite and documentation_
-4.1.1. Status Code Verification [Status: IMPLEMENTING]
-       - Deliverable: Unified status code assertion library
-       - Action Items:
-         * Standardize status code checks across all collections
-         * Create shared test scripts for common assertions
-         * Document expected status codes for all endpoints
-         * Fixed 400 status code for invalid article creation payloads ✅
-       - Dependencies: 2.2.1
-4.1.2. Response Structure [Status: IMPLEMENTING]
-       - Deliverable: JSON schema validation suite
-       - Action Items:
-         * Define shared JSON schemas for common responses
-         * Add schema validation to all test cases
-         * Update error response validation
-       - Dependencies: 4.1.1
-4.1.3. Data Type Checking [Status: DONE]
-       - Deliverable: Type validation test cases [See: `/postman/unified_backend_tests.json`]
-       - Dependencies: 4.1.2
-4.1.4. Error Message Format [Status: DONE]
-       - Deliverable: Error format validation suite [See: `/postman/backup/backend_fixes_tests.json`]
-       - Dependencies: 4.1.1, 4.1.2
-
-### 4.2. Data Consistency [Status: IMPLEMENTING]
-_Deliverable: Data consistency validation framework_
-4.2.1. Cache Behavior [Status: NEEDS_IMPLEMENTATION]
-       - Deliverable: Cache validation test suite
-       - Action Items:
-         * Implement cache hit/miss validation tests
-         * Add cache invalidation scenarios
-         * Test cache consistency across requests
-       - Dependencies: 3.2.2
-4.2.2. Database State [Status: NEEDS_EXPANSION]
-       - Deliverable: Enhanced database state validation tools
-       - Action Items:
-         * Add transaction isolation tests
-         * Implement concurrent update tests
-         * Add data integrity validation
-       - Dependencies: 2.2.2
-4.2.3. Cross-Request State [Status: IMPLEMENTING]
-       - Deliverable: Cross-request validation suite
-       - Dependencies: 4.2.1, 4.2.2
-4.2.4. Concurrent Operations [Status: PLANNED]
-       - Deliverable: Concurrency test suite
-       - Dependencies: 4.2.3
-
-### 4.3. Performance Metrics [Status: IMPLEMENTING]
-_Deliverable: Performance monitoring and baseline documentation_
-4.3.1. Response Times [Status: DONE]
-       - Deliverable: [Response time tracking suite](monitoring/prometheus.yml)
-       - Dependencies: 2.2.1
-4.3.2. Resource Usage [Status: IMPLEMENTING]
-       - Deliverable: [Resource monitoring tools](monitoring/grafana-datasources.yml)
-       - Dependencies: 4.3.1
-4.3.3. Cache Effectiveness [Status: IMPLEMENTING]
-       - Deliverable: Cache metrics collection in [monitoring/](monitoring/)
-       - Dependencies: 4.2.1
-4.3.4. API Latency [Status: DONE]
-       - Deliverable: [API latency monitoring suite](monitoring/prometheus.yml)
-       - Dependencies: 4.3.1
-
 ## Test Execution Summary
 - Total Test Cases: 521 (+34 from Git workflow, +12 cache validation)
 - Unit Tests: 312 (59.9%)
 - Integration Tests: 171 (32.8%)
 - E2E Tests: 38 (7.3%)
-- Current Coverage: 96%
 - Target Coverage: 90%
-- Core Business Logic Coverage: 100%
-- Cache Hit Rate: 97.2%
+
+**Note**: Previous reporting of 96% coverage and 100% core business logic coverage was inaccurate. See the [test coverage todo list](../test_coverage_todo.md#progress-tracking) for current accurate measurements and implementation plan.
 
 ## Implementation Progress
-- DONE: 228 items (43.8%)
+- DONE: 45 items (8.6%)
 - IMPLEMENTING: 188 items (36.1%)
-- PLANNED: 92 items (17.7%)
-- POSTPONED: 13 items (2.4%)
+- PLANNED: 275 items (52.8%)
+- POSTPONED: 13 items (2.5%)
 
 ## Revised Critical Path
-1. Complete Unit Tests for Core Business Logic (2.1.1) - 100% Complete ✅
-2. Finish Database Layer Tests (2.1.2) - 100% Complete ✅
-3. Complete API Handler Tests (2.1.3) - 100% Complete ✅
-4. Consolidate Integration Tests (2.2.1) - 95% Complete
-5. Implement LLM Service Integration Tests (2.2.3) - 98% Complete
-6. Basic E2E Test Coverage (2.3.1) - 75% Complete
-7. Git Workflow Validation Suite (3.1) - 85% Complete
-8. Cache Validation Suite (4.2.1) - 60% Complete
+1. Fix Database Tests (High Priority) - [Details](../test_coverage_todo.md#1-fix-database-tests-high-priority)
+2. Complete LLM Module Tests (41.8% → 90%) - [Details](../test_coverage_todo.md#2-llm-module-418-coverage)
+3. Implement API Module Tests (5.3% → 90%) - [Details](../test_coverage_todo.md#3-api-module-53-coverage)
+4. Enhance Database Module Tests (59.6% → 90%) - [Details](../test_coverage_todo.md#1-database-module-596-coverage)
+5. Develop RSS Module Tests (6.9% → 90%) - [Details](../test_coverage_todo.md#2-rss-module-69-coverage)
+6. Set Up Test Infrastructure Improvements - [Details](../test_coverage_todo.md#3-test-infrastructure-improvements)
+7. Complete Integration Testing - [Details](../test_coverage_todo.md#1-integration-testing)
+8. Implement Other Test Categories - [Details](../test_coverage_todo.md#medium-priority-items-p2)
 
-## Recent Completions
-1. LLM Service Integration
-   - SSE progress monitoring implementation
-   - Error scenario coverage
-   - Performance benchmarking
-   - Retry logic validation
+See [Weekly Coverage Progress Goals](../test_coverage_todo.md#weekly-coverage-progress-goals) for the detailed implementation timeline.
 
-2. Cache Layer Testing
-   - Hit/miss ratio monitoring
-   - Invalidation scenarios
-   - Cross-request consistency
-   - Performance impact analysis
+## Recent Findings
+1. Significant discrepancy between reported and actual test coverage
+2. Database test failures related to connection cleanup and resource management
+3. Critical gaps in API endpoint testing
+4. LLM confidence calculation tests incomplete
+5. RSS module needs comprehensive testing
 
-3. E2E Test Infrastructure
-   - Playwright configuration
-   - Basic workflow automation
-   - Test data management
-   - CI/CD integration
-
-4. Documentation Updates
-   - Test coverage metrics
-   - Implementation status
-   - Cache performance criteria
-   - Error handling guidelines
+For the complete and detailed test implementation plan, please reference [test_coverage_todo.md](../test_coverage_todo.md).

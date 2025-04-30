@@ -115,6 +115,81 @@ func TestExtractConfidence(t *testing.T) {
 			expectedConf: 0.5,
 			description:  "Tests boundary confidence values",
 		},
+		{
+			name: "deep nested confidence",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"analysis": {"metrics": {"confidence": 0.75}}}`},
+			},
+			expectedConf: 0.0,
+			description:  "Tests deeply nested confidence value (not supported)",
+		},
+		{
+			name: "confidence with scientific notation",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"confidence": 9.5e-01}`},
+			},
+			expectedConf: 0.95,
+			description:  "Tests scientific notation for confidence value",
+		},
+		{
+			name: "mixed confidence formats",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.8}`},
+				{Model: "right", Score: -0.3, Metadata: `{"confidence": "invalid"}`},
+				{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.6}`},
+			},
+			expectedConf: 0.4667,
+			description:  "Tests mixed valid and invalid confidence formats",
+		},
+		{
+			name: "multiple perspectives with different confidences",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
+				{Model: "right", Score: -0.7, Metadata: `{"confidence": 0.8}`},
+				{Model: "center", Score: 0.1, Metadata: `{"confidence": 0.7}`},
+			},
+			expectedConf: 0.8,
+			description:  "Tests multiple perspectives with different confidence values",
+		},
+		{
+			name: "null confidence value",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"confidence": null}`},
+			},
+			expectedConf: 0.0,
+			description:  "Tests null confidence value",
+		},
+		{
+			name: "missing confidence field",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"other_field": 0.9}`},
+			},
+			expectedConf: 0.0,
+			description:  "Tests missing confidence field",
+		},
+		{
+			name: "inconsistent perspectives",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
+				{Model: "unknown", Score: 0.3, Metadata: `{"confidence": 0.7}`},
+			},
+			expectedConf: 0.9,
+			description:  "Tests unknown perspective handling",
+		},
+		{
+			name:         "no scores",
+			scores:       []db.LLMScore{},
+			expectedConf: 0.0,
+			description:  "Tests empty scores array",
+		},
+		{
+			name: "confidence objects instead of values",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.5, Metadata: `{"confidence": {"value": 0.9, "source": "model"}}`},
+			},
+			expectedConf: 0.0,
+			description:  "Tests complex confidence objects",
+		},
 	}
 
 	for _, tt := range tests {
@@ -124,4 +199,100 @@ func TestExtractConfidence(t *testing.T) {
 			assert.InDelta(t, tt.expectedConf, conf, 0.001, tt.description)
 		})
 	}
+}
+
+func TestConfidenceCalculationWithLimitedPerspectives(t *testing.T) {
+	cfg := &llm.CompositeScoreConfig{
+		MinScore:       -1.0,
+		MaxScore:       1.0,
+		DefaultMissing: 0.0,
+	}
+	calc := &llm.DefaultScoreCalculator{Config: cfg}
+
+	scores := []db.LLMScore{
+		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.85}`},
+	}
+
+	_, conf, err := calc.CalculateScore(scores)
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.85, conf, 0.001, "Confidence should be 0.85 with just left perspective")
+
+	scores = []db.LLMScore{
+		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.85}`},
+		{Model: "center", Score: 0.1, Metadata: `{"confidence": 0.75}`},
+	}
+
+	_, conf, err = calc.CalculateScore(scores)
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.8, conf, 0.001, "Confidence should be average of available perspectives")
+}
+
+func TestConfidenceInheritance(t *testing.T) {
+	cfg := &llm.CompositeScoreConfig{
+		MinScore:       -1.0,
+		MaxScore:       1.0,
+		DefaultMissing: 0.0,
+	}
+	calc := &llm.DefaultScoreCalculator{Config: cfg}
+
+	scores := []db.LLMScore{
+		{Model: "left", Score: 0.3, Metadata: `{"confidence": 0.6}`},
+		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
+	}
+
+	_, conf, err := calc.CalculateScore(scores)
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.9, conf, 0.001, "Should use confidence from latest left score")
+
+	scores = []db.LLMScore{
+		{Model: "left-leaning", Score: 0.3, Metadata: `{"confidence": 0.6}`},
+		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
+	}
+
+	_, conf, err = calc.CalculateScore(scores)
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.9, conf, 0.001, "Should use confidence from latest model for same perspective")
+}
+
+func TestConfidenceCalculationWithNilConfig(t *testing.T) {
+	calc := &llm.DefaultScoreCalculator{Config: nil}
+
+	scores := []db.LLMScore{
+		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.85}`},
+	}
+
+	_, _, err := calc.CalculateScore(scores)
+	assert.Error(t, err, "Should return error when Config is nil")
+	assert.Contains(t, err.Error(), "Config must not be nil", "Error message should mention nil Config")
+}
+
+func TestConfidenceCalculationWithExtremeValues(t *testing.T) {
+	cfg := &llm.CompositeScoreConfig{
+		MinScore:       -1.0,
+		MaxScore:       1.0,
+		DefaultMissing: 0.0,
+	}
+	calc := &llm.DefaultScoreCalculator{Config: cfg}
+
+	scores := []db.LLMScore{
+		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.0000001}`},
+		{Model: "right", Score: -0.5, Metadata: `{"confidence": 0.0000002}`},
+	}
+
+	_, conf, err := calc.CalculateScore(scores)
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.00000015, conf, 0.0000001, "Should handle extremely small confidence values")
+
+	largeScores := make([]db.LLMScore, 1000)
+	for i := 0; i < 1000; i++ {
+		largeScores[i] = db.LLMScore{
+			Model:    "left",
+			Score:    0.5,
+			Metadata: `{"confidence": 0.9}`,
+		}
+	}
+
+	_, conf, err = calc.CalculateScore(largeScores)
+	assert.NoError(t, err)
+	assert.InDelta(t, 0.9, conf, 0.001, "Should handle large number of scores")
 }

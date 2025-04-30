@@ -1,22 +1,8 @@
 {
     "swagger": "2.0",
     "info": {
-        "description": "API for the NewsBalancer application which analyzes political bias in news articles using LLM models",
-        "title": "NewsBalancer API",
-        "termsOfService": "http://swagger.io/terms/",
-        "contact": {
-            "name": "NewsBalancer Support",
-            "url": "https://github.com/alexandru-savinov/BalancedNewsGo",
-            "email": "support@newsbalancer.example"
-        },
-        "license": {
-            "name": "MIT",
-            "url": "https://opensource.org/licenses/MIT"
-        },
-        "version": "1.0"
+        "contact": {}
     },
-    "host": "localhost:8080",
-    "basePath": "/api",
     "paths": {
         "/api/articles/{id}/ensemble": {
             "get": {
@@ -799,7 +785,7 @@
         "db.Article": {
             "type": "object",
             "properties": {
-                "compositeScore": {
+                "composite_score": {
                     "type": "number"
                 },
                 "confidence": {
@@ -808,31 +794,19 @@
                 "content": {
                     "type": "string"
                 },
-                "createdAt": {
+                "created_at": {
                     "type": "string"
-                },
-                "escalated": {
-                    "type": "boolean"
-                },
-                "failCount": {
-                    "type": "integer"
                 },
                 "id": {
                     "type": "integer"
                 },
-                "lastAttempt": {
+                "pub_date": {
                     "type": "string"
                 },
-                "pubDate": {
-                    "type": "string"
-                },
-                "scoreSource": {
+                "score_source": {
                     "type": "string"
                 },
                 "source": {
-                    "type": "string"
-                },
-                "status": {
                     "type": "string"
                 },
                 "title": {

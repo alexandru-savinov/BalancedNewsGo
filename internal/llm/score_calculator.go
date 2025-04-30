@@ -92,6 +92,7 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 
 		val := s.Score
 		if isInvalid(val) || val < c.Config.MinScore || val > c.Config.MaxScore {
+			// Set out of range scores to 0.0 per test expectations
 			val = 0.0
 		}
 		scoreMap[perspective] = &val
@@ -100,31 +101,34 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 		confMap[perspective] = &conf
 	}
 
-	sum := 0.0
+	// Calculate average score and confidence
+	validScores := 0
+	validConfs := 0
+	scoreSum := 0.0
 	confSum := 0.0
-	count := 0
-	confCount := 0
+
 	for _, p := range perspectives {
 		if scoreMap[p] != nil {
-			sum += *scoreMap[p]
-			count++
+			scoreSum += *scoreMap[p]
+			validScores++
 		}
+
 		if confMap[p] != nil {
 			confSum += *confMap[p]
-			confCount++
+			validConfs++
 		}
 	}
 
-	var avgScore, avgConf float64
-	if count > 0 {
-		avgScore = sum / float64(count)
-	} else {
-		avgScore = 0.0
+	// Calculate averages based on valid values
+	var avgScore float64
+	var avgConf float64
+
+	if validScores > 0 {
+		avgScore = scoreSum / float64(validScores)
 	}
-	if confCount > 0 {
-		avgConf = confSum / float64(confCount)
-	} else {
-		avgConf = 0.0
+
+	if validConfs > 0 {
+		avgConf = confSum / float64(validConfs)
 	}
 
 	return avgScore, avgConf, nil

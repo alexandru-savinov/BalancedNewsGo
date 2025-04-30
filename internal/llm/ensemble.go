@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,40 +71,21 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 			if errorField, ok := genericResponse["error"].(map[string]interface{}); ok {
 				if message, msgOK := errorField["message"].(string); msgOK && message != "" {
 					errType, _ := errorField["type"].(string)
-					errCode, _ := errorField["code"].(interface{})
-					isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", errCode) == "429"
+					codeVal := errorField["code"]
+					isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", codeVal) == "429"
 
 					if isRateLimit {
 						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded rate limit: %s", articleID, modelName, promptHash, message)
 						lastErr = ErrBothLLMKeysRateLimited // Use sentinel error
 					} else {
 						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded API error: %s", articleID, modelName, promptHash, message)
-						lastErr = fmt.Errorf("API error: %s (type: %s, code: %v)", message, errType, errCode)
+						lastErr = fmt.Errorf("API error: %s (type: %s, code: %v)", message, errType, codeVal)
 					}
 					continue // Skip parsing, retry loop
 				}
 			}
 		}
 		// --- END INSERTED: Check for embedded error structure ---
-
-		// Original error handling block (seems redundant now, but keeping for safety?)
-		// This block seems to check the 'err' from callLLMAPIWithKey, which we already handled above.
-		// Let's comment it out for now as the embedded error check should cover it.
-		/*
-			if err != nil { // This 'err' is from line 66, already checked on line 67
-				rawSnippet := rawResp
-				if len(rawSnippet) > 200 {
-					rawSnippet = rawSnippet[:200] + "..."
-				}
-				log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | API error: %v | Raw response: %s", articleID, modelName, promptHash, err, rawSnippet)
-				if articleID == 133 {
-					log.Printf("[DEBUG][Article 133] API error: %v", err)
-					log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
-				}
-				lastErr = err
-				continue
-			}
-		*/
 
 		var parseErr error
 		// Use the renamed parser for nested JSON expected in this ensemble context
@@ -139,10 +121,10 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 
 // Removed callOpenAIAPI as it's replaced by direct use of httpService.callLLMAPI
 
-// parseLLMResponse extracts score, explanation, confidence from raw response
 // parseNestedLLMJSONResponse extracts score, explanation, confidence from a raw response
 // where the LLM is expected to return a JSON string *within* the main content field
-// (e.g., {"choices":[{"message":{"content":"{\"score\":...}"}}]}).
+// (e.g., {"choices":[{"message":{"content":"{\"score\":...}"}}]}), or in text format
+// with patterns like "Score: X.X" and "Confidence: X.X".
 func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error) {
 	// Step 1: Parse the OpenAI API response JSON
 	var apiResp struct {
@@ -163,27 +145,60 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 	// Step 2: Extract the content string
 	contentStr := apiResp.Choices[0].Message.Content
 
-	// Add robust backtick stripping
-	re := regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)\\s*```") // Matches ```json ... ``` or ``` ... ```
-	matches := re.FindStringSubmatch(contentStr)
-	if len(matches) >= 2 {
-		contentStr = strings.TrimSpace(matches[1]) // Use the captured group
-	} else {
-		// Log if no backticks were found or regex failed
-	}
-
-	// Step 3: Parse the content string as JSON with score, explanation, confidence
+	// Step 3: First try to parse as JSON
+	// Try JSON format first (with or without backticks)
 	var innerResp struct {
 		Score       float64 `json:"score"`
 		Explanation string  `json:"explanation"`
 		Confidence  float64 `json:"confidence"`
 	}
-	err = json.Unmarshal([]byte(contentStr), &innerResp)
-	if err != nil {
-		return 0, "", 0, fmt.Errorf("error parsing inner content JSON: %w", err)
+
+	// Add robust backtick stripping
+	re := regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)\\s*```") // Matches ```json ... ``` or ``` ... ```
+	matches := re.FindStringSubmatch(contentStr)
+	if len(matches) >= 2 {
+		contentStr = strings.TrimSpace(matches[1]) // Use the captured group
 	}
 
-	return innerResp.Score, innerResp.Explanation, innerResp.Confidence, nil
+	// Try to parse as JSON
+	if err = json.Unmarshal([]byte(contentStr), &innerResp); err == nil {
+		// Successfully parsed as JSON
+		return innerResp.Score, innerResp.Explanation, innerResp.Confidence, nil
+	}
+
+	// Step 4: If JSON parsing fails, try to extract values using regex patterns
+	// Extract score with regex
+	scoreRegex := regexp.MustCompile(`Score: (-?\d+\.?\d*)`)
+	scoreMatches := scoreRegex.FindStringSubmatch(contentStr)
+	if len(scoreMatches) < 2 {
+		return 0, "", 0, fmt.Errorf("error parsing inner content JSON: %w", err)
+	}
+	score, err := strconv.ParseFloat(scoreMatches[1], 64)
+	if err != nil {
+		return 0, "", 0, fmt.Errorf("invalid score format: %w", err)
+	}
+
+	// Extract confidence with regex
+	confidenceRegex := regexp.MustCompile(`Confidence: (\d+\.?\d*)`)
+	confidenceMatches := confidenceRegex.FindStringSubmatch(contentStr)
+	if len(confidenceMatches) < 2 {
+		// Default confidence if not found
+		return score, "Extracted from text response", 0.5, nil
+	}
+	confidence, err := strconv.ParseFloat(confidenceMatches[1], 64)
+	if err != nil {
+		return 0, "", 0, fmt.Errorf("invalid confidence format: %w", err)
+	}
+
+	// Extract reasoning or explanation
+	explanation := "Extracted from text response"
+	reasoningRegex := regexp.MustCompile(`Reasoning: (.+)`)
+	reasoningMatches := reasoningRegex.FindStringSubmatch(contentStr)
+	if len(reasoningMatches) >= 2 {
+		explanation = reasoningMatches[1]
+	}
+
+	return score, explanation, confidence, nil
 }
 
 // EnsembleAnalyze performs multi-model, multi-prompt ensemble analysis
