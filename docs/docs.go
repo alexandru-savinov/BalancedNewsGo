@@ -9,16 +9,7 @@ const docTemplate = `{
     "info": {
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
-        "termsOfService": "http://swagger.io/terms/",
-        "contact": {
-            "name": "NewsBalancer Support",
-            "url": "https://github.com/alexandru-savinov/BalancedNewsGo",
-            "email": "support@newsbalancer.example"
-        },
-        "license": {
-            "name": "MIT",
-            "url": "https://opensource.org/licenses/MIT"
-        },
+        "contact": {},
         "version": "{{.Version}}"
     },
     "host": "{{.Host}}",
@@ -805,7 +796,7 @@ const docTemplate = `{
         "db.Article": {
             "type": "object",
             "properties": {
-                "compositeScore": {
+                "composite_score": {
                     "type": "number"
                 },
                 "confidence": {
@@ -814,31 +805,19 @@ const docTemplate = `{
                 "content": {
                     "type": "string"
                 },
-                "createdAt": {
+                "created_at": {
                     "type": "string"
-                },
-                "escalated": {
-                    "type": "boolean"
-                },
-                "failCount": {
-                    "type": "integer"
                 },
                 "id": {
                     "type": "integer"
                 },
-                "lastAttempt": {
+                "pub_date": {
                     "type": "string"
                 },
-                "pubDate": {
-                    "type": "string"
-                },
-                "scoreSource": {
+                "score_source": {
                     "type": "string"
                 },
                 "source": {
-                    "type": "string"
-                },
-                "status": {
                     "type": "string"
                 },
                 "title": {
@@ -854,12 +833,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
-	Host:             "localhost:8080",
-	BasePath:         "/api",
+	Version:          "",
+	Host:             "",
+	BasePath:         "",
 	Schemes:          []string{},
-	Title:            "NewsBalancer API",
-	Description:      "API for the NewsBalancer application which analyzes political bias in news articles using LLM models",
+	Title:            "",
+	Description:      "",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
