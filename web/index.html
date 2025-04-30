@@ -40,16 +40,16 @@
                     }
                     let articlesHtml = '';
                     for (const article of articles) {
-                        // Extract article properties with fallbacks
+                        // Extract article properties with fallbacks (use backend field names)
                         const articleId = article.id || article.article_id || 'N/A';
-                        const articleTitle = article.title || 'Untitled';
-                        const articleUrl = article.url || '#';
-                        const articleSource = article.source || 'N/A';
-                        const articleContent = article.content || 'No content available.';
-                        const pubDate = article.pub_date ? new Date(article.pub_date).toLocaleString() : 'N/A';
-                        const createdAt = article.created_at ? new Date(article.created_at).toLocaleString() : 'N/A';
-                        const compositeScore = article.composite_score !== undefined ? article.composite_score : null;
-                        const confidence = article.confidence !== undefined ? article.confidence : null;
+                        const articleTitle = article.Title || article.title || 'Untitled';
+                        const articleUrl = article.URL || article.url || '#';
+                        const articleSource = article.Source || article.source || 'N/A';
+                        const articleContent = article.Content || article.content || 'No content available.';
+                        const pubDate = article.PubDate ? new Date(article.PubDate).toLocaleString() : (article.pub_date ? new Date(article.pub_date).toLocaleString() : 'N/A');
+                        const createdAt = article.CreatedAt ? new Date(article.CreatedAt).toLocaleString() : (article.created_at ? new Date(article.created_at).toLocaleString() : 'N/A');
+                        const compositeScore = article.CompositeScore !== undefined ? article.CompositeScore : (article.composite_score !== undefined ? article.composite_score : null);
+                        const confidence = article.Confidence !== undefined ? article.Confidence : (article.confidence !== undefined ? article.confidence : null);
 
                         articlesHtml += `
 <article aria-label="News article" data-article-id="${articleId}">
