@@ -2,7 +2,6 @@ package rss
 
 import (
 	"log"
-	"net/url"
 	"strings"
 	"time"
 
@@ -209,24 +208,18 @@ func isValidItem(item *gofeed.Item) bool {
 }
 
 // CheckFeedHealth checks connectivity and format for each feed source.
-func (c *Collector) CheckFeedHealth() map[string]string {
-	results := make(map[string]string)
+func (c *Collector) CheckFeedHealth() map[string]bool {
+	results := make(map[string]bool)
 	parser := gofeed.NewParser()
 
 	for _, feedURL := range c.FeedURLs {
 		_, err := parser.ParseURL(feedURL)
 		if err != nil {
-			// Distinguish between connectivity and format errors if possible
-			if urlErr, ok := err.(*url.Error); ok {
-				results[feedURL] = "Connectivity error: " + urlErr.Error()
-				log.Printf("[RSS][Health] %s - Connectivity error: %v", feedURL, urlErr)
-			} else {
-				results[feedURL] = "Format error: " + err.Error()
-				log.Printf("[RSS][Health] %s - Format error: %v", feedURL, err)
-			}
+			results[feedURL] = false
+			log.Printf("[RSS][Health] %s - Error: %v", feedURL, err)
 			continue
 		}
-		results[feedURL] = "OK"
+		results[feedURL] = true
 		log.Printf("[RSS][Health] %s - OK", feedURL)
 	}
 	return results
