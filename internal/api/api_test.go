@@ -65,6 +65,7 @@ func (m *MockDBOperations) GetArticleByID(ctx context.Context, id int64) (*db.Ar
 }
 
 // FetchArticleByID mocks the DBOperations.FetchArticleByID method
+// This is intentionally similar to GetArticleByID for test compatibility.
 func (m *MockDBOperations) FetchArticleByID(ctx context.Context, id int64) (*db.Article, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
@@ -1190,4 +1191,96 @@ func TestGetArticleByIDHandlerWithDB(t *testing.T) {
 	w = httptest.NewRecorder()
 	rError.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestErrorHandlingAndValidation_AllEndpoints(t *testing.T) {
+	router := setupTestRouter(&MockDBOperations{})
+
+	t.Run("CreateArticle_MissingFields", func(t *testing.T) {
+		body := `{"source": "src"}`
+		req, _ := http.NewRequest("POST", articlesEndpoint, bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Missing required fields")
+	})
+
+	t.Run("CreateArticle_ExtraFields", func(t *testing.T) {
+		body := `{"source":"src","pub_date":"2022-01-01T00:00:00Z","url":"http://good","title":"t","content":"c","extra":"field"}`
+		req, _ := http.NewRequest("POST", articlesEndpoint, bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("ManualScore_MalformedJSON", func(t *testing.T) {
+		body := `{"score":0.5,`
+		req, _ := http.NewRequest("POST", strings.Replace(manualScoreEndpoint, ":id", "1", 1), bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("ManualScore_MissingScoreField", func(t *testing.T) {
+		body := `{}`
+		req, _ := http.NewRequest("POST", strings.Replace(manualScoreEndpoint, ":id", "1", 1), bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("ManualScore_ExtraFields", func(t *testing.T) {
+		body := `{"score":0.5,"extra":1}`
+		req, _ := http.NewRequest("POST", strings.Replace(manualScoreEndpoint, ":id", "1", 1), bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("ManualScore_OutOfRange", func(t *testing.T) {
+		body := `{"score":2.0}`
+		req, _ := http.NewRequest("POST", strings.Replace(manualScoreEndpoint, ":id", "1", 1), bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("Feedback_MissingFields", func(t *testing.T) {
+		body := `{"user_id":"u"}`
+		req, _ := http.NewRequest("POST", feedbackEndpoint, bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("Feedback_InvalidCategory", func(t *testing.T) {
+		body := `{"article_id":1,"user_id":"testuser","feedback_text":"test feedback","category":"invalid"}`
+		req, _ := http.NewRequest("POST", feedbackEndpoint, bytes.NewBuffer([]byte(body)))
+		req.Header.Set(contentTypeKey, contentTypeJSON)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "Invalid category")
+	})
+
+	t.Run("GetArticles_InvalidLimit", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", articlesEndpoint+"?limit=bad", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("GetArticles_InvalidOffset", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", articlesEndpoint+"?offset=-1", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
 }

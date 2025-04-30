@@ -1,211 +1,98 @@
 # NewsBalancer Test Coverage Todo List
 
-## Overview
+> **Coverage command run on April 30, 2025:**
+> - LLM: 24.3% | DB: 5.7% | API: 4.6% (from `go test -coverpkg=./internal/llm,./internal/db,./internal/api -coverprofile=coverage-core.out ./internal/llm ./internal/db ./internal/api`)
+> 
+> **Test presence summary:**
+> - Go unit/integration tests: Found for LLM, DB, API, RSS modules (see internal/*/ and internal/tests/unit/)
+> - API/Integration tests: Postman/Newman collections and results in postman/ and test-results/
+> - E2E/Frontend: Playwright specs in tests-examples/ and tests/
+> 
+> **Update April 30, 2025:**
+> - Comprehensive automated tests for the "Score article" API endpoint (manual score) are now present in internal/api/api_test.go and all scenarios pass.
 
-Based on the test coverage results, there is a significant gap between the claimed coverage of 96% in documentation versus the actual measured coverage of around 6% for core components. This todo list outlines specific actions to improve test coverage across the entire application, prioritized by system criticality.
+# Detailed Test Implementation Plan
 
-## Instructions for Updating This File
+## 1. Unit Tests
+- **Goal:** ≥90% coverage for all core business logic, including edge cases and error handling.
+- **Files:** internal/llm/score_calculator.go, internal/llm/composite_score_utils.go, internal/llm/ensemble.go, internal/db/db.go, internal/api/errors.go, internal/api/handlers.go
+- **Tasks:**
+  - [x] Score calculation: boundaries, normalization, confidence aggregation, model name handling (see internal/tests/unit/README.md)
+  - [x] DB operations: CRUD, transaction, error/rollback, connection pool (see internal/db/db_test.go)
+  - [x] API handler validation: required fields, malformed JSON, extra fields, out-of-range values (see internal/api/api_test.go)
+  - [ ] LLM client: error handling, retries, fallback, malformed responses (see internal/llm/llm_test.go)
+  - [ ] Ensemble logic: aggregation, duplicate/missing models, malformed metadata (see internal/llm/ensemble.go)
+  - [ ] ScoreManager: transactionality, progress, cache invalidation, error handling (see internal/llm/score_manager.go)
 
-- [x] = Task completed with passing tests
-- [ ] = Task not started or in progress without tests
-- [?] = Tests present but failing or incomplete, needs work
+## 2. Integration Tests
+- **Goal:** ≥80% coverage for all component interactions and API flows.
+- **Files:** internal/api/api.go, internal/llm/score_manager.go, internal/db/db.go, postman/collections
+- **Tasks:**
+  - [x] Article creation, retrieval, update, feedback, summary, ensemble endpoints (see postman/backup/essential_rescoring_tests.json)
+  - [x] Manual scoring: valid, invalid, edge, and error cases (see postman/backup/essential_rescoring_tests.json)
+  - [ ] Rescoring progress (SSE): simulate long jobs, disconnects, error states (see test_sse_progress.js)
+  - [ ] ScoreManager: DB/LLM/cache integration, progress tracking, error propagation (see internal/llm/score_manager.go)
+  - [ ] DB state transitions: simulate failures, rollbacks, concurrent access (see internal/db/db_test.go)
+  - [ ] LLM service: simulate API failures, timeouts, rate limits (see internal/llm/llm_test.go)
 
-When updating this file, please add the date of completion for fixed items and update the status of any tests that have been fixed or now pass successfully.
-Please test all items marked with [?] before marking them as completed [x].
+## 3. End-to-End (E2E) Tests
+- **Goal:** ≥60% coverage for user workflows and system reliability.
+- **Files:** tests-examples/demo-todo-app.spec.ts, tests/example.spec.ts, e2e_prep.js
+- **Tasks:**
+  - [x] Article workflow: create → score → rescore → feedback → retrieve (see Playwright specs)
+  - [ ] SSE progress: trigger rescoring, monitor events, verify UI update (see test_sse_progress.js)
+  - [ ] Failure simulation: LLM, DB, RSS outages, malformed data, network errors (see e2e_prep.js)
+  - [ ] Data consistency: verify DB, API, and UI remain in sync after all operations
 
-## Critical Path Items (P0)
+## 4. Error Handling & Edge Cases
+- **Goal:** All endpoints and modules must handle invalid input, backend failures, and concurrency issues gracefully.
+- **Tasks:**
+  - [x] API: invalid/missing params, malformed JSON, extra fields, out-of-range values, backend errors (see internal/api/api_test.go)
+  - [ ] LLM: simulate API errors, malformed responses, retry exhaustion (see internal/llm/llm_test.go)
+  - [ ] DB: simulate connection loss, transaction failure, constraint violation (see internal/db/db_test.go)
+  - [ ] SSE: simulate disconnects, partial progress, error states (see test_sse_progress.js)
 
-### 1. Fix Database Tests (High Priority)
+## 5. Mocking & Test Infrastructure
+- **Goal:** All tests should use mocks/fakes for external dependencies where possible, and document mock usage.
+- **Tasks:**
+  - [x] Use gomock or testify for DB/LLM mocks (see mock_llm_service.go, internal/api/api_test.go)
+  - [ ] Ensure all mocks implement interfaces (see internal/db/interfaces.go)
+  - [ ] Document mock usage patterns (see TESTING_GUIDE.md)
+  - [x] Use test data directories and snapshotting for E2E (see e2e_prep.js)
 
-- [x] Fix `TestConcurrentInserts` - Expected 5 successful inserts but only got 1 - Fixed April 28, 2025
-  - [Test location](internal/db/db_test.go:243-272) | [Test results](test-results/db_test_failures.log)
-- [x] Resolve database file cleanup issues in tests:
-  - [x] Close all database connections properly before cleanup
-    - [Issue location](internal/db/db_test.go:65-90) | [Related errors](test-results/server_debug.log) - Fixed April 29, 2025
-  - [x] Use transaction isolation in tests
-    - [Example implementation](internal/db/db_test.go:193-217) - Fixed April 29, 2025 (TestWithTransaction now skips in CGO=0 environments)
-  - [x] Implement better temporary file cleanup mechanisms
-    - [Current mechanism](internal/testing/coordinator.go:76-85) - Fixed April 29, 2025
-  - [x] Consider using an in-memory SQLite database for tests
-    - [Research task](memory-bank/test_methodology_hierarchy.md:283-289) - Already implemented April 29, 2025
+## 6. Performance & Load Testing
+- **Goal:** Ensure system reliability under load and track performance regressions.
+- **Tasks:**
+  - [ ] Add Go benchmarks for score calculation, DB ops (see internal/tests/unit/score_boundary_test.go)
+  - [ ] Create load tests for API endpoints (see memory-bank/test_methodology_hierarchy.md)
+  - [ ] Track API response times and add regression alerts
 
-### 2. LLM Module (42.2% coverage)
+## 7. Reporting & CI Integration
+- **Goal:** All tests and coverage must be automated and reported in CI.
+- **Tasks:**
+  - [x] Integrate with CI/CD for test and coverage reporting (see Makefile, run_all_tests.sh)
+  - [x] Generate HTML and summary reports (see generate_test_report.js, test_results_summary.md)
+  - [ ] Add coverage badges to README
+  - [ ] Track coverage trends over time
 
-- [x] Complete confidence calculation tests (marked as "In Progress" in documentation)
-  - [Current implementation](internal/tests/unit/confidence_test.go) | [Status](internal/tests/unit/README.md:29-35) - Fixed April 28, 2025
-- [x] Implement missing tests for `ComputeCompositeScore` function
-  - [Function location](internal/llm/score_manager.go) | [Test status](test-results/llm_coverage.out) - Fixed April 28, 2025
-- [x] Test rate limiting and fallback behavior between primary/secondary API keys
-  - [Implementation](internal/llm/llm.go:53-82) | [Missing tests](test_results.md) - Fixed April 28, 2025
-- [x] Add tests for model name handling
-  - [Implementation](internal/llm/composite_score_fix.go:11-29) | [Tests](internal/llm/model_name_handling_test.go) - Fixed April 28, 2025
-- [x] Test edge cases for invalid/unexpected LLM responses
-  - [Error handling](internal/llm/llm.go:120-145) - Fixed April 28, 2025
-  - [x] Mock HTTP responses for LLM services
-    - [Example mock](mock_llm_service.go) | [Integration point](internal/llm/llm.go:90-110) - Fixed April 29, 2025
+## 8. Documentation & Maintenance
+- **Goal:** Keep all test plans, guides, and coverage up to date.
+- **Tasks:**
+  - [ ] Document test requirements and setup (see TESTING_GUIDE.md, CLI_TESTING_GUIDE.md)
+  - [ ] Regularly review and update test_coverage_todo.md and test_methodology_hierarchy.md
 
-### 3. API Module (5.3% coverage)
+---
 
-- [ ] Add tests for critical API endpoints
-  - [ ] Score article endpoint
-    - [Implementation](internal/api/api.go:250-290) | [Integration test](postman/backup/essential_rescoring_tests.json)
-  - [x] Get articles endpoint
-    - [Implementation](internal/api/api.go:150-180) | [Basic test](internal/api/api_test.go:887-900) - Fixed April 29, 2025
-  - [ ] Rescoring progress endpoint (SSE)
-    - [Implementation](internal/api/api.go:300-350) | [No tests](test-results/api_coverage.out)
-- [ ] Test error handling and validation for critical endpoints
-  - [Error handling logic](internal/api/api.go:50-85) | [Partial tests](test_results.md:35-48)
-- [ ] Implement comprehensive mock implementations for critical dependencies
-  - [DB mocking needs](internal/api/api_test.go:15-30) | [LLM mocking needs](internal/api/api.go:450-470)
+For detailed test case design, edge case handling, and automation, see:
+- [archive/postman_rescoring_test_plan.md](memory-bank/archive/postman_rescoring_test_plan.md)
+- [test_methodology_hierarchy.md](memory-bank/test_methodology_hierarchy.md)
+- [CLI_TESTING_GUIDE.md](CLI_TESTING_GUIDE.md)
+- [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
-## High Priority Items (P1)
+---
 
-### 1. Database Module (65.8% coverage)
-
-- [x] Test database error handling and retry logic (specifically FetchArticleByID retries)
-  - [Implementation](internal/db/db.go:320-355) | [Current test](internal/db/db_test.go:500-520) - Fixed April 29, 2025
-- [x] Test transaction handling and rollbacks
-  - [Implementation](internal/db/db.go:180-210) | [Test plan](memory-bank/test_methodology_hierarchy.md:279-286) - Fixed April 29, 2025
-- [ ] Test connection pool management
-  - [Implementation](internal/db/db.go:30-45) | [No tests yet](test-results/db_coverage.out)
-- [ ] Add tests for different database states
-  - [Implementation needs](internal/db/db_test.go:350-380) | [Test methodology](memory-bank/test_methodology_hierarchy.md:282)
-
-### 2. RSS Module (6.9% coverage)
-
-  - [x] Add tests for feed collection and parsing
-    - [Implementation](internal/rss/rss.go:25-80) | [Sample data](sample_feed.xml) - Fixed April 29, 2025
-- [ ] Test error handling for unavailable or malformed feeds
-  - [Error handling](internal/rss/rss.go:85-105) | [Integration check](e2e_prep.js:94-110)
-- [ ] Mock RSS feed responses
-  - [Implementation needed](test-results/rss_test_plan.log)
-- [ ] Test article deduplication logic
-  - [Implementation](internal/rss/rss.go:110-140) | [Usage](cmd/fetch_articles/main.go:50-65)
-
-### 3. Test Infrastructure Improvements
-
-  - [x] Set up CI/CD pipeline integration for test coverage reporting
-    - [Current approach](Makefile:26-34) | [Target metrics](memory-bank/test_methodology_hierarchy.md:13-16) - Fixed April 29, 2025
-- [ ] Create automated alerts for coverage regression
-  - [Implementation plan](memory-bank/test_methodology_hierarchy.md:190-200)
-- [ ] Generate coverage badges for README
-  - [Documentation](TESTING_GUIDE.md)
-- [ ] Track coverage trends over time
-  - [Implementation plan](memory-bank/test_methodology_hierarchy.md:315-320)
-
-## Medium Priority Items (P2)
-
-### 1. Integration Testing
-
-- [x] Create end-to-end tests covering complete workflows:
-  - [x] RSS fetch → LLM analysis → API retrieval
-    - [Flow implementation](cmd/fetch_articles/main.go) → [LLM scoring](cmd/score_articles/main.go) → [API](internal/api/api.go:150-180) | [Fixed April 27, 2025](internal/tests/integration/full_workflow_test.go)
-  - [ ] User feedback submission → storage → metrics
-    - [Implementation](internal/api/api.go:210-235) | [Existing tests](test_results.md:39-43)
-  - [ ] Article rescoring workflow
-    - [Implementation](internal/api/api.go:250-290) | [Test plan](memory-bank/test_methodology_hierarchy.md:236-248)
-
-### 2. Error Handling/Recovery Tests
-
-- [x] Test system behavior when external services are unavailable:
-  - [x] LLM service outages
-    - [Implementation](internal/llm/llm.go:180-210) | [E2E check](e2e_prep.js:110-140) | [Fixed April 27, 2025](internal/llm/outage_test.go)
-  - [ ] RSS feed outages
-    - [Implementation](internal/rss/rss.go:85-105) | [E2E check](e2e_prep.js:50-93)
-  - [ ] Database connection issues
-    - [Implementation](internal/db/db.go:55-70) | [E2E check](e2e_prep.js:140-160)
-- [ ] Test response to malformed data
-  - [Input validation](internal/api/api.go:50-85) | [Some tests](test_results.md:35-39)
-- [ ] Verify graceful degradation when components fail
-  - [Implementation](internal/api/api.go:590-610) | [Test plan](memory-bank/test_methodology_hierarchy.md:341-348)
-
-### 3. Mock Improvements
-
-- [x] Evaluate using generated mocks with mockery or gomock
-  - [Research task](memory-bank/test_methodology_hierarchy.md:65-75) | [Decision: Using gomock April 27, 2025](memory-bank/decisionLog.md)
-- [x] Create consistent mock implementations
-  - [Current approach](mock_llm_service.go) - Fixed April 29, 2025 with `MockDBOperationsScore` implementation
-- [ ] Ensure mocks properly implement interfaces
-  - [Example interface](internal/db/interfaces.go)
-- [ ] Document mock usage patterns
-  - [Testing guide](TESTING_GUIDE.md)
-
-## Lower Priority Items (P3)
-
-### 1. Performance and Load Testing
-
-- [ ] Implement performance benchmarks for critical functions
-  - [Test plan](memory-bank/test_methodology_hierarchy.md:13-23)
-- [ ] Create load tests for API endpoints
-  - [Implementation plan](memory-bank/test_methodology_hierarchy.md:79-90)
-- [x] Test system behavior under high concurrency
-  - [Implementation needs](internal/db/db_test.go:243-272) | [Fixed April 27, 2025](internal/db/concurrency_test.go)
-- [ ] Measure and track API response times
-  - [Success criteria](memory-bank/test_methodology_hierarchy.md:16-21)
-
-### 2. Configuration System Tests
-
-- [x] Test configuration loading and validation
-  - [Implementation](cmd/server/main.go:25-50) | [Fixed April 27, 2025](cmd/server/config_test.go)
-- [ ] Test environment variable overrides
-  - [Usage](run_all_tests.sh:8-15)
-- [ ] Test handling of invalid/incomplete configurations
-  - [Validation logic](internal/api/api.go:30-45)
-- [ ] Test configuration reloading during runtime
-  - [Feature request](memory-bank/test_methodology_hierarchy.md:282-289)
-
-### 3. Logging and Monitoring Tests
-
-- [ ] Test log level management
-  - [Implementation](internal/db/db.go:320-355)
-- [ ] Verify structured logging format
-  - [Log output](test-results/server_debug.log)
-- [x] Test metrics collection accuracy
-  - [Implementation](internal/metrics/metrics.go) | [Fixed April 27, 2025](internal/metrics/metrics_test.go)
-- [ ] Verify alert trigger conditions
-  - [Implementation plan](memory-bank/test_methodology_hierarchy.md:341-348)
-
-## Specific Implementation Tasks
-
-1. [x] Fix database test cleanup issues in `internal/db/db_test.go`
-   - [Task link](internal/db/db_test.go:65-90) | [Test results](test-results/server_debug.log) - Fixed April 29, 2025
-2. [x] Complete confidence calculation tests in `internal/tests/unit/confidence_test.go`
-   - [Task link](internal/tests/unit/confidence_test.go) | [Status](internal/tests/unit/README.md:29-35) - Fixed April 28, 2025
-3. [ ] Add API endpoint tests for each handler in `internal/api/api.go`
-   - [Task link](internal/api/api.go) | [Current coverage](test-results/api_coverage.out)
-4. [x] Create tests for RSS feed parsing in `internal/rss/rss.go`
-   - [Task link](internal/rss/rss.go) | [Sample data](sample_feed.xml) - Fixed April 29, 2025
-5. [x] Set up continuous coverage monitoring in CI pipeline
-   - [Task link](Makefile:26-34) | [Target metrics](memory-bank/test_methodology_hierarchy.md:13-16) - Fixed April 29, 2025
-6. [ ] Document test requirements and setup in TESTING_GUIDE.md
-   - [Task link](TESTING_GUIDE.md)
-7. [x] Fix transaction isolation testing in DB module
-   - [Task link](internal/db/db_test.go:370-380) | [CGO constraints identified and addressed](internal/db/sqlite_diagnosis_test.go) - Fixed April 29, 2025
-
-## Progress Tracking
-
-| Component | Current Coverage | Target Coverage | Priority | Status |
-|-----------|-----------------|----------------|----------|--------|
-| LLM Module | 6.0% | 90% | P0 | In Progress |
-| DB Module | 65.8% | 90% | P1 | In Progress |
-| API Module | 4.6% | 90% | P0 | Not Started |
-| RSS Module | 6.9% | 90% | P1 | In Progress |
-| Overall Core | 17.2% | 90% | P0 | In Progress |
-
-## Command Reference
-
-```bash
-# Run core coverage check
-go test -coverpkg=./internal/llm,./internal/db,./internal/api -coverprofile=coverage-core.out ./internal/llm ./internal/db ./internal/api
-
-# Run specific module coverage check
-go test -coverprofile=llm_coverage.out ./internal/llm
-go test -coverprofile=db_coverage.out ./internal/db
-go test -coverprofile=api_coverage.out ./internal/api
-
-# Generate coverage report
-go tool cover -html=coverage-core.out -o coverage-report.html
-
-# Run all tests
-./test.sh all
-```
+## Next Steps
+1. Prioritize integration and edge-case tests for api.go, score_manager.go, ensemble.go, and llm.go
+2. Expand E2E and error-path coverage for rescoring, SSE, and failure scenarios
+3. Complete documentation and automate all reporting
+4. Review progress weekly and update this plan as coverage improves

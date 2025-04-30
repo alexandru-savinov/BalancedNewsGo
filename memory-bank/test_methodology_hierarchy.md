@@ -1,6 +1,9 @@
 # Test Methodology Hierarchy
-Last Updated: April 27, 2025
-Version: 2.2.0
+Last Updated: April 30, 2025
+Version: 2.2.1
+
+## Executive Summary
+Recent coverage analysis reveals that while utility and handler files are well tested, **core orchestration and integration logic in api.go, score_manager.go, and ensemble.go remain critically under-tested**. This exposes the system to risks in error handling, progress tracking, and transaction reliability. Immediate focus must shift to integration and edge-case tests for these modules.
 
 ## Metadata
 - **Project**: News Filter Backend
@@ -22,6 +25,7 @@ Version: 2.2.0
   - Cache Hit Rate: >95%
 
 ## Version History
+- v2.2.1 (2025-04-30): Updated with critical coverage gaps in orchestration/integration logic; Revised critical path and action items
 - v2.2.0 (2025-04-27): Updated with accurate coverage metrics; Added reference to test_coverage_todo.md
 - v2.1.5 (2025-04-25): Updated test metrics and progress; Added cache performance criteria
 - v2.1.4 (2025-04-25): Added comprehensive Git workflow validation suite
@@ -33,22 +37,40 @@ Version: 2.2.0
 - v1.5.0 (2025-04-15): Integrated performance monitoring
 - v1.0.0 (2025-04-01): Initial test methodology structure
 
-## Current Coverage Status
+## Current Coverage Status (April 30, 2025)
 
 **Important Note**: Recent coverage measurements show significant discrepancies from previously reported metrics. Please refer to [test_coverage_todo.md](../test_coverage_todo.md) for the detailed and accurate coverage plan with specific implementation tasks.
 
-### Actual Measured Coverage (as of April 27, 2025):
-- Overall Core Coverage: 6.0% (Target: 90%)
+### Actual Measured Coverage:
+- Overall Core Coverage: ~6% (Target: 90%)
 - LLM Module: 41.8% 
 - DB Module: 59.6%
 - API Module: 5.3%
 - RSS Module: 6.9%
+
+**Key Gaps:**
+- internal/api/api.go (0.0%): No direct tests for route registration, progress tracking, panic recovery.
+- internal/llm/score_manager.go (12.0%): Lacks tests for transactionality, progress, and error handling.
+- internal/llm/ensemble.go (18.6%): Needs aggregation and error scenario tests.
+- internal/llm/llm.go (39.9%): Needs more LLM API error and retry logic tests.
 
 These metrics differ significantly from the previous reported coverage metrics and require immediate attention. The detailed action plan is maintained in [test_coverage_todo.md](../test_coverage_todo.md), which provides:
 - Prioritized task list (P0-P3)
 - Links to specific implementation locations
 - Weekly progress goals
 - Command references for coverage checks
+
+## Revised Critical Path (as of April 30, 2025)
+1. **Integration & Orchestration Tests:**
+   - Add tests for api.go: route registration, progress tracking, panic recovery.
+   - Add tests for score_manager.go: transactionality, progress, cache invalidation, error handling.
+   - Add tests for ensemble.go: aggregation logic, malformed data, duplicate models.
+2. **Edge-Case & Error Handling:**
+   - Simulate DB/service failures, malformed input, and concurrency issues.
+   - Test SSE progress endpoint for long-running jobs and disconnects.
+3. **End-to-End Flows:**
+   - Trigger rescoring and verify all progress and final state events.
+   - Ensure frontend and backend remain in sync for progress and final results.
 
 ## 1. Infrastructure Setup [Status: IMPLEMENTING]
 _Deliverable: Fully configured test environment with documented setup procedures_
@@ -191,22 +213,15 @@ _Deliverable: E2E test suite covering critical user workflows_
 **Note**: Previous reporting of 96% coverage and 100% core business logic coverage was inaccurate. See the [test coverage todo list](../test_coverage_todo.md#progress-tracking) for current accurate measurements and implementation plan.
 
 ## Implementation Progress
-- DONE: 45 items (8.6%)
-- IMPLEMENTING: 188 items (36.1%)
-- PLANNED: 275 items (52.8%)
-- POSTPONED: 13 items (2.5%)
+- DONE: Utility and handler unit tests, basic DB/LLM tests
+- IN PROGRESS: Integration/orchestration tests for API, score_manager, ensemble
+- PLANNED: Full E2E and error-path coverage
 
-## Revised Critical Path
-1. Fix Database Tests (High Priority) - [Details](../test_coverage_todo.md#1-fix-database-tests-high-priority)
-2. Complete LLM Module Tests (41.8% → 90%) - [Details](../test_coverage_todo.md#2-llm-module-418-coverage)
-3. Implement API Module Tests (5.3% → 90%) - [Details](../test_coverage_todo.md#3-api-module-53-coverage)
-4. Enhance Database Module Tests (59.6% → 90%) - [Details](../test_coverage_todo.md#1-database-module-596-coverage)
-5. Develop RSS Module Tests (6.9% → 90%) - [Details](../test_coverage_todo.md#2-rss-module-69-coverage)
-6. Set Up Test Infrastructure Improvements - [Details](../test_coverage_todo.md#3-test-infrastructure-improvements)
-7. Complete Integration Testing - [Details](../test_coverage_todo.md#1-integration-testing)
-8. Implement Other Test Categories - [Details](../test_coverage_todo.md#medium-priority-items-p2)
-
-See [Weekly Coverage Progress Goals](../test_coverage_todo.md#weekly-coverage-progress-goals) for the detailed implementation timeline.
+## Action Items
+- [ ] Write integration tests for api.go and score_manager.go
+- [ ] Expand error-path and edge-case tests for ensemble.go and llm.go
+- [ ] Add E2E tests for rescoring and SSE progress
+- [ ] Regularly review and update coverage metrics
 
 ## Recent Findings
 1. Significant discrepancy between reported and actual test coverage
