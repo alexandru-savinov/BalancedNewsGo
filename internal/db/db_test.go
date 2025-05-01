@@ -25,6 +25,10 @@ func setupTestDB(t *testing.T) (*sqlx.DB, *DBInstance) {
 			title TEXT NOT NULL,
 			content TEXT NOT NULL,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			status TEXT DEFAULT 'pending',
+			fail_count INTEGER DEFAULT 0,
+			last_attempt DATETIME,
+			escalated BOOLEAN DEFAULT 0,
 			composite_score REAL,
 			confidence REAL,
 			score_source TEXT
@@ -380,4 +384,76 @@ func TestWithTransaction(t *testing.T) {
 
 	// For now, we'll consider transaction isolation covered by TestTransactionRollback
 	// which tests that rolled-back changes aren't visible, implying proper isolation
+}
+
+func TestArticleWithNewFields(t *testing.T) {
+	dbConn, _ := setupTestDB(t)
+
+	// Create test data
+	status := "processing"
+	failCount := 3
+	lastAttempt := time.Now().UTC().Truncate(time.Second)
+	escalated := true
+
+	// Create an article with all the new fields populated
+	article := &Article{
+		Source:      "test-new-fields",
+		PubDate:     time.Now().UTC(),
+		URL:         "http://example.com/test-new-fields",
+		Title:       "Test New Fields",
+		Content:     "Testing newly added fields in the Article struct",
+		CreatedAt:   time.Now().UTC(),
+		Status:      &status,
+		FailCount:   &failCount,
+		LastAttempt: &lastAttempt,
+		Escalated:   &escalated,
+	}
+
+	// Insert the article into the database
+	id, err := InsertArticle(dbConn, article)
+	assert.NoError(t, err)
+	assert.Greater(t, id, int64(0))
+
+	// Retrieve the article from the database
+	fetched, err := FetchArticleByID(dbConn, id)
+	assert.NoError(t, err)
+	assert.NotNil(t, fetched)
+
+	// Verify URL, Title (basic fields)
+	assert.Equal(t, article.URL, fetched.URL)
+	assert.Equal(t, article.Title, fetched.Title)
+
+	// Verify the new fields
+	assert.NotNil(t, fetched.Status, "Status field should not be nil")
+	assert.Equal(t, status, *fetched.Status)
+
+	assert.NotNil(t, fetched.FailCount, "FailCount field should not be nil")
+	assert.Equal(t, failCount, *fetched.FailCount)
+
+	assert.NotNil(t, fetched.LastAttempt, "LastAttempt field should not be nil")
+	assert.Equal(t, lastAttempt.Unix(), fetched.LastAttempt.Unix())
+
+	assert.NotNil(t, fetched.Escalated, "Escalated field should not be nil")
+	assert.Equal(t, escalated, *fetched.Escalated)
+
+	// Test SQL write for these fields specifically
+	_, err = dbConn.Exec(`
+		UPDATE articles SET 
+			status = 'failed', 
+			fail_count = 5, 
+			last_attempt = ?, 
+			escalated = 1
+		WHERE id = ?
+	`, time.Now(), id)
+	assert.NoError(t, err)
+
+	// Fetch the updated article
+	updated, err := FetchArticleByID(dbConn, id)
+	assert.NoError(t, err)
+
+	// Verify the updated values
+	assert.Equal(t, "failed", *updated.Status)
+	assert.Equal(t, 5, *updated.FailCount)
+	assert.NotNil(t, updated.LastAttempt)
+	assert.Equal(t, true, *updated.Escalated)
 }

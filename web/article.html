@@ -5,6 +5,53 @@
     <title>Article - NewsBalancer</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <script>
+        // Error handling utility for standardized error management
+        const errorHandler = {
+            // Parse error from response
+            parseError: async function(response) {
+                try {
+                    const data = await response.json();
+                    if (data && data.error && data.error.message) {
+                        return data.error.message;
+                    }
+                    return `HTTP error ${response.status}: ${response.statusText}`;
+                } catch (e) {
+                    // Log the error but return a user-friendly message
+                    console.error("Error parsing error response:", e);
+                    return `HTTP error ${response.status}: ${response.statusText}`;
+                }
+            },
+            
+            // Display error in a specific element
+            showError: function(element, message) {
+                if (!element) return;
+                element.textContent = message;
+                element.style.display = 'block';
+                console.error(message);
+            },
+            
+            // Show a timed success message
+            showSuccess: function(element, message, timeout = 3000) {
+                if (!element) return;
+                const originalColor = element.style.color || '';
+                element.textContent = message;
+                element.style.color = 'green';
+                element.style.display = 'block';
+                
+                setTimeout(() => {
+                    element.style.display = 'none';
+                    element.style.color = originalColor;
+                }, timeout);
+            },
+            
+            // Show an alert with error (fallback)
+            alertError: function(message) {
+                console.error(message);
+                alert(`Error: ${message}`);
+            }
+        };
+    </script>
     <style>
         :root {
             --primary-bg: #ffffff;
@@ -57,11 +104,6 @@
             vertical-align: middle;
         }
 
-        /*
-        The following rules are intentionally left empty to avoid CSS linter errors caused by Go template variables in inline styles.
-        All dynamic style assignments for bias-indicator elements are now handled via data attributes and JavaScript.
-        */
-
         body {
             font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
             font-size: 16px;
@@ -110,24 +152,27 @@
 
         .article-header h1 {
             font-family: Georgia, serif;
-            font-size: 2.5rem;
-            margin: 0 0 1rem 0;
-            color: var(--primary-text);
+            font-size: 2.2rem;
+            margin: 0 0 0.5rem 0;
+            line-height: 1.2;
         }
 
         .article-metadata {
-            font-size: 1rem;
-            color: var(--secondary-text);
             display: flex;
             flex-wrap: wrap;
             gap: 1rem;
-            margin-bottom: 1.5rem;
+            color: var(--secondary-text);
+            font-size: 0.9rem;
         }
 
         .article-content {
+            margin: 1.5rem 0;
+            line-height: 1.7;
             font-size: 1.1rem;
-            line-height: 1.8;
-            margin-bottom: 2rem;
+        }
+
+        .article-content p {
+            margin-bottom: 1.2rem;
         }
 
         .metadata {
@@ -139,23 +184,11 @@
             display: flex;
             flex-wrap: wrap;
             gap: 0.75rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .metadata span {
-            font-weight: 500;
-        }
-
-        .bias-label {
-            font-weight: bold;
-            color: #000;
+            margin-bottom: 1rem;
         }
 
         .bias-slider-container {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin: 0.5rem 0 1.5rem 0;
+            margin: 1.5rem 0;
         }
 
         .bias-slider {
@@ -164,74 +197,86 @@
             background: linear-gradient(to right, var(--left-color), var(--center-color), var(--right-color));
             border-radius: 6px;
             position: relative;
+            margin: 0.5rem 0;
         }
 
         .bias-indicator {
+            width: 12px;
+            height: 24px;
+            border-radius: 6px;
             position: absolute;
-            top: -3px;
-            width: 6px;
-            height: 16px;
-            background: black;
-            border-radius: 2px;
+            top: -6px;
+            transform: translateX(-50%);
+            background: #000;
+            z-index: 2;
         }
 
         .composite-indicator {
-            z-index: 2;
             border: 2px solid #fff;
-            width: 12px;
-            height: 24px;
-            top: -7px;
-            border-radius: 50%;
+            width: 14px;
+            height: 28px;
+            border-radius: 7px;
+            z-index: 3;
         }
 
         .model-indicator {
             width: 8px;
-            height: 16px;
-            background-color: rgba(0,0,0,0.6);
-            border-radius: 50%;
-            position: absolute;
-            top: -5px;
+            height: 18px;
+            background: rgba(0,0,0,0.6);
             z-index: 1;
-            cursor: pointer;
-        }
-
-        .bias-indicator:hover::after {
-            content: attr(title);
-            position: absolute;
-            bottom: 125%;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #333;
-            color: #fff;
-            padding: 4px 8px;
-            border-radius: 4px;
-            white-space: pre-line;
-            font-size: 12px;
-            opacity: 0.9;
-            pointer-events: none;
-            z-index: 10;
         }
 
         .explanation {
             background: var(--secondary-bg);
-            padding: 0.75rem;
+            padding: 1rem;
             border-radius: 6px;
-            font-size: 0.95rem;
-            margin-bottom: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .explanation p {
+            margin: 0;
+            font-style: italic;
         }
 
         .advanced-section {
             display: none;
-            font-size: 0.85rem;
+            padding: 1rem;
             background: var(--secondary-bg);
-            padding: 0.75rem;
             border-radius: 6px;
-            border: 1px dashed var(--border-color);
-            margin-top: 0.5rem;
+            margin-top: 1rem;
         }
 
         .advanced-section.visible {
             display: block;
+        }
+
+        button {
+            background: var(--secondary-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        button:hover {
+            background: var(--hover-bg);
+        }
+
+        .primary-button {
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            text-decoration: none;
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+        }
+
+        .primary-button:hover {
+            opacity: 0.9;
         }
 
         .score-article-section {
@@ -241,8 +286,16 @@
             border-radius: 6px;
         }
 
-        .score-progress-container {
-            margin-top: 0.5rem;
+        .score-article-section label {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        .score-article-section input {
+            padding: 0.5rem;
+            margin-right: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
         }
 
         .score-progress-bar-bg {
@@ -251,50 +304,58 @@
             background: #eee;
             border-radius: 5px;
             overflow: hidden;
+            margin-top: 1rem;
         }
 
         .score-progress-bar {
+            height: 100%;
             width: 0%;
-            height: 10px;
             background: var(--accent-color);
             transition: width 0.3s;
         }
 
         .score-progress-messages {
-            margin: 0.5rem 0 0 0;
+            margin-top: 0.5rem;
             padding-left: 1.5rem;
-            font-size: 0.9rem;
+        }
+
+        .llm-rescore-spinner {
+            display: inline-block;
+            margin-left: 0.5rem;
+        }
+
+        .ensemble-list {
+            padding-left: 1.5rem;
+        }
+
+        .ensemble-list li {
+            margin-bottom: 0.5rem;
         }
 
         .feedback-section {
-            margin-top: 1.5rem;
-            padding: 1rem;
-            background: var(--secondary-bg);
-            border-radius: 6px;
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
         }
 
         .feedback-form {
-            margin-top: 0.5rem;
-            background: var(--highlight-bg);
+            margin-top: 1rem;
+            background: var(--secondary-bg);
             padding: 1rem;
             border-radius: 6px;
-        }
-
-        .feedback-form form {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
         }
 
         .feedback-form textarea {
             width: 100%;
+            min-height: 100px;
+            margin-bottom: 1rem;
             padding: 0.5rem;
-            border: 1px solid var(--border-color);
             border-radius: 4px;
-            resize: vertical;
+            border: 1px solid var(--border-color);
         }
 
         .feedback-form fieldset {
+            margin-bottom: 1rem;
             border: 1px solid var(--border-color);
             border-radius: 4px;
             padding: 0.5rem;
@@ -308,60 +369,10 @@
 
         .success-message {
             color: green;
-            font-size: 0.9rem;
-            padding: 0.5rem;
             background: #e8f5e9;
-            border-radius: 4px;
-            margin-top: 0.5rem;
-        }
-
-        button {
-            cursor: pointer;
-            padding: 0.5rem 1rem;
-            border: 1px solid var(--border-color);
+            padding: 0.75rem;
             border-radius: 6px;
-            background: var(--primary-bg);
-            transition: background-color 0.2s ease;
-        }
-
-        button:hover {
-            background-color: var(--hover-bg);
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .primary-button {
-            background-color: var(--accent-color);
-            color: white;
-            border: none;
-        }
-
-        .primary-button:hover {
-            background-color: #2855aa;
-        }
-
-        .back-button {
-            margin-bottom: 1rem;
-            display: inline-block;
-        }
-
-        @media (max-width: 768px) {
-            .article-header h1 {
-                font-size: 1.8rem;
-            }
-            
-            .article-container {
-                padding: 1rem;
-            }
-        }
-
-        .loading-indicator {
-            text-align: center;
-            padding: 2rem;
-            color: var(--secondary-text);
+            margin-top: 1rem;
         }
 
         .error-message {
@@ -369,7 +380,21 @@
             background: #ffebee;
             padding: 0.75rem;
             border-radius: 6px;
-            margin: 1rem 0;
+        }
+
+        @media (max-width: 768px) {
+            .article-container {
+                padding: 1rem;
+            }
+            
+            .article-header h1 {
+                font-size: 1.8rem;
+            }
+            
+            .metadata {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
         }
     </style>
 </head>
@@ -492,16 +517,20 @@
             const score = result.score.toFixed(2);
             const confidence = result.confidence !== undefined ? 
                 `${(result.confidence * 100).toFixed(0)}%` : 'N/A';
-            const explanation = result.explanation || '';
             
-            return `
+            let listItem = `
                 <li>
                     <strong>${modelName}</strong>: 
                     Score: ${score}, 
                     Confidence: ${confidence}
-                    ${explanation ? `<br><em>Explanation: ${explanation}</em>` : ''}
-                </li>
             `;
+            
+            if (result.explanation) {
+                listItem += `<br><em>Explanation: ${result.explanation}</em>`;
+            }
+            
+            listItem += '</li>';
+            return listItem;
         }
 
         function createAggregationStats(aggregation) {
@@ -598,9 +627,15 @@
         function updateConfidenceDisplay(metadataSection, confidence) {
             const confidenceElement = metadataSection.querySelector('.confidence');
             if (confidenceElement) {
-                confidenceElement.innerHTML = confidence !== null ?
-                    `<span class="confidence-indicator" style="background:${getConfidenceColor(confidence)};"></span>Confidence: ${Math.round(confidence * 100)}%` :
-                    'Confidence: --';
+                let content = '';
+                if (confidence !== null) {
+                    const color = getConfidenceColor(confidence);
+                    const percent = Math.round(confidence * 100);
+                    content = `<span class="confidence-indicator" style="background:${color};"></span>Confidence: ${percent}%`;
+                } else {
+                    content = 'Confidence: --';
+                }
+                confidenceElement.innerHTML = content;
             }
         }
 
@@ -641,8 +676,11 @@
                 }
 
                 const article = responseData.data;
-                const compositeScore = article.composite_score !== undefined ? article.composite_score : null;
-                const confidence = article.confidence !== undefined ? article.confidence : null;
+                // Handle both snake_case and PascalCase field names
+                const compositeScore = article.composite_score !== undefined ? article.composite_score : 
+                                       (article.CompositeScore !== undefined ? article.CompositeScore : null);
+                const confidence = article.confidence !== undefined ? article.confidence : 
+                                  (article.Confidence !== undefined ? article.Confidence : null);
                 
                 const metadataSection = document.querySelector('.metadata');
                 if (metadataSection) {
@@ -753,8 +791,7 @@
             // Validate input
             const scoreValue = parseFloat(inputElement.value);
             if (isNaN(scoreValue) || scoreValue < -1 || scoreValue > 1) {
-                errorMessageElement.textContent = 'Please enter a valid score between -1 and 1';
-                errorMessageElement.style.display = 'block';
+                errorHandler.showError(errorMessageElement, 'Please enter a valid score between -1 and 1');
                 return;
             }
             
@@ -772,8 +809,8 @@
             })
             .then(resp => {
                 if (!resp.ok) {
-                    return resp.json().then(data => {
-                        throw new Error(data.error?.message || `HTTP error ${resp.status}`);
+                    return errorHandler.parseError(resp).then(message => {
+                        throw new Error(message);
                     });
                 }
                 return resp.json();
@@ -785,23 +822,14 @@
                 // Clear input field
                 inputElement.value = '';
                 
-                // Show success message
-                errorMessageElement.textContent = 'Score updated successfully!';
-                errorMessageElement.style.color = 'green';
-                errorMessageElement.style.display = 'block';
-                
-                // Hide success message after 3 seconds
-                setTimeout(() => {
-                    errorMessageElement.style.display = 'none';
-                    errorMessageElement.style.color = 'red'; // Reset color
-                }, 3000);
+                // Show success message using error handler utility
+                errorHandler.showSuccess(errorMessageElement, 'Score updated successfully!');
                 
                 // Re-enable button
                 btn.disabled = false;
             })
             .catch(err => {
-                errorMessageElement.textContent = `Error: ${err.message}`;
-                errorMessageElement.style.display = 'block';
+                errorHandler.showError(errorMessageElement, `Error: ${err.message}`);
                 btn.disabled = false;
             });
         }
@@ -875,8 +903,8 @@
             })
             .then(resp => {
                 if (!resp.ok) {
-                    return resp.json().then(data => {
-                        throw new Error(data.error?.message || `HTTP error ${resp.status}`);
+                    return errorHandler.parseError(resp).then(message => {
+                        throw new Error(message);
                     });
                 }
                 return resp.json();
@@ -896,37 +924,40 @@
                 };
                 
                 evtSource.onerror = () => {
-                    elements.errorMessage.textContent = "Connection lost. Please try again.";
-                    elements.errorMessage.style.display = 'block';
+                    errorHandler.showError(elements.errorMessage, "Connection lost. Please try again.");
                     elements.btn.disabled = false;
                     elements.btnSpinner.style.display = 'none';
                     evtSource.close();
                 };
             })
             .catch(err => {
-                elements.errorMessage.textContent = "Failed to start scoring: " + err.message;
-                elements.errorMessage.style.display = 'block';
+                errorHandler.showError(elements.errorMessage, "Failed to start scoring: " + err.message);
                 elements.btn.disabled = false;
                 elements.btnSpinner.style.display = 'none';
             });
         }
 
-        // Set bias slider positions from data attributes (fixes linter errors)
+        // Set bias slider positions on load
         document.addEventListener('DOMContentLoaded', function() {
-            var slider = document.querySelector('.bias-slider');
+            const slider = document.querySelector('.bias-slider');
             if (slider) {
-                var sliderPos = slider.getAttribute('data-slider-position');
-                var indicator = slider.querySelector('[data-slider-indicator]');
-                if (indicator && sliderPos !== null) {
-                    indicator.setAttribute('data-slider-position', sliderPos);
-                }
-                var modelIndicators = slider.querySelectorAll('[data-model-indicator]');
-                modelIndicators.forEach(function(ind) {
-                    var pos = ind.getAttribute('data-model-position');
-                    if (pos !== null) {
-                        ind.setAttribute('data-model-position', pos);
+                // Correctly position model indicators via JavaScript instead of in-line style
+                const indicators = slider.querySelectorAll('.model-indicator');
+                indicators.forEach(function(indicator) {
+                    const position = indicator.getAttribute('data-model-position');
+                    if (position) {
+                        indicator.style.left = `${position}%`;
                     }
                 });
+                
+                // Position the composite indicator if needed
+                const compositeIndicator = slider.querySelector('.composite-indicator');
+                if (compositeIndicator) {
+                    const position = compositeIndicator.getAttribute('data-slider-position');
+                    if (position) {
+                        compositeIndicator.style.left = `${position}%`;
+                    }
+                }
             }
         });
 
@@ -938,6 +969,11 @@
             
             if (articleId && !isNaN(Number(articleId))) {
                 loadEnsembleDetails(articleId);
+                // Also update the "Back to Articles" link to point to the correct endpoint
+                const backLink = document.querySelector('header a.primary-button');
+                if (backLink) {
+                    backLink.href = "/";
+                }
             }
         });
     </script>

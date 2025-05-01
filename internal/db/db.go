@@ -23,16 +23,20 @@ var (
 
 // Article represents a news article with bias information
 type Article struct {
-	ID             int64     `db:"id" json:"id"`
-	Source         string    `db:"source" json:"source"`
-	PubDate        time.Time `db:"pub_date" json:"pub_date"`
-	URL            string    `db:"url" json:"url"`
-	Title          string    `db:"title" json:"title"`
-	Content        string    `db:"content" json:"content"`
-	CreatedAt      time.Time `db:"created_at" json:"created_at"`
-	CompositeScore *float64  `db:"composite_score" json:"composite_score,omitempty"`
-	Confidence     *float64  `db:"confidence" json:"confidence,omitempty"`
-	ScoreSource    *string   `db:"score_source" json:"score_source,omitempty"`
+	ID             int64      `db:"id" json:"id"`
+	Source         string     `db:"source" json:"source"`
+	PubDate        time.Time  `db:"pub_date" json:"pub_date"`
+	URL            string     `db:"url" json:"url"`
+	Title          string     `db:"title" json:"title"`
+	Content        string     `db:"content" json:"content"`
+	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
+	Status         *string    `db:"status" json:"status,omitempty"`
+	FailCount      *int       `db:"fail_count" json:"fail_count,omitempty"`
+	LastAttempt    *time.Time `db:"last_attempt" json:"last_attempt,omitempty"`
+	Escalated      *bool      `db:"escalated" json:"escalated,omitempty"`
+	CompositeScore *float64   `db:"composite_score" json:"composite_score,omitempty"`
+	Confidence     *float64   `db:"confidence" json:"confidence,omitempty"`
+	ScoreSource    *string    `db:"score_source" json:"score_source,omitempty"`
 }
 
 // LLMScore represents a political bias score from an LLM model
@@ -339,8 +343,10 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
 // InsertArticle creates a new article record
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 	result, err := db.NamedExec(`
-        INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source)
-        VALUES (:source, :pub_date, :url, :title, :content, :created_at, :composite_score, :confidence, :score_source)`,
+        INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source,
+                              status, fail_count, last_attempt, escalated)
+        VALUES (:source, :pub_date, :url, :title, :content, :created_at, :composite_score, :confidence, :score_source,
+                :status, :fail_count, :last_attempt, :escalated)`,
 		article)
 	if err != nil {
 		return 0, handleError(err, "failed to insert article")

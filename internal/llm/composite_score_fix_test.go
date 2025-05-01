@@ -182,6 +182,17 @@ func TestComputeCompositeScoreWithConfidenceFixed(t *testing.T) {
 			expectedConf:  0,
 			expectError:   true,
 		},
+		{
+			name: "All zero scores and zero confidence",
+			scores: []db.LLMScore{
+				createScoreWithConfidence(1, "meta-llama/llama-4-maverick", 0.0, 0.0),
+				createScoreWithConfidence(1, "google/gemini-2.0-flash-001", 0.0, 0.0),
+				createScoreWithConfidence(1, "openai/gpt-4.1-nano", 0.0, 0.0),
+			},
+			expectedScore: 0,
+			expectedConf:  0,
+			expectError:   true,
+		},
 	}
 
 	for _, tc := range testCases {
