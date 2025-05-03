@@ -12,6 +12,13 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+// Define the CollectorInterface
+// CollectorInterface defines the methods that an RSS collector must implement.
+type CollectorInterface interface {
+	ManualRefresh()
+	CheckFeedHealth() map[string]bool
+}
+
 func detectPartisanCues(text string) []string {
 	cues := []string{
 		"radical left", "far-left", "far right", "fake news", "patriotic", "woke", "social justice",

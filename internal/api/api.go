@@ -51,7 +51,7 @@ func getProgress(articleID int64) *models.ProgressState {
 }
 
 // RegisterRoutes registers all API routes on the provided router
-func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) {
+func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector rss.CollectorInterface, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) {
 	// Articles endpoints
 	// @Summary Get all articles
 	// @Description Get a list of all articles with optional filtering
@@ -134,7 +134,8 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	// @Success 200 {object} models.SummaryResponse
 	// @Failure 404 {object} ErrorResponse
 	// @Router /articles/{id}/summary [get]
-	router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(dbConn)))
+	handler := NewSummaryHandler(&db.DBInstance{DB: dbConn})
+	router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
 
 	// @Summary Get bias analysis
 	// @Description Get the bias analysis for an article
@@ -169,13 +170,14 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn)))
 
 	// Health checks
-	// @Summary Feed health check
-	// @Description Check the health status of RSS feeds
-	// @Tags Health
+	// @Summary Get RSS feed health status
+	// @Description Returns the health status of all configured RSS feeds
+	// @Tags Feeds
 	// @Accept json
 	// @Produce json
-	// @Success 200 {object} StandardResponse
-	// @Router /feeds/healthz [get]
+	// @Success 200 {object} map[string]bool "Feed health status mapping feed names to boolean status"
+	// @Failure 500 {object} ErrorResponse "Server error"
+	// @Router /api/feeds/healthz [get]
 	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
 
 	// Progress tracking
@@ -495,7 +497,7 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @Tags Feeds
 // @Success 200 {object} StandardResponse "Refresh started"
 // @Router /api/refresh [post]
-func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
+func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		go rssCollector.ManualRefresh()
@@ -782,10 +784,13 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 }
 
 // @Summary Score progress SSE stream
-// @Description Server-Sent Events endpoint streaming scoring progress for an article
-// @Tags Analysis
+// @Description Server-Sent Events endpoint streaming real-time scoring progress for an article
+// @Tags LLM
+// @Accept json
+// @Produce text/event-stream
 // @Param id path int true "Article ID" minimum(1)
-// @Success 200 {string} string "event-stream"
+// @Success 200 {object} models.ProgressState "event-stream containing progress updates"
+// @Failure 400 {object} ErrorResponse "Invalid article ID"
 // @Router /api/llm/score-progress/{id} [get]
 func scoreProgressSSEHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -848,12 +853,15 @@ func percent(step, total int) int {
 	return p
 }
 
-// @Summary Get feed health status
-// @Description Returns the health of configured RSS feed sources
+// @Summary Get RSS feed health status
+// @Description Returns the health status of all configured RSS feeds
 // @Tags Feeds
-// @Success 200 {object} map[string]bool
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]bool "Feed health status mapping feed names to boolean status"
+// @Failure 500 {object} ErrorResponse "Server error"
 // @Router /api/feeds/healthz [get]
-func feedHealthHandler(rssCollector *rss.Collector) gin.HandlerFunc {
+func feedHealthHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := rssCollector.CheckFeedHealth()
 		c.JSON(200, status)
@@ -867,64 +875,78 @@ func feedHealthHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 // @Success 200 {object} StandardResponse
 // @Failure 404 {object} ErrorResponse "Summary not available"
 // @Router /api/articles/{id}/summary [get]
-func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		idStr := c.Param("id")
+type SummaryHandler struct {
+	db db.DBOperations
+}
 
-		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || id < 1 {
-			RespondError(c, ErrInvalidArticleID)
-			return
-		}
+func NewSummaryHandler(db db.DBOperations) *SummaryHandler {
+	return &SummaryHandler{db: db}
+}
 
-		// Caching
-		cacheKey := "summary:" + idStr
-		articlesCacheLock.RLock()
-		if cached, found := articlesCache.Get(cacheKey); found {
-			articlesCacheLock.RUnlock()
-			RespondSuccess(c, cached)
-			LogPerformance("summaryHandler (cache hit)", start)
-			return
-		}
-		articlesCacheLock.RUnlock()
+func (h *SummaryHandler) Handle(c *gin.Context) {
+	start := time.Now()
+	idStr := c.Param("id")
 
-		// Verify article exists
-		_, err = db.FetchArticleByID(dbConn, id)
-		if err != nil {
-			if errors.Is(err, db.ErrArticleNotFound) {
-				RespondError(c, ErrArticleNotFound)
-				return
-			}
-			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article"))
-			return
-		}
-
-		scores, err := db.FetchLLMScores(dbConn, id)
-		if err != nil {
-			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article summary"))
-			return
-		}
-
-		for _, score := range scores {
-			if score.Model == "summarizer" {
-				result := map[string]interface{}{
-					"summary":    score.Metadata,
-					"created_at": score.CreatedAt,
-				}
-				articlesCacheLock.Lock()
-				articlesCache.Set(cacheKey, result, 30*time.Second)
-				articlesCacheLock.Unlock()
-
-				RespondSuccess(c, result)
-				LogPerformance("summaryHandler", start)
-				return
-			}
-		}
-
-		RespondError(c, NewAppError(ErrNotFound, "Article summary not available"))
-		LogPerformance("summaryHandler", start)
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id < 1 {
+		RespondError(c, ErrInvalidArticleID)
+		return
 	}
+
+	// Caching
+	cacheKey := "summary:" + idStr
+	articlesCacheLock.RLock()
+	if cached, found := articlesCache.Get(cacheKey); found {
+		articlesCacheLock.RUnlock()
+		RespondSuccess(c, cached)
+		LogPerformance("summaryHandler (cache hit)", start)
+		return
+	}
+	articlesCacheLock.RUnlock()
+
+	// Verify article exists
+	_, err = h.db.FetchArticleByID(c, id)
+	if err != nil {
+		if errors.Is(err, db.ErrArticleNotFound) {
+			RespondError(c, ErrArticleNotFound)
+			return
+		}
+		RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article"))
+		return
+	}
+
+	scores, err := h.db.FetchLLMScores(c, id)
+	if err != nil {
+		RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article summary"))
+		return
+	}
+
+	for _, score := range scores {
+		if score.Model == "summarizer" {
+			// Extract summary text from JSON metadata
+			var summaryText string
+			var meta map[string]interface{}
+			if err := json.Unmarshal([]byte(score.Metadata), &meta); err == nil {
+				if s, ok := meta["summary"].(string); ok {
+					summaryText = s
+				}
+			}
+			result := map[string]interface{}{
+				"summary":    summaryText,
+				"created_at": score.CreatedAt,
+			}
+			articlesCacheLock.Lock()
+			articlesCache.Set(cacheKey, result, 30*time.Second)
+			articlesCacheLock.Unlock()
+
+			RespondSuccess(c, result)
+			LogPerformance("summaryHandler", start)
+			return
+		}
+	}
+
+	RespondError(c, NewAppError(ErrNotFound, "Article summary not available"))
+	LogPerformance("summaryHandler", start)
 }
 
 func parseArticleID(c *gin.Context) (int64, bool) {
@@ -1214,7 +1236,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 // Helper function to process ensemble scores
 func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
-	details := make([]map[string]interface{}, 0)
+	details := make([]map[string]interface{}{}, 0)
 	for _, score := range scores {
 		if score.Model != "ensemble" {
 			continue

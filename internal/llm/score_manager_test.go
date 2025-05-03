@@ -12,7 +12,6 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -313,15 +312,13 @@ func (sm *TestableScoreManager) InvalidateScoreCache(articleID int64) {
 }
 
 func TestNewScoreManager(t *testing.T) {
-	mockDB := &sqlx.DB{}
 	mockCache := NewCache()
 	mockCalculator := new(MockScoreCalculator)
 	mockProgress := NewProgressManager(time.Minute)
 
-	sm := NewScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
+	sm := NewScoreManager(nil, mockCache, mockCalculator, mockProgress)
 
 	assert.NotNil(t, sm)
-	assert.Equal(t, mockDB, sm.db)
 	assert.Equal(t, mockCache, sm.cache)
 	assert.Equal(t, mockCalculator, sm.calculator)
 	assert.Equal(t, mockProgress, sm.progressMgr)
@@ -329,12 +326,11 @@ func TestNewScoreManager(t *testing.T) {
 
 func TestInvalidateScoreCache(t *testing.T) {
 	// Create mocks
-	mockDB := &sqlx.DB{}
 	cache := NewCache()
 	mockCalculator := new(MockScoreCalculator)
 	mockProgress := NewProgressManager(time.Minute)
 
-	sm := NewScoreManager(mockDB, cache, mockCalculator, mockProgress)
+	sm := NewScoreManager(nil, cache, mockCalculator, mockProgress)
 
 	// Test data
 	articleID := int64(123)
@@ -349,14 +345,13 @@ func TestInvalidateScoreCache(t *testing.T) {
 
 func TestSetGetProgress(t *testing.T) {
 	// Create mocks
-	mockDB := &sqlx.DB{}
 	cache := NewCache()
 	mockCalculator := new(MockScoreCalculator)
 
 	// Create a real progress manager for this test - easier than mocking internal state
 	mockProgress := NewProgressManager(time.Minute)
 
-	sm := NewScoreManager(mockDB, cache, mockCalculator, mockProgress)
+	sm := NewScoreManager(nil, cache, mockCalculator, mockProgress)
 
 	// Test data
 	articleID := int64(123)
@@ -379,12 +374,11 @@ func TestSetGetProgress(t *testing.T) {
 // TestGetProgressWithNilManager tests the GetProgress method with a nil progress manager
 func TestGetProgressWithNilManager(t *testing.T) {
 	// Create a ScoreManager with nil progress manager
-	mockDB := &sqlx.DB{}
 	cache := NewCache()
 	mockCalculator := new(MockScoreCalculator)
 
 	// Create a ScoreManager with nil progressMgr
-	sm := NewScoreManager(mockDB, cache, mockCalculator, nil)
+	sm := NewScoreManager(nil, cache, mockCalculator, nil)
 
 	// Call GetProgress
 	articleID := int64(123)

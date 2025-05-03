@@ -10,7 +10,6 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -20,7 +19,7 @@ import (
 // - biasHandler
 // - ensembleDetailsHandler
 
-// TestSummaryHandler tests the summary handler functionality
+// Update test cases to use the refactored SummaryHandler
 func TestSummaryHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -35,7 +34,8 @@ func TestSummaryHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/summary", summaryHandler(&sqlx.DB{})) // Passing empty DB as it's mocked
+		handler := NewSummaryHandler(mockDB)
+		router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/1/summary", nil)
@@ -50,7 +50,9 @@ func TestSummaryHandler(t *testing.T) {
 		assert.NoError(t, err)
 
 		data := response["data"].(map[string]interface{})
-		assert.Equal(t, "This is a test summary", data["summary"])
+		summary, ok := data["summary"].(string)
+		assert.True(t, ok, "summary should be a string")
+		assert.Equal(t, "This is a test summary", summary)
 		assert.Contains(t, data, "created_at")
 
 		// Verify mock expectations
@@ -68,7 +70,8 @@ func TestSummaryHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(&sqlx.DB{})))
+		handler := NewSummaryHandler(mockDB)
+		router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/2/summary", nil)
@@ -91,7 +94,8 @@ func TestSummaryHandler(t *testing.T) {
 	t.Run("Invalid Article ID", func(t *testing.T) {
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(&sqlx.DB{})))
+		handler := NewSummaryHandler(&MockDBOperations{})
+		router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
 
 		// Create request with invalid ID
 		req, _ := http.NewRequest("GET", "/api/articles/invalid/summary", nil)
@@ -117,7 +121,8 @@ func TestSummaryHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(&sqlx.DB{})))
+		handler := NewSummaryHandler(mockDB)
+		router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/999/summary", nil)
@@ -126,6 +131,14 @@ func TestSummaryHandler(t *testing.T) {
 
 		// Assert response
 		assert.Equal(t, http.StatusNotFound, w.Code)
+
+		var response map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		assert.NoError(t, err)
+		assert.False(t, response["success"].(bool))
+		assert.Contains(t, response["error"].(map[string]interface{})["message"], "Article not found")
+
+		mockDB.AssertExpectations(t)
 	})
 }
 
@@ -161,7 +174,7 @@ func TestBiasHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/bias", SafeHandler(biasHandlerWithDB(mockDB)))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/1/bias", nil)
@@ -201,7 +214,7 @@ func TestBiasHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/bias", SafeHandler(biasHandlerWithDB(mockDB)))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/2/bias", nil)
@@ -251,7 +264,7 @@ func TestBiasHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/bias", SafeHandler(biasHandlerWithDB(mockDB)))
 
 		// Create request with min_score
 		req, _ := http.NewRequest("GET", "/api/articles/3/bias?min_score=0.0&max_score=1.0", nil)
@@ -274,8 +287,10 @@ func TestBiasHandler(t *testing.T) {
 	})
 
 	t.Run("Invalid Parameters", func(t *testing.T) {
+		// Use a dummy mock for parameter validation tests
+		mockDB := &MockDBOperations{}
 		router := gin.New()
-		router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/bias", SafeHandler(biasHandlerWithDB(mockDB)))
 
 		// Test invalid min_score
 		req, _ := http.NewRequest("GET", "/api/articles/1/bias?min_score=invalid", nil)
@@ -317,7 +332,7 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandlerWithDB(mockDB)))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/1/ensemble", nil)
@@ -332,10 +347,13 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.True(t, response["success"].(bool))
-		scores := response["scores"].([]interface{})
+		assert.Contains(t, response, "scores")
+		scores, ok := response["scores"].([]interface{})
+		assert.True(t, ok, "scores should be an array")
 		assert.Equal(t, 1, len(scores))
 
-		scoreData := scores[0].(map[string]interface{})
+		scoreData, ok := scores[0].(map[string]interface{})
+		assert.True(t, ok, "scoreData should be a map")
 		assert.Equal(t, 0.75, scoreData["score"])
 		assert.Contains(t, scoreData, "sub_results")
 		assert.Contains(t, scoreData, "aggregation")
@@ -360,7 +378,7 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandlerWithDB(mockDB)))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/2/ensemble", nil)
@@ -375,10 +393,12 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.True(t, response["success"].(bool))
-		scores := response["scores"].([]interface{})
+		scores, ok := response["scores"].([]interface{})
+		assert.True(t, ok, "scores should be an array")
 		assert.Equal(t, 1, len(scores))
 
-		scoreData := scores[0].(map[string]interface{})
+		scoreData, ok := scores[0].(map[string]interface{})
+		assert.True(t, ok, "scoreData should be a map")
 		assert.Equal(t, 0.75, scoreData["score"])
 		assert.Contains(t, scoreData, "error") // Should contain error message
 
@@ -401,7 +421,7 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandlerWithDB(mockDB)))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/3/ensemble", nil)
@@ -430,7 +450,7 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandlerWithDB(mockDB)))
 
 		// Create request
 		req, _ := http.NewRequest("GET", "/api/articles/4/ensemble", nil)
@@ -459,7 +479,7 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 
 		// Create router and register handler
 		router := gin.New()
-		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(&sqlx.DB{})))
+		router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandlerWithDB(mockDB)))
 
 		// Create request with cache busting parameter
 		req, _ := http.NewRequest("GET", "/api/articles/5/ensemble?_t=123456", nil)

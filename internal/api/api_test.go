@@ -438,6 +438,12 @@ func biasHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 			RespondError(c, NewAppError(ErrValidation, "Invalid max_score"))
 			return
 		}
+		// Validate sort order if provided
+		sortOrder := c.DefaultQuery("sort", "")
+		if sortOrder != "" && sortOrder != "asc" && sortOrder != "desc" {
+			RespondError(c, NewAppError(ErrValidation, "Invalid sort order"))
+			return
+		}
 
 		scores, err := dbOps.FetchLLMScores(nil, articleID)
 		if err != nil {
@@ -536,13 +542,41 @@ func ensembleDetailsHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 
 		details := make([]map[string]interface{}, 0)
 		for _, score := range scores {
-			if score.Model == "ensemble" {
-				details = append(details, map[string]interface{}{
-					"score":      score.Score,
-					"metadata":   score.Metadata,
-					"created_at": score.CreatedAt,
-				})
+			if score.Model != "ensemble" {
+				continue
 			}
+
+			// Parse metadata JSON
+			var meta map[string]interface{}
+			scoreDetails := map[string]interface{}{
+				"score":       score.Score,
+				"sub_results": []interface{}{},
+				"aggregation": map[string]interface{}{},
+				"created_at":  score.CreatedAt,
+			}
+
+			// Try to parse the metadata, but handle errors gracefully
+			if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
+				scoreDetails["error"] = "Metadata parsing failed"
+				details = append(details, scoreDetails)
+				continue
+			}
+
+			// Safely extract sub_results
+			if subResults, ok := meta["sub_results"]; ok && subResults != nil {
+				if subResultsArray, ok := subResults.([]interface{}); ok {
+					scoreDetails["sub_results"] = subResultsArray
+				}
+			}
+
+			// Safely extract aggregation
+			if aggregation, ok := meta["aggregation"]; ok && aggregation != nil {
+				if aggregationMap, ok := aggregation.(map[string]interface{}); ok {
+					scoreDetails["aggregation"] = aggregationMap
+				}
+			}
+
+			details = append(details, scoreDetails)
 		}
 
 		if len(details) == 0 {
@@ -550,7 +584,10 @@ func ensembleDetailsHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 			return
 		}
 
-		RespondSuccess(c, gin.H{"scores": details})
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"scores":  details,
+		})
 	}
 }
 

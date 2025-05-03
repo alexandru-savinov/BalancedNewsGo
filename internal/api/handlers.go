@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -21,7 +22,7 @@ func getArticleByIDHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 		}
 
 		// Fetch article from database
-		article, err := dbOps.FetchArticleByID(nil, id)
+		article, err := dbOps.FetchArticleByID(context.TODO(), id)
 		if err != nil {
 			if err == db.ErrArticleNotFound {
 				RespondError(c, NewAppError(ErrNotFound, "Article not found"))
@@ -32,7 +33,7 @@ func getArticleByIDHandlerWithDB(dbOps DBOperations) gin.HandlerFunc {
 		}
 
 		// Fetch LLM scores
-		scores, err := dbOps.FetchLLMScores(nil, id)
+		scores, err := dbOps.FetchLLMScores(context.TODO(), id)
 		if err != nil {
 			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch LLM scores"))
 			return

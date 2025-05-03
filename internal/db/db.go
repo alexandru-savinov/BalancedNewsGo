@@ -349,9 +349,19 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
                 :status, :fail_count, :last_attempt, :escalated)`,
 		article)
 	if err != nil {
+		// Enhanced error handling with detailed logging
+		log.Printf("[ERROR] Failed to insert article: %v", err)
 		return 0, handleError(err, "failed to insert article")
 	}
-	return result.LastInsertId()
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		log.Printf("[ERROR] Failed to retrieve last insert ID: %v", err)
+		return 0, handleError(err, "failed to get inserted article ID")
+	}
+
+	log.Printf("[INFO] Article inserted successfully with ID: %d", id)
+	return id, nil
 }
 
 // InsertLLMScore creates a new LLM score record
@@ -407,6 +417,12 @@ func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset
 
 // FetchArticleByID retrieves a single article by ID
 func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
+	log.Printf("[DEBUG] FetchArticleByID called with id: %d", id)
+	if db == nil {
+		log.Printf("[ERROR] Database connection is nil")
+		return nil, errors.New("database connection is nil")
+	}
+
 	var article Article
 
 	// Add retry logic with backoff for recently created articles
@@ -415,23 +431,23 @@ func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 
 	var err error
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		log.Printf("[DEBUG] Attempt %d to fetch article with id: %d", attempt+1, id)
 		err = db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
 		if err == nil {
 			// Article found, return it
+			log.Printf("[INFO] Article fetched successfully: %+v", article)
 			return &article, nil
 		}
 
 		if err != sql.ErrNoRows {
 			// For errors other than "no rows", log the specific error
-			log.Printf("[ERROR] FetchArticleByID %d failed (attempt %d): %v", id, attempt+1, err)
+			log.Printf("[ERROR] FetchArticleByID failed (attempt %d): %v", attempt+1, err)
 			// Don't retry for database errors
 			break
 		}
 
-		log.Printf("[INFO] FetchArticleByID %d: article not found, retrying after %v (attempt %d of %d)", id, retryDelay, attempt+1, maxRetries)
+		log.Printf("[INFO] FetchArticleByID: article not found, retrying after %v (attempt %d of %d)", retryDelay, attempt+1, maxRetries)
 		// Only for "no rows" error, wait and retry
-		// This helps with timing issues when an article was just created
-		// but the transaction hasn't fully committed yet
 		if attempt < maxRetries-1 {
 			time.Sleep(retryDelay)
 			retryDelay *= 2 // Exponential backoff
@@ -440,10 +456,10 @@ func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 
 	// Handle the final error
 	if err == sql.ErrNoRows {
-		log.Printf("[WARN] FetchArticleByID %d: article not found after %d attempts", id, maxRetries)
+		log.Printf("[WARN] FetchArticleByID: article not found after %d attempts", maxRetries)
 		return nil, ErrArticleNotFound
 	}
-	log.Printf("[ERROR] FetchArticleByID %d failed with database error: %v", id, err)
+	log.Printf("[ERROR] FetchArticleByID failed with database error: %v", err)
 	return nil, handleError(err, "failed to fetch article")
 }
 

@@ -27,7 +27,11 @@ func openFilterTestDB(t *testing.T) *sqlx.DB {
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			composite_score REAL,
 			confidence REAL,
-			score_source TEXT
+			score_source TEXT,
+			status TEXT, -- Added missing column
+			fail_count INTEGER,
+			last_attempt TIMESTAMP,
+			escalated BOOLEAN
 		);
 		
 		CREATE TABLE IF NOT EXISTS llm_scores (
