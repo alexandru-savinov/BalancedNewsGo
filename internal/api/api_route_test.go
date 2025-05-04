@@ -114,26 +114,26 @@ func TestRefreshHandlerFunc(t *testing.T) {
 
 	// Use a direct handler instead of the refreshHandler function
 	router.POST("/api/refresh", func(c *gin.Context) {
-			// @Summary Refresh all RSS feeds
-			// @Description Trigger a refresh of all configured RSS feeds
-			// @Tags Feeds
-			// @Accept json
-			// @Produce json
-			// @Success 200 {object} StandardResponse{data=map[string]string} "Refresh started successfully"
-			// @Failure 500 {object} ErrorResponse "Server error"
-			// @Router /api/refresh [post]
-			
-			// Mock successful refresh
-			c.JSON(http.StatusOK, gin.H{
-				"success": true,
-				"data": gin.H{
-					"status": "refresh started",
-				},
-			})
+		// @Summary Refresh all RSS feeds
+		// @Description Trigger a refresh of all configured RSS feeds
+		// @Tags Feeds
+		// @Accept json
+		// @Produce json
+		// @Success 200 {object} StandardResponse{data=map[string]string} "Refresh started successfully"
+		// @Failure 500 {object} ErrorResponse "Server error"
+		// @Router /api/refresh [post]
 
-			// Call the mock to verify it was invoked
-			mockRSS.ManualRefresh()
+		// Mock successful refresh
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data": gin.H{
+				"status": "refresh started",
+			},
 		})
+
+		// Call the mock to verify it was invoked
+		mockRSS.ManualRefresh()
+	})
 
 	// Test refresh handler
 	req, _ := http.NewRequest("POST", "/api/refresh", nil)
@@ -167,27 +167,27 @@ func TestFeedHealthHandlerFunc(t *testing.T) {
 
 	// Use a direct handler instead of the feedHealthHandler function
 	router.GET("/api/feeds/healthz", func(c *gin.Context) {
-			// @Summary Get RSS feed health status
-			// @Description Returns the health status of all configured RSS feeds
-			// @Tags Feeds
-			// @Accept json
-			// @Produce json
-			// @Success 200 {object} map[string]interface{} "Feed health status"
-			// @Failure 500 {object} ErrorResponse "Server error"
-			// @Router /api/feeds/healthz [get]
-			
-			// Mock successful health check response
-			c.JSON(http.StatusOK, gin.H{
-				"status": "healthy",
-				"feeds": gin.H{
-					"feed1": true,
-					"feed2": false,
-				},
-			})
+		// @Summary Get RSS feed health status
+		// @Description Returns the health status of all configured RSS feeds
+		// @Tags Feeds
+		// @Accept json
+		// @Produce json
+		// @Success 200 {object} map[string]interface{} "Feed health status"
+		// @Failure 500 {object} ErrorResponse "Server error"
+		// @Router /api/feeds/healthz [get]
 
-			// Call the mock to verify it was invoked
-			mockRSS.CheckFeedHealth()
+		// Mock successful health check response
+		c.JSON(http.StatusOK, gin.H{
+			"status": "healthy",
+			"feeds": gin.H{
+				"feed1": true,
+				"feed2": false,
+			},
 		})
+
+		// Call the mock to verify it was invoked
+		mockRSS.CheckFeedHealth()
+	})
 
 	// Test feed health handler
 	req, _ := http.NewRequest("GET", "/api/feeds/healthz", nil)

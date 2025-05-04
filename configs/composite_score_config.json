@@ -3,17 +3,20 @@
     {
       "modelName": "meta-llama/llama-4-maverick",
       "perspective": "left",
-      "weight": 1.0
+      "weight": 1.0,
+      "url": "https://openrouter.ai/api/v1/chat/completions"
     },
     {
       "modelName": "google/gemini-2.0-flash-001",
       "perspective": "center",
-      "weight": 1.0
+      "weight": 1.0,
+      "url": "https://openrouter.ai/api/v1/chat/completions"
     },
     {
       "modelName": "openai/gpt-4.1-nano",
       "perspective": "right",
-      "weight": 1.0
+      "weight": 1.0,
+      "url": "https://openrouter.ai/api/v1/chat/completions"
     }
   ],
   "formula": "average",

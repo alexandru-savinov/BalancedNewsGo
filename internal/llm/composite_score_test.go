@@ -1,43 +1,146 @@
 package llm
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
 )
 
+// Helper to create ensemble metadata for tests
+func createEnsembleMetadata(confidence float64, variance float64) string {
+	meta := map[string]interface{}{
+		"confidence": confidence, // The crucial top-level confidence
+		"all_sub_results": []map[string]interface{}{ // Dummy sub-results
+			{"model": "model1", "score": 0.1, "confidence": 0.8},
+			{"model": "model2", "score": -0.1, "confidence": 0.7},
+		},
+		"per_model_results":     map[string]interface{}{}, // Dummy data
+		"per_model_aggregation": map[string]interface{}{}, // Dummy data
+		"final_aggregation": map[string]interface{}{
+			"weighted_mean":    0.0, // Matching the test score
+			"variance":         variance,
+			"uncertainty_flag": variance > 0.1,
+		},
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+	metaBytes, err := json.Marshal(meta)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to marshal test metadata: %v", err)) // Panic in test helper is okay
+	}
+	return string(metaBytes)
+}
+
 // TestComputeCompositeScoreWithAllZeroResponses tests the critical edge case
-// where all LLMs return empty or zero-value responses
+// where all LLMs return empty or zero-value responses, including ensemble results.
 func TestComputeCompositeScoreWithAllZeroResponses(t *testing.T) {
+	// Setup test configuration
+	originalConfig := testModelConfig
+	defer func() { testModelConfig = originalConfig }()
+	testModelConfig = &CompositeScoreConfig{
+		MinConfidence:    0.1,
+		MaxConfidence:    0.95,
+		ConfidenceMethod: "count_valid",
+		DefaultMissing:   0.0,
+		Models: []ModelConfig{
+			{ModelName: "left", Perspective: "left"},
+			{ModelName: "center", Perspective: "center"},
+			{ModelName: "right", Perspective: "right"},
+			{ModelName: "ensemble", Perspective: "center"},
+		},
+	}
+
+	// --- Existing Cases ---
 	// Create scores with all zeros and empty metadata
-	scores := []db.LLMScore{
+	scoresAllZeroEmptyMeta := []db.LLMScore{
 		{Model: "left", Score: 0.0, Metadata: `{}`},
 		{Model: "center", Score: 0.0, Metadata: `{}`},
 		{Model: "right", Score: 0.0, Metadata: `{}`},
 	}
 
 	// Also test with explicit zero confidence
-	scoresWithZeroConfidence := []db.LLMScore{
+	scoresAllZeroExplicitZeroConf := []db.LLMScore{
 		{Model: "left", Score: 0.0, Metadata: `{"confidence":0.0}`},
 		{Model: "center", Score: 0.0, Metadata: `{"confidence":0.0}`},
 		{Model: "right", Score: 0.0, Metadata: `{"confidence":0.0}`},
 	}
 
+	// --- New Ensemble Cases ---
+	// Ensemble result: Score is 0.0, but variance is low (e.g., 0.1), so confidence is non-zero (0.9)
+	// This SHOULD NOT trigger the "all zero" error.
+	mockEnsembleMetadataNonZeroConf := createEnsembleMetadata(0.9, 0.1)
+	scoresEnsembleNonZeroConf := []db.LLMScore{
+		{Model: "ensemble", Score: 0.0, Metadata: mockEnsembleMetadataNonZeroConf},
+		// Add other models perhaps? For now, just test ensemble alone.
+		// {Model: "left", Score: 0.1, Metadata: `{"confidence":0.8}`}, // Example if combined
+	}
+
+	// Ensemble result: Score is 0.0, and variance is high (e.g., 1.0), so confidence is zero.
+	// This SHOULD trigger the "all zero" error.
+	mockEnsembleMetadataZeroConf := createEnsembleMetadata(0.0, 1.0)
+	scoresEnsembleZeroConf := []db.LLMScore{
+		{Model: "ensemble", Score: 0.0, Metadata: mockEnsembleMetadataZeroConf},
+	}
+
+	// --- Test Execution ---
 	// Test standard ComputeCompositeScoreWithConfidenceFixed function
-	_, _, err := ComputeCompositeScoreWithConfidenceFixed(scores)
-	assert.Error(t, err, "Should detect all-zero responses and return an error")
+	_, _, err := ComputeCompositeScoreWithConfidenceFixed(scoresAllZeroEmptyMeta)
+	assert.Error(t, err, "Should detect all-zero responses (empty meta) and return an error")
 	assert.Contains(t, err.Error(), "all LLMs returned empty or zero-confidence responses",
-		"Error message should indicate the specific issue")
+		"Error message should indicate the specific issue (empty meta)")
 
 	// Test with explicit zero confidence
-	_, _, err = ComputeCompositeScoreWithConfidenceFixed(scoresWithZeroConfidence)
+	_, _, err = ComputeCompositeScoreWithConfidenceFixed(scoresAllZeroExplicitZeroConf)
 	assert.Error(t, err, "Should detect all-zero responses with explicit zero confidence")
 	assert.Contains(t, err.Error(), "all LLMs returned empty or zero-confidence responses")
+
+	// Test Ensemble: Score 0, but NON-ZERO confidence in metadata (EXPECTED TO PASS after code change)
+	// This test *should fail* until EnsembleAnalyze is updated.
+	resScore, resConf, errNonZero := ComputeCompositeScoreWithConfidenceFixed(scoresEnsembleNonZeroConf)
+	assert.NoError(t, errNonZero, "Ensemble score 0 with non-zero confidence in meta SHOULD NOT cause 'all zero' error")
+	// If no error, check the returned score and confidence (should reflect the input)
+	if errNonZero == nil {
+		assert.Equal(t, 0.0, resScore, "Ensemble score should be 0.0 as per input")
+		// The Compute function doesn't return the *metadata* confidence, it computes its own based on method.
+		// So we can't assert resConf == 0.9 here directly. The key check is assert.NoError above.
+		// Let's assert confidence is non-negative if no error.
+		assert.GreaterOrEqual(t, resConf, 0.0, "Confidence should be non-negative if no error")
+	}
+
+	// Test Ensemble: Score 0, and ZERO confidence in metadata (EXPECTED TO PASS now and after change)
+	_, _, errZero := ComputeCompositeScoreWithConfidenceFixed(scoresEnsembleZeroConf)
+	assert.Error(t, errZero, "Ensemble score 0 with zero confidence in meta SHOULD cause 'all zero' error")
+	if errZero != nil {
+		assert.Contains(t, errZero.Error(), "all LLMs returned empty or zero-confidence responses",
+			"Error message should indicate 'all zero' issue for ensemble with zero confidence")
+	}
 }
 
 func TestComputeCompositeScoreWithConfidence(t *testing.T) {
+	// Setup test configuration
+	originalConfig := testModelConfig
+	defer func() { testModelConfig = originalConfig }()
+	testModelConfig = &CompositeScoreConfig{
+		MinConfidence:    0.1,
+		MaxConfidence:    0.95,
+		ConfidenceMethod: "count_valid",
+		DefaultMissing:   0.0,
+		Formula:          "average", // Default formula
+		Weights:          map[string]float64{"left": 1, "center": 1, "right": 1},
+		MinScore:         -1,
+		MaxScore:         1,
+		HandleInvalid:    "default",
+		Models: []ModelConfig{
+			{ModelName: "left", Perspective: "left"},
+			{ModelName: "center", Perspective: "center"},
+			{ModelName: "right", Perspective: "right"},
+		},
+	}
+
 	// Prepare input scores for left, center, right
 	scores := []db.LLMScore{
 		{Model: "left", Score: -1.0},

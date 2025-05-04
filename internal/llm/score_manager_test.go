@@ -3,7 +3,6 @@ package llm
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -171,113 +170,51 @@ func (sm *TestableScoreManager) UpdateArticleScore(articleID int64, scores []db.
 		return 0, 0, fmt.Errorf("ScoreManager: config is nil")
 	}
 
-	// Progress: Start
-	if sm.mockProgress != nil {
-		ps := &models.ProgressState{Step: "Start", Message: "Starting scoring", Percent: 0, Status: "InProgress", LastUpdated: time.Now().Unix()}
-		sm.mockProgress.SetProgress(articleID, ps)
+	// First, check if all responses have zero confidence - matching the real implementation
+	if allZeros, err := checkForAllZeroResponses(scores); allZeros {
+		if sm.mockProgress != nil {
+			ps := &models.ProgressState{
+				Step:        "Error",
+				Message:     "All LLMs returned zero confidence - scoring failed",
+				Status:      "Error",
+				Error:       err.Error(),
+				LastUpdated: time.Now().Unix(),
+			}
+			sm.mockProgress.SetProgress(articleID, ps)
+		}
+		return 0, 0, err
 	}
 
-	tx, err := sm.mockDB.BeginTxx(context.Background(), nil)
+	// Use the score calculator to compute the score and confidence
+	compositeScore, confidence, err := sm.calculator.CalculateScore(scores)
 	if err != nil {
 		if sm.mockProgress != nil {
-			ps := &models.ProgressState{Step: "DB Transaction", Message: "Failed to start DB transaction", Percent: 0, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
+			ps := &models.ProgressState{
+				Step:        "Error",
+				Message:     "Failed to compute composite score",
+				Status:      "Error",
+				Error:       err.Error(),
+				LastUpdated: time.Now().Unix(),
+			}
 			sm.mockProgress.SetProgress(articleID, ps)
 		}
-		return 0, 0, fmt.Errorf("failed to begin transaction: %w", err)
+		return 0, 0, err
 	}
 
-	sm.mockTx = tx.(*MockTX)
-
-	// Progress: Calculating
+	// Update progress
 	if sm.mockProgress != nil {
-		ps := &models.ProgressState{Step: "Calculating", Message: "Calculating score", Percent: 20, Status: "InProgress", LastUpdated: time.Now().Unix()}
+		ps := &models.ProgressState{
+			Step:        "Complete",
+			Message:     "Score update complete",
+			Status:      "Success",
+			Percent:     100,
+			FinalScore:  &compositeScore,
+			LastUpdated: time.Now().Unix(),
+		}
 		sm.mockProgress.SetProgress(articleID, ps)
 	}
 
-	score, confidence, calcErr := sm.calculator.CalculateScore(scores)
-	if calcErr != nil {
-		sm.mockTx.Rollback()
-		if sm.mockProgress != nil {
-			ps := &models.ProgressState{Step: "Calculation", Message: "Score calculation failed", Percent: 20, Status: "Error", Error: calcErr.Error(), LastUpdated: time.Now().Unix()}
-			sm.mockProgress.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("score calculation failed: %w", calcErr)
-	}
-
-	// Progress: Storing ensemble score
-	if sm.mockProgress != nil {
-		ps := &models.ProgressState{Step: "Storing", Message: "Storing ensemble score", Percent: 60, Status: "InProgress", LastUpdated: time.Now().Unix()}
-		sm.mockProgress.SetProgress(articleID, ps)
-	}
-
-	meta := map[string]interface{}{
-		"timestamp":   time.Now().Format(time.RFC3339),
-		"aggregation": "ensemble",
-		"confidence":  confidence,
-	}
-	metaBytes, _ := json.Marshal(meta)
-	ensembleScore := &db.LLMScore{
-		ArticleID: articleID,
-		Model:     "ensemble",
-		Score:     score,
-		Metadata:  string(metaBytes),
-		CreatedAt: time.Now(),
-	}
-
-	// Mock the DB operations directly since we can't use the real function
-	_, err = sm.mockTx.Exec("INSERT INTO llm_scores (article_id, model, score, metadata, created_at) VALUES (?, ?, ?, ?, ?)",
-		ensembleScore.ArticleID, ensembleScore.Model, ensembleScore.Score, ensembleScore.Metadata, ensembleScore.CreatedAt)
-
-	if err != nil {
-		sm.mockTx.Rollback()
-		if sm.mockProgress != nil {
-			ps := &models.ProgressState{Step: "DB Insert", Message: "Failed to insert ensemble score", Percent: 70, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
-			sm.mockProgress.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("failed to insert ensemble score: %w", err)
-	}
-
-	// Progress: Updating article
-	if sm.mockProgress != nil {
-		ps := &models.ProgressState{Step: "Updating", Message: "Updating article score", Percent: 80, Status: "InProgress", LastUpdated: time.Now().Unix()}
-		sm.mockProgress.SetProgress(articleID, ps)
-	}
-
-	// Mock article update
-	_, err = sm.mockTx.Exec("UPDATE articles SET score = ?, confidence = ? WHERE id = ?",
-		score, confidence, articleID)
-
-	if err != nil {
-		sm.mockTx.Rollback()
-		if sm.mockProgress != nil {
-			ps := &models.ProgressState{Step: "DB Update", Message: "Failed to update article", Percent: 90, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
-			sm.mockProgress.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("failed to update article: %w", err)
-	}
-
-	if err := sm.mockTx.Commit(); err != nil {
-		if sm.mockProgress != nil {
-			ps := &models.ProgressState{Step: "DB Commit", Message: "Failed to commit transaction", Percent: 95, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
-			sm.mockProgress.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	// Progress: Invalidate cache
-	if sm.cache != nil {
-		sm.cache.Delete(fmt.Sprintf("article:%d", articleID))
-		sm.cache.Delete(fmt.Sprintf("ensemble:%d", articleID))
-		sm.cache.Delete(fmt.Sprintf("bias:%d", articleID))
-	}
-
-	// Progress: Success
-	if sm.mockProgress != nil {
-		ps := &models.ProgressState{Step: "Complete", Message: "Scoring complete", Percent: 100, Status: "Success", FinalScore: &score, LastUpdated: time.Now().Unix()}
-		sm.mockProgress.SetProgress(articleID, ps)
-	}
-
-	return score, confidence, nil
+	return compositeScore, confidence, nil
 }
 
 // Override SetProgress to use our mock
@@ -421,7 +358,7 @@ func TestUpdateArticleScoreSuccess(t *testing.T) {
 
 	// Mock progress tracking - Starting
 	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "InProgress" && ps.Step == "Start"
+		return ps.Status == "InProgress" && ps.Step == "Start" && ps.Message == "Starting scoring"
 	})).Return()
 
 	// Mock DB transaction
@@ -720,4 +657,81 @@ func TestUpdateArticleScoreCacheInvalidation(t *testing.T) {
 
 	// Verify cache was invalidated
 	assert.Nil(t, mockCache.Get(cacheKey))
+}
+
+// Adding test for zero confidence handling
+func TestScoreManagerWithAllZeroConfidenceScores(t *testing.T) {
+	// Create mocks
+	mockDB := new(MockDB)
+	mockCache := NewTestCache()
+	mockCalculator := new(MockScoreCalculator)
+	mockProgress := new(MockProgressManager)
+
+	// Use TestableScoreManager instead of regular ScoreManager
+	sm := NewTestableScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
+
+	articleID := int64(4434)
+
+	// Create test scores with all zero confidence
+	scores := []db.LLMScore{
+		{
+			ID:        1,
+			ArticleID: articleID,
+			Model:     "left",
+			Score:     0.0,
+			Metadata:  `{"confidence": 0.0}`,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        2,
+			ArticleID: articleID,
+			Model:     "center",
+			Score:     0.0,
+			Metadata:  `{"confidence": 0.0}`,
+			CreatedAt: time.Now(),
+		},
+		{
+			ID:        3,
+			ArticleID: articleID,
+			Model:     "right",
+			Score:     0.0,
+			Metadata:  `{"confidence": 0.0}`,
+			CreatedAt: time.Now(),
+		},
+	}
+
+	// Setup mock config
+	cfg := &CompositeScoreConfig{
+		Models: []ModelConfig{
+			{ModelName: "left", Perspective: "left"},
+			{ModelName: "center", Perspective: "center"},
+			{ModelName: "right", Perspective: "right"},
+		},
+		Formula:          "average",
+		ConfidenceMethod: "count_valid",
+		MinConfidence:    0.1,
+		MaxConfidence:    1.0,
+	}
+
+	// Mock progress tracking - Error (this should be first since it's called first)
+	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
+		return ps.Status == "Error" && ps.Step == "Error" &&
+			strings.Contains(ps.Message, "All LLMs returned zero confidence - scoring failed") &&
+			strings.Contains(ps.Error, "all LLMs returned empty or zero-confidence responses")
+	})).Return()
+
+	// Mock calculator to return error for zero confidence scores
+	mockCalculator.On("CalculateScore", mock.AnythingOfType("[]db.LLMScore")).Return(0.0, 0.0, fmt.Errorf("all LLMs returned empty or zero-confidence responses"))
+
+	// Test the UpdateArticleScore function
+	_, _, err := sm.UpdateArticleScore(articleID, scores, cfg)
+
+	// Assert that an error is returned
+	assert.Error(t, err, "UpdateArticleScore should return an error when all LLMs have zero confidence")
+	assert.Contains(t, err.Error(), "all LLMs returned empty or zero-confidence responses",
+		"Error message should indicate the zero confidence issue")
+
+	// Verify that error status was set with correct message
+	mockProgress.AssertExpectations(t)
+	mockCalculator.AssertExpectations(t)
 }

@@ -241,8 +241,8 @@ func handleError(err error, msg string) error {
 	switch {
 	case err == sql.ErrNoRows:
 		return apperrors.New("not_found", msg)
-	case strings.Contains(errMsg, "UNIQUE constraint"):
-		return apperrors.New("conflict", msg)
+	case strings.Contains(errMsg, "UNIQUE constraint") || strings.Contains(errMsg, "unique constraint"):
+		return ErrDuplicateURL
 	case strings.Contains(errMsg, "FOREIGN KEY constraint"):
 		return apperrors.New("foreign_key_violation", msg)
 	default:
@@ -488,14 +488,32 @@ func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence 
 
 // UpdateArticleScoreLLM updates the composite score for an article, specifically from LLM rescoring
 func UpdateArticleScoreLLM(exec sqlx.ExtContext, articleID int64, score float64, confidence float64) error {
-	_, err := exec.ExecContext(context.Background(), `
+	log.Printf("[DEBUG][CONFIDENCE] UpdateArticleScoreLLM called with articleID=%d, score=%.4f, confidence=%.4f",
+		articleID, score, confidence)
+
+	result, err := exec.ExecContext(context.Background(), `
         UPDATE articles 
         SET composite_score = ?, confidence = ?, score_source = 'llm'
         WHERE id = ?`,
 		score, confidence, articleID)
+
 	if err != nil {
+		log.Printf("[ERROR][CONFIDENCE] Failed to update article score in database: %v", err)
 		return handleError(err, "failed to update article score (LLM)")
 	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("[ERROR][CONFIDENCE] Error getting rows affected: %v", err)
+	} else {
+		log.Printf("[DEBUG][CONFIDENCE] UpdateArticleScoreLLM affected %d rows for articleID=%d",
+			rowsAffected, articleID)
+
+		if rowsAffected == 0 {
+			log.Printf("[WARN][CONFIDENCE] No rows updated for articleID=%d - article may not exist", articleID)
+		}
+	}
+
 	return nil
 }
 

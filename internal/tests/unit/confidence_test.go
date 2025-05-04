@@ -296,3 +296,23 @@ func TestConfidenceCalculationWithExtremeValues(t *testing.T) {
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.9, conf, 0.001, "Should handle large number of scores")
 }
+
+func TestZeroScoreWithNonZeroConfidence(t *testing.T) {
+	cfg := &llm.CompositeScoreConfig{
+		MinScore:       -1.0,
+		MaxScore:       1.0,
+		DefaultMissing: 0.0,
+	}
+	calc := &llm.DefaultScoreCalculator{Config: cfg}
+
+	scores := []db.LLMScore{
+		{Model: "left", Score: 0.0, Metadata: `{"confidence": 0.85}`},
+		{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.75}`},
+		{Model: "right", Score: 0.0, Metadata: `{"confidence": 0.90}`},
+	}
+
+	score, conf, err := calc.CalculateScore(scores)
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, score, "Score should be 0.0 when all scores are zero")
+	assert.InDelta(t, 0.833, conf, 0.001, "Confidence should be average of non-zero confidences")
+}

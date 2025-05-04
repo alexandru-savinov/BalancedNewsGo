@@ -3,6 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -58,10 +59,11 @@ func (c *DefaultScoreCalculator) getPerspective(model string) string {
 func (c *DefaultScoreCalculator) extractConfidence(metadata string) float64 {
 	var meta map[string]interface{}
 	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
+		log.Printf("[ERROR][CONFIDENCE] Failed to parse metadata JSON: %v", err)
 		return 0.0
 	}
+
 	if conf, ok := meta["confidence"]; ok {
-		// Handle both float64 and integer confidence values
 		switch v := conf.(type) {
 		case float64:
 			return v
@@ -70,14 +72,17 @@ func (c *DefaultScoreCalculator) extractConfidence(metadata string) float64 {
 		case int64:
 			return float64(v)
 		default:
+			log.Printf("[ERROR][CONFIDENCE] Unknown confidence type %T, defaulting to 0.0", v)
 			return 0.0
 		}
 	}
+
 	return 0.0
 }
 
 func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
 	if c.Config == nil {
+		log.Printf("[ERROR][CONFIDENCE] Config is nil, returning error")
 		return 0, 0, fmt.Errorf("DefaultScoreCalculator: Config must not be nil")
 	}
 
@@ -86,6 +91,7 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 	// For each perspective, use the last provided score (and its confidence)
 	for _, s := range scores {
 		perspective := c.getPerspective(s.Model)
+
 		if perspective == "" || (perspective != "left" && perspective != "center" && perspective != "right") {
 			continue
 		}

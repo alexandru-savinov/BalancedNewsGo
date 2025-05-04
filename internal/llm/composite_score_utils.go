@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 )
@@ -18,21 +19,51 @@ var (
 func LoadCompositeScoreConfig() (*CompositeScoreConfig, error) {
 	var err error
 	fileCompositeScoreConfigOnce.Do(func() {
-		const configPath = "configs/composite_score_config.json"
-		f, e := os.Open(configPath)
-		if e != nil {
-			err = fmt.Errorf("opening composite score config %q: %w", configPath, e)
+		// Try multiple possible locations for the config file
+		configPaths := []string{
+			"configs/composite_score_config.json",                     // Relative to current directory
+			"../configs/composite_score_config.json",                  // One level up
+			"../../configs/composite_score_config.json",               // Two levels up
+			filepath.Join(".", "configs/composite_score_config.json"), // Explicit relative path
+		}
+
+		// Get the executable's directory
+		execPath, e := os.Executable()
+		if e == nil {
+			execDir := filepath.Dir(execPath)
+			// Add paths relative to the executable
+			configPaths = append(configPaths,
+				filepath.Join(execDir, "configs/composite_score_config.json"),
+				filepath.Join(execDir, "../configs/composite_score_config.json"),
+			)
+		}
+
+		var f *os.File
+		var openedPath string
+
+		// Try each path until we find one that works
+		for _, path := range configPaths {
+			if f2, e := os.Open(path); e == nil {
+				f = f2
+				openedPath = path
+				break
+			}
+		}
+
+		if f == nil {
+			err = fmt.Errorf("could not find composite score config in any of the expected locations")
 			return
 		}
 		defer f.Close()
+
 		decoder := json.NewDecoder(f)
 		var cfg CompositeScoreConfig
 		if e := decoder.Decode(&cfg); e != nil {
-			err = fmt.Errorf("decoding composite score config %q: %w", configPath, e)
+			err = fmt.Errorf("decoding composite score config %q: %w", openedPath, e)
 			return
 		}
 		if len(cfg.Models) == 0 {
-			err = fmt.Errorf("composite score config %q loaded but contains no models", configPath)
+			err = fmt.Errorf("composite score config %q loaded but contains no models", openedPath)
 			return
 		}
 		fileCompositeScoreConfig = &cfg

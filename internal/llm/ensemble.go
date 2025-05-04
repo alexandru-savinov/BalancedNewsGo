@@ -95,10 +95,10 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 			if len(rawSnippet) > 200 {
 				rawSnippet = rawSnippet[:200] + "..."
 			}
-			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Parse error: %v | Raw response: %s", articleID, modelName, promptHash, parseErr, rawSnippet)
+			log.Printf("[ERROR][LLM] ArticleID %d | Model %s | PromptHash %s | Parse error: %v | Raw response: %s", articleID, modelName, promptHash, parseErr, rawSnippet)
 			if articleID == 133 {
-				log.Printf("[DEBUG][Article 133] Parse error: %v", parseErr)
-				log.Printf("[DEBUG][Article 133] FULL raw response:\n%s", rawResp)
+				log.Printf("[ERROR][Article 133] Parse error: %v", parseErr)
+				log.Printf("[ERROR][Article 133] FULL raw response:\n%s", rawResp)
 			}
 			lastErr = parseErr
 			continue
@@ -106,7 +106,7 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 
 		// Validate parsed values
 		if confidence == 0 {
-			log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Invalid zero confidence, retrying...", articleID, modelName, promptHash)
+			log.Printf("[ERROR][LLM] ArticleID %d | Model %s | PromptHash %s | Invalid zero confidence, retrying...", articleID, modelName, promptHash)
 			lastErr = fmt.Errorf("invalid zero confidence")
 			continue
 		}
@@ -115,7 +115,7 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 		return score, explanation, confidence, rawResp, nil
 	}
 
-	log.Printf("[LLM] ArticleID %d | Model %s | Final failure after retries. Last error: %v", articleID, modelName, lastErr)
+	log.Printf("[ERROR][LLM] ArticleID %d | Model %s | Final failure after retries. Last error: %v", articleID, modelName, lastErr)
 	return 0, "", 0, rawResp, lastErr
 }
 
@@ -126,6 +126,8 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 // (e.g., {"choices":[{"message":{"content":"{\"score\":...}"}}]}), or in text format
 // with patterns like "Score: X.X" and "Confidence: X.X".
 func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error) {
+	log.Printf("[DEBUG][LLM] Starting to parse response: %s", rawResp)
+
 	// Step 1: Parse the OpenAI API response JSON
 	var apiResp struct {
 		Choices []struct {
@@ -136,17 +138,19 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 	}
 	err := json.Unmarshal([]byte(rawResp), &apiResp)
 	if err != nil {
+		log.Printf("[DEBUG][LLM] Error parsing outer JSON: %v", err)
 		return 0, "", 0, fmt.Errorf("error parsing outer LLM API response JSON: %w", err)
 	}
 	if len(apiResp.Choices) == 0 {
+		log.Printf("[DEBUG][LLM] No choices in outer response")
 		return 0, "", 0, fmt.Errorf("no choices in outer LLM API response")
 	}
 
 	// Step 2: Extract the content string
 	contentStr := apiResp.Choices[0].Message.Content
+	log.Printf("[DEBUG][LLM] Extracted content: %s", contentStr)
 
 	// Step 3: First try to parse as JSON
-	// Try JSON format first (with or without backticks)
 	var innerResp struct {
 		Score       float64 `json:"score"`
 		Explanation string  `json:"explanation"`
@@ -158,23 +162,28 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 	matches := re.FindStringSubmatch(contentStr)
 	if len(matches) >= 2 {
 		contentStr = strings.TrimSpace(matches[1]) // Use the captured group
+		log.Printf("[DEBUG][LLM] After backtick stripping: %s", contentStr)
 	}
 
 	// Try to parse as JSON
 	if err = json.Unmarshal([]byte(contentStr), &innerResp); err == nil {
-		// Successfully parsed as JSON
+		log.Printf("[DEBUG][LLM] Successfully parsed as JSON: score=%.4f, confidence=%.4f",
+			innerResp.Score, innerResp.Confidence)
 		return innerResp.Score, innerResp.Explanation, innerResp.Confidence, nil
 	}
+	log.Printf("[DEBUG][LLM] JSON parsing failed, trying regex patterns: %v", err)
 
 	// Step 4: If JSON parsing fails, try to extract values using regex patterns
 	// Extract score with regex
 	scoreRegex := regexp.MustCompile(`Score: (-?\d+\.?\d*)`)
 	scoreMatches := scoreRegex.FindStringSubmatch(contentStr)
 	if len(scoreMatches) < 2 {
+		log.Printf("[DEBUG][LLM] No score found in text")
 		return 0, "", 0, fmt.Errorf("error parsing inner content JSON: %w", err)
 	}
 	score, err := strconv.ParseFloat(scoreMatches[1], 64)
 	if err != nil {
+		log.Printf("[DEBUG][LLM] Invalid score format: %v", err)
 		return 0, "", 0, fmt.Errorf("invalid score format: %w", err)
 	}
 
@@ -182,11 +191,12 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 	confidenceRegex := regexp.MustCompile(`Confidence: (\d+\.?\d*)`)
 	confidenceMatches := confidenceRegex.FindStringSubmatch(contentStr)
 	if len(confidenceMatches) < 2 {
-		// Default confidence if not found
+		log.Printf("[DEBUG][LLM] No confidence found, using default 0.5")
 		return score, "Extracted from text response", 0.5, nil
 	}
 	confidence, err := strconv.ParseFloat(confidenceMatches[1], 64)
 	if err != nil {
+		log.Printf("[DEBUG][LLM] Invalid confidence format: %v", err)
 		return 0, "", 0, fmt.Errorf("invalid confidence format: %w", err)
 	}
 
@@ -198,6 +208,7 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 		explanation = reasoningMatches[1]
 	}
 
+	log.Printf("[DEBUG][LLM] Successfully parsed with regex: score=%.4f, confidence=%.4f", score, confidence)
 	return score, explanation, confidence, nil
 }
 
@@ -241,6 +252,9 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 	const maxAttempts = 6
 	const confidenceThreshold = 0.5
 
+	// Collect all valid responses that pass the threshold
+	allValidResponses := make([]SubResult, 0)
+
 	for _, model := range models {
 		validResponses := make([]SubResult, 0, minValid)
 		attempts := 0
@@ -251,7 +265,9 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 					attempts++
 					score, explanation, confidence, rawResp, err := c.callLLM(articleID, model, pv, content)
 					if err != nil {
-						continue
+						// Log error from callLLM but continue trying other prompts/models
+						log.Printf("[Ensemble] ArticleID %d | Model %s | Prompt %s | callLLM Error: %v", articleID, model, pv.ID, err)
+						continue // Don't count this as a valid response
 					}
 					sub := SubResult{
 						Model: model, PromptVariant: pv.ID,
@@ -261,17 +277,20 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 					allSubResults = append(allSubResults, sub)
 					if confidence >= confidenceThreshold {
 						validResponses = append(validResponses, sub)
+						// Also add to the overall list
+						allValidResponses = append(allValidResponses, sub)
 					}
 					if len(validResponses) >= minValid || attempts >= maxAttempts {
-						break outer
+						break outer // Break model loop once minValid is reached or maxAttempts
 					}
 				}
 			}
 		}
 
 		if len(validResponses) == 0 {
-			log.Printf("[Ensemble] Model %s: no valid high-confidence responses. Failing ensemble.", model)
-			return nil, fmt.Errorf("ensemble failed: no valid high-confidence responses from model %s", model)
+			log.Printf("[Ensemble] Model %s: no valid high-confidence responses after %d attempts. Skipping model.", model, attempts)
+			// Don't fail the whole ensemble here, just skip this model's contribution
+			continue
 		}
 
 		var sum, weightedSum, sumWeights float64
@@ -292,38 +311,54 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 
 		perModelResults[model] = validResponses
 		perModelAgg[model] = map[string]float64{
-			"mean":          mean,
-			"weighted_mean": weightedMean,
-			"variance":      variance,
-			"count":         float64(len(validResponses)),
+			"mean":           mean,
+			"weighted_mean":  weightedMean,
+			"variance":       variance,
+			"count":          float64(len(validResponses)),
+			"sum_confidence": sumWeights, // Store sum of confidence for this model
 		}
 
-		log.Printf("[Ensemble] Model %s: %d valid responses, weighted mean=%.3f, variance=%.3f", model, len(validResponses), weightedMean, variance)
+		log.Printf("[Ensemble] Model %s: %d valid responses, weighted mean=%.3f, variance=%.3f, sum_confidence=%.3f",
+			model, len(validResponses), weightedMean, variance, sumWeights)
 	}
 
 	if len(perModelAgg) == 0 {
-		return nil, fmt.Errorf("no valid LLM responses from any model")
+		log.Printf("[Ensemble] ArticleID %d | No valid high-confidence LLM responses from any model after all attempts.", articleID)
+		return nil, fmt.Errorf("no valid high-confidence LLM responses from any model")
 	}
 
-	// Aggregate across models
+	// Aggregate across models that provided valid responses
 	var totalWeightedSum, totalSumWeights float64
 	for _, agg := range perModelAgg {
-		weight := agg["count"] // or customize per model
+		// Use the sum of confidence from this model's valid responses as its weight
+		// This gives more weight to models that were more confident more often
+		weight := agg["sum_confidence"]
 		totalWeightedSum += agg["weighted_mean"] * weight
 		totalSumWeights += weight
 	}
-	finalScore := totalWeightedSum / math.Max(totalSumWeights, 1e-6)
+	// Avoid division by zero
+	finalScore := totalWeightedSum / math.Max(totalSumWeights, 1e-9)
 
-	// Compute overall variance (average of per-model variances weighted by count)
-	var totalVariance float64
+	// Compute overall variance (average of per-model variances weighted by sum_confidence)
+	var totalVarianceSum float64
 	for _, agg := range perModelAgg {
-		totalVariance += agg["variance"] * agg["count"]
+		totalVarianceSum += agg["variance"] * agg["sum_confidence"]
 	}
-	totalVariance /= math.Max(totalSumWeights, 1e-6)
+	// Avoid division by zero
+	totalVariance := totalVarianceSum / math.Max(totalSumWeights, 1e-9)
 
-	uncertaintyFlag := totalVariance > 0.1 || (totalSumWeights/float64(len(perModelAgg)*minValid) < 0.5)
+	// Calculate overall confidence based on inverse variance
+	// Assumes variance is somewhat normalized (e.g., scores -1 to 1 mean variance likely 0 to ~1)
+	ensembleConfidence := math.Max(0.0, 1.0-totalVariance)
+
+	// Determine uncertainty based on variance
+	uncertaintyFlag := totalVariance > 0.1 // Keep variance check for now
+
+	log.Printf("[Ensemble] Final Score: %.4f | Variance-Based Confidence: %.4f | Variance: %.4f | Total Valid Sub-Results: %d",
+		finalScore, ensembleConfidence, totalVariance, len(allValidResponses))
 
 	meta := map[string]interface{}{
+		"confidence":            ensembleConfidence, // Store variance-based confidence
 		"all_sub_results":       allSubResults,
 		"per_model_results":     perModelResults,
 		"per_model_aggregation": perModelAgg,
@@ -331,10 +366,16 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 			"weighted_mean":    finalScore,
 			"variance":         totalVariance,
 			"uncertainty_flag": uncertaintyFlag,
+			"total_weight":     totalSumWeights, // Include total weight used
 		},
 		"timestamp": time.Now().Format(time.RFC3339),
 	}
-	metaBytes, _ := json.Marshal(meta)
+	metaBytes, err := json.Marshal(meta)
+	if err != nil {
+		log.Printf("[Ensemble] ArticleID %d | Error marshaling metadata: %v", articleID, err)
+		// Proceed but log it clearly
+		metaBytes = []byte(fmt.Sprintf(`{"error": "failed to marshal metadata: %v"}`, err))
+	}
 
 	return &db.LLMScore{
 		Model:     "ensemble",

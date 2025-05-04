@@ -289,7 +289,13 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 		if exists {
-			RespondError(c, ErrDuplicateURL)
+			c.JSON(http.StatusConflict, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "duplicate_url",
+					"message": "Article with this URL already exists",
+				},
+			})
 			return
 		}
 
@@ -317,7 +323,13 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		id, err := db.InsertArticle(dbConn, article)
 		if err != nil {
 			if errors.Is(err, db.ErrDuplicateURL) {
-				RespondError(c, ErrDuplicateURL)
+				c.JSON(http.StatusConflict, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    "duplicate_url",
+						"message": "Article with this URL already exists",
+					},
+				})
 				return
 			}
 			RespondError(c, WrapError(err, ErrInternal, "Failed to create article"))
@@ -493,9 +505,12 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 }
 
 // @Summary Trigger RSS feed refresh
-// @Description Initiates a manual RSS feed refresh job
+// @Description Initiates a manual RSS feed refresh job to fetch new articles from configured RSS sources
 // @Tags Feeds
-// @Success 200 {object} StandardResponse "Refresh started"
+// @Accept json
+// @Produce json
+// @Success 200 {object} StandardResponse{data=map[string]string} "Refresh started successfully"
+// @Failure 500 {object} ErrorResponse "Server error"
 // @Router /api/refresh [post]
 func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -602,181 +617,67 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			return
 		}
 
+		// Load composite score config to get the models
 		cfg, cfgErr := llm.LoadCompositeScoreConfig()
 		if cfgErr != nil || len(cfg.Models) == 0 {
 			RespondError(c, ErrLLMUnavailable)
 			return
 		}
 
-		modelName := cfg.Models[0].ModelName
+		// Try each model in sequence until we find one that works
+		var workingModel string
+		var healthErr error
 		originalTimeout := 10 * time.Second
 		llmClient.SetHTTPLLMTimeout(2 * time.Second)
-		_, healthErr := llmClient.ScoreWithModel(article, modelName)
+
+		for _, modelConfig := range cfg.Models {
+			log.Printf("[reanalyzeHandler %d] Trying model: %s", articleID, modelConfig.ModelName)
+			_, healthErr = llmClient.ScoreWithModel(article, modelConfig.ModelName)
+			if healthErr == nil {
+				workingModel = modelConfig.ModelName
+				break
+			}
+			if !errors.Is(healthErr, llm.ErrBothLLMKeysRateLimited) {
+				break
+			}
+		}
+
 		llmClient.SetHTTPLLMTimeout(originalTimeout)
 
-		if healthErr != nil {
-			if errors.Is(healthErr, llm.ErrBothLLMKeysRateLimited) {
-				RespondError(c, ErrRateLimited)
-				return
-			}
-			if errors.Is(healthErr, llm.ErrLLMServiceUnavailable) {
-				RespondError(c, ErrLLMUnavailable)
-				return
-			}
-			RespondError(c, WrapError(healthErr, ErrLLMService, "LLM provider error"))
+		if workingModel == "" {
+			log.Printf("[reanalyzeHandler %d] No working models found: %v", articleID, healthErr)
+			RespondError(c, ErrLLMUnavailable)
 			return
 		}
 
-		// Initial progress state
+		// Start the reanalysis process
 		if scoreManager != nil {
 			scoreManager.SetProgress(articleID, &models.ProgressState{
-				Step:        "Starting",
-				Message:     "Scoring job queued",
-				Percent:     0,
-				Status:      "InProgress",
-				LastUpdated: time.Now().Unix(),
+				Status:  "InProgress",
+				Step:    "Starting",
+				Message: fmt.Sprintf("Starting analysis with model %s", workingModel),
 			})
-		}
 
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					errMsg := fmt.Sprintf("Internal panic: %v", r)
-					setProgress(articleID, &models.ProgressState{
-						Step:        "Error",
-						Message:     "Internal error occurred",
-						Percent:     0,
-						Status:      "Error",
-						Error:       errMsg,
-						LastUpdated: time.Now().Unix(),
-					})
-					log.Printf("[Goroutine Panic] ArticleID=%d: %s", articleID, errMsg)
-				}
-			}()
-
-			totalSteps := len(cfg.Models) + 3
-			stepNum := 1
-
-			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Step:        "Preparing",
-					Message:     "Deleting old scores",
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "InProgress",
-					LastUpdated: time.Now().Unix(),
-				})
-			}
-			if err := llmClient.DeleteScores(articleID); err != nil {
-				errMsg := fmt.Sprintf("Failed to delete old scores: %v", err)
-				setProgress(articleID, &models.ProgressState{
-					Step:        "Error",
-					Message:     errMsg,
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "Error",
-					Error:       errMsg,
-					LastUpdated: time.Now().Unix(),
-				})
-				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
-				return
-			}
-			stepNum++
-
-			for _, m := range cfg.Models {
-				label := fmt.Sprintf("Scoring with %s", m.ModelName)
-				if scoreManager != nil {
+			go func() {
+				err := llmClient.ReanalyzeArticle(articleID)
+				if err != nil {
+					log.Printf("[reanalyzeHandler %d] Error during reanalysis: %v", articleID, err)
 					scoreManager.SetProgress(articleID, &models.ProgressState{
-						Step:        label,
-						Message:     label,
-						Percent:     percent(stepNum, totalSteps),
-						Status:      "InProgress",
-						LastUpdated: time.Now().Unix(),
+						Status:  "Error",
+						Step:    "Error",
+						Message: fmt.Sprintf("Error during analysis: %v", err),
 					})
-				}
-				_, scoreErr := llmClient.ScoreWithModel(article, m.ModelName)
-				if scoreErr != nil {
-					userMsg := fmt.Sprintf("Error scoring with %s", m.ModelName)
-					if errors.Is(scoreErr, llm.ErrBothLLMKeysRateLimited) {
-						userMsg = "Rate limit exceeded"
-					}
-					setProgress(articleID, &models.ProgressState{
-						Step:        "Error",
-						Message:     userMsg,
-						Percent:     percent(stepNum, totalSteps),
-						Status:      "Error",
-						Error:       scoreErr.Error(),
-						LastUpdated: time.Now().Unix(),
-					})
-					log.Printf("[SetProgress] ArticleID=%d: %s", articleID, userMsg)
 					return
 				}
-				stepNum++
-			}
-
-			if scoreManager != nil {
 				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Step:        "Calculating",
-					Message:     "Computing final score",
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "InProgress",
-					LastUpdated: time.Now().Unix(),
-					FinalScore:  nil,
+					Status:  "Complete",
+					Step:    "Done",
+					Message: "Analysis complete",
 				})
-			}
-			scores, fetchErr := llmClient.FetchScores(articleID)
-			if fetchErr != nil {
-				errMsg := fmt.Sprintf("Failed to fetch scores: %v", fetchErr)
-				setProgress(articleID, &models.ProgressState{
-					Step:        "Error",
-					Message:     errMsg,
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "Error",
-					Error:       errMsg,
-					LastUpdated: time.Now().Unix(),
-				})
-				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
-				return
-			}
-			stepNum++
+			}()
+		}
 
-			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Step:        "Storing",
-					Message:     "Saving results",
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "InProgress",
-					LastUpdated: time.Now().Unix(),
-				})
-			}
-			finalScore, confidence, storeErr := scoreManager.UpdateArticleScore(articleID, scores, cfg)
-			if storeErr != nil {
-				errMsg := fmt.Sprintf("Failed to store score: %v", storeErr)
-				setProgress(articleID, &models.ProgressState{
-					Step:        "Error",
-					Message:     errMsg,
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "Error",
-					Error:       errMsg,
-					LastUpdated: time.Now().Unix(),
-				})
-				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
-				return
-			}
-
-			// Final success state with composite score
-			confidencePercent := int(confidence * 100)
-			message := fmt.Sprintf("Scoring complete (confidence: %d%%)", confidencePercent)
-			setProgress(articleID, &models.ProgressState{
-				Step:        "Complete",
-				Message:     message,
-				Percent:     100,
-				Status:      "Success",
-				FinalScore:  &finalScore,
-				LastUpdated: time.Now().Unix(),
-			})
-			log.Printf("[SetProgress] ArticleID=%d: %s", articleID, message)
-		}()
-
-		RespondSuccess(c, gin.H{
+		RespondSuccess(c, map[string]interface{}{
 			"status":     "reanalyze queued",
 			"article_id": articleID,
 		})
@@ -1236,7 +1137,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 // Helper function to process ensemble scores
 func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
-	details := make([]map[string]interface{}{}, 0)
+	details := make([]map[string]interface{}, 0)
 	for _, score := range scores {
 		if score.Model != "ensemble" {
 			continue
@@ -1444,7 +1345,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Update score in DB
-		err = db.UpdateArticleScore(dbConn, articleID, scoreVal, 0)
+		err = db.UpdateArticleScore(dbConn, articleID, scoreVal, 1.0) // Set confidence to 1.0 for manual scores
 		if err != nil {
 			errMsg := err.Error()
 			if errMsg != "" && (strings.Contains(errMsg, "constraint failed") ||

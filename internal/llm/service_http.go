@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -70,12 +71,61 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 			// Try backup key if rate limited and backup key exists
 			resp, err = s.callLLMAPIWithKey(pv.Model, pv.FormatPrompt(art.Content), s.backupKey)
 			if (err != nil && strings.Contains(err.Error(), "rate limit")) || (resp != nil && resp.StatusCode() == 429) {
-				// Both keys are rate limited
-				return 0, 0, fmt.Errorf("rate limit exceeded on both keys: %w", ErrBothLLMKeysRateLimited)
+				// Both keys are rate limited for this model, try a different model
+				config, err := LoadCompositeScoreConfig()
+				if err != nil {
+					return 0, 0, fmt.Errorf("failed to load config: %w", err)
+				}
+
+				// Find a different model to try
+				for _, model := range config.Models {
+					if model.ModelName != pv.Model {
+						log.Printf("[INFO] Rate limited on model %s, trying alternative model %s", pv.Model, model.ModelName)
+						// Try the alternative model with primary key
+						resp, err = s.callLLMAPIWithKey(model.ModelName, pv.FormatPrompt(art.Content), s.apiKey)
+						if err == nil && resp.StatusCode() < 400 {
+							pv.Model = model.ModelName // Update the model name in the prompt variant
+							break
+						}
+						// If still rate limited, try with backup key
+						if s.backupKey != "" {
+							resp, err = s.callLLMAPIWithKey(model.ModelName, pv.FormatPrompt(art.Content), s.backupKey)
+							if err == nil && resp.StatusCode() < 400 {
+								pv.Model = model.ModelName // Update the model name in the prompt variant
+								break
+							}
+						}
+					}
+				}
+
+				// If we still have an error after trying all models
+				if err != nil || (resp != nil && resp.StatusCode() >= 400) {
+					return 0, 0, fmt.Errorf("rate limit exceeded on all models and keys: %w", ErrBothLLMKeysRateLimited)
+				}
 			}
 		} else {
-			// No backup key, propagate the original error
-			return 0, 0, fmt.Errorf("rate limit exceeded on primary key and no backup key provided")
+			// No backup key, try a different model with primary key
+			config, err := LoadCompositeScoreConfig()
+			if err != nil {
+				return 0, 0, fmt.Errorf("failed to load config: %w", err)
+			}
+
+			// Find a different model to try
+			for _, model := range config.Models {
+				if model.ModelName != pv.Model {
+					log.Printf("[INFO] Rate limited on model %s, trying alternative model %s", pv.Model, model.ModelName)
+					resp, err = s.callLLMAPIWithKey(model.ModelName, pv.FormatPrompt(art.Content), s.apiKey)
+					if err == nil && resp.StatusCode() < 400 {
+						pv.Model = model.ModelName // Update the model name in the prompt variant
+						break
+					}
+				}
+			}
+
+			// If we still have an error after trying all models
+			if err != nil || (resp != nil && resp.StatusCode() >= 400) {
+				return 0, 0, fmt.Errorf("rate limit exceeded on all models: %w", ErrBothLLMKeysRateLimited)
+			}
 		}
 	}
 
@@ -88,8 +138,14 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 		return 0, 0, formatHTTPError(resp)
 	}
 
+	// Log the raw response for debugging
+	rawResponse := resp.String()
+	log.Printf("[DEBUG][LLM] Raw response for article %d, model %s: %s", art.ID, pv.Model, rawResponse)
+
 	// Parse the response
-	score, _, confidence, err = parseNestedLLMJSONResponse(resp.String())
+	score, _, confidence, err = parseNestedLLMJSONResponse(rawResponse)
+	log.Printf("[DEBUG][LLM] Parsed response for article %d, model %s: score=%.4f, confidence=%.4f, err=%v",
+		art.ID, pv.Model, score, confidence, err)
 	return score, confidence, err
 }
 

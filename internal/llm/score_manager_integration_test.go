@@ -62,21 +62,10 @@ func TestIntegrationUpdateArticleScore(t *testing.T) {
 	// Mock the calculator's behavior
 	calculator.On("CalculateScore", testScores).Return(expectedScore, expectedConfidence, nil)
 
-	// Mock database transaction
-	sqlMock.ExpectBegin()
-
-	// Mock the InsertLLMScore call using NamedExec like in the real implementation
-	sqlMock.ExpectExec(`INSERT INTO llm_scores \(article_id, model, score, metadata, version, created_at\) VALUES \(\?, \?, \?, \?, \?, \?\)`).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	// Mock the UpdateArticleScoreLLM call
+	// Mock the UpdateArticleScoreLLM call - this is the only DB operation that happens in UpdateArticleScore
 	sqlMock.ExpectExec(`UPDATE articles SET composite_score = \?, confidence = \?, score_source = 'llm' WHERE id = \?`).
 		WithArgs(expectedScore, expectedConfidence, articleID).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-
-	// Mock the transaction commit
-	sqlMock.ExpectCommit()
 
 	// Call the method
 	score, confidence, err := sm.UpdateArticleScore(articleID, testScores, config)
@@ -134,9 +123,7 @@ func TestIntegrationUpdateArticleScore_CalculationError(t *testing.T) {
 	// Mock the calculator to return an error
 	calculator.On("CalculateScore", testScores).Return(0.0, 0.0, expectedError)
 
-	// Mock database transaction - only begin and rollback should be called
-	sqlMock.ExpectBegin()
-	sqlMock.ExpectRollback()
+	// No need to mock any database operations since we should return before reaching that point
 
 	// Call the method
 	score, confidence, err := sm.UpdateArticleScore(articleID, testScores, config)

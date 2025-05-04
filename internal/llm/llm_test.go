@@ -1,7 +1,9 @@
 package llm
 
 import (
+	"context"
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/go-resty/resty/v2"
 	"github.com/jmoiron/sqlx"
@@ -281,4 +284,117 @@ func TestCompositeScoreWithConfig(t *testing.T) {
 			assert.InDelta(t, tc.expectedResult, result, 0.01, "Composite score calculation error")
 		})
 	}
+}
+
+// TestScoreWithModel tests the ScoreWithModel function focusing on:
+// 1. Creating and storing a proper LLM score record with correct metadata
+// 2. Handling of confidence and explanation values
+// 3. Database storage and error handling
+func TestScoreWithModel(t *testing.T) {
+	// Define constants
+	const (
+		testModelName = "test-model"
+		testArticleID = int64(123)
+	)
+
+	// Create a mock database for capturing the score insertion
+	mockDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating sqlmock: %v", err)
+	}
+	sqlxDB := sqlx.NewDb(mockDB, "sqlmock")
+	defer mockDB.Close()
+
+	// Test cases for different scenarios
+	testCases := []struct {
+		name          string
+		modelName     string
+		score         float64
+		confidence    float64
+		dbError       bool
+		expectedScore float64
+		expectError   bool
+	}{
+		{
+			name:          "Successful scoring and storage",
+			modelName:     testModelName,
+			score:         0.75,
+			confidence:    0.85,
+			dbError:       false,
+			expectedScore: 0.75,
+			expectError:   false,
+		},
+		{
+			name:          "DB error case",
+			modelName:     testModelName,
+			score:         -0.5,
+			confidence:    0.95,
+			dbError:       true,
+			expectedScore: -0.5,
+			expectError:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset mock expectations for each test case
+			mock.ExpectationsWereMet()
+
+			// Create a mock LLM service that returns our test values
+			mockService := &mockScoreTestService{
+				score:      tc.score,
+				confidence: tc.confidence,
+			}
+
+			// Set up the DB mock for InsertLLMScore
+			// We'll use regex to match the insert SQL since the exact values can vary
+			if tc.dbError {
+				mock.ExpectExec("INSERT INTO llm_scores").
+					WillReturnError(fmt.Errorf("database error"))
+			} else {
+				mock.ExpectExec("INSERT INTO llm_scores").
+					WillReturnResult(sqlmock.NewResult(1, 1))
+			}
+
+			// Create client with our mock service and DB
+			client := &LLMClient{
+				llmService: mockService,
+				db:         sqlxDB,
+			}
+
+			// Test article
+			article := &db.Article{
+				ID:      testArticleID,
+				Title:   "Test Article",
+				Content: "This is a test article content for LLM scoring.",
+			}
+
+			// Call the method under test
+			resultScore, err := client.ScoreWithModel(article, tc.modelName)
+
+			// Verify results based on expectations
+			if tc.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "failed to store")
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedScore, resultScore)
+			}
+
+			// Verify all DB expectations were met
+			err = mock.ExpectationsWereMet()
+			assert.NoError(t, err, "Not all database expectations were met")
+		})
+	}
+}
+
+// Mock service for testing ScoreWithModel
+type mockScoreTestService struct {
+	score      float64
+	confidence float64
+}
+
+// ScoreContent implements LLMService for testing
+func (m *mockScoreTestService) ScoreContent(ctx context.Context, pv PromptVariant, art *db.Article) (float64, float64, error) {
+	return m.score, m.confidence, nil
 }
