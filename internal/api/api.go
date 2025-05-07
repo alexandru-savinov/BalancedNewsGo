@@ -167,7 +167,7 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector rss.Collec
 	// @Success 200 {object} StandardResponse
 	// @Failure 400 {object} ErrorResponse
 	// @Router /feedback [post]
-	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn)))
+	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn, llmClient)))
 
 	// Health checks
 	// @Summary Get RSS feed health status
@@ -1186,7 +1186,7 @@ func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 // @Failure 400 {object} ErrorResponse "Invalid request data"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /feedback [post]
-func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		var req struct {
@@ -1254,10 +1254,17 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		// Update article confidence based on feedback
 		scores, err := db.FetchLLMScores(dbConn, req.ArticleID)
 		if err == nil {
-			// Calculate new composite score and confidence
-			score, confidence, compErr := llm.ComputeCompositeScoreWithConfidence(scores)
-			if compErr != nil {
-				LogError("feedbackHandler: composite score calculation", compErr)
+			// Get config from the LLMClient associated with the handler
+			config := llmClient.GetConfig()
+			if config == nil {
+				LogError("feedbackHandler: LLM client config not loaded", fmt.Errorf("LLM client config not loaded"))
+				RespondError(c, NewAppError(ErrInternal, "Internal processing error [config]"))
+				return
+			}
+
+			score, confidence, err := llm.ComputeCompositeScoreWithConfidence(scores, config)
+			if err != nil {
+				log.Printf("[API DEBUG] Error computing composite score for article %d: %v", req.ArticleID, err)
 			} else {
 				// Adjust confidence based on feedback category
 				if req.Category == "agree" {

@@ -3,14 +3,14 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "test.cmd",
-    "test:backend": "test.cmd backend",
-    "test:all": "test.cmd all",
-    "test:debug": "test.cmd debug",
-    "test:report": "test.cmd report",
-    "test:clean": "test.cmd clean",
-    "test:analyze": "test.cmd analyze",
-    "test:list": "test.cmd list"
+    "test": "scripts/test.cmd",
+    "test:backend": "scripts/test.cmd backend",
+    "test:all": "scripts/test.cmd all",
+    "test:debug": "scripts/test.cmd debug",
+    "test:report": "scripts/test.cmd report",
+    "test:clean": "scripts/test.cmd clean",
+    "test:analyze": "scripts/test.cmd analyze",
+    "test:list": "scripts/test.cmd list"
   },
   "repository": {
     "type": "git",

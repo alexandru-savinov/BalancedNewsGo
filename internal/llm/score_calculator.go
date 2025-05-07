@@ -14,14 +14,14 @@ var perspectives = []string{"left", "center", "right"}
 // ScoreCalculator defines the interface for composite score calculation
 // Returns (score, confidence, error)
 type ScoreCalculator interface {
-	CalculateScore(scores []db.LLMScore) (float64, float64, error)
+	CalculateScore(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error)
 }
 
 // DefaultScoreCalculator implements ScoreCalculator using the new averaging logic
 // It preserves the -1.0 to +1.0 scale and averages confidences from model metadata
 // Missing perspectives are treated as 0 for both score and confidence
 type DefaultScoreCalculator struct {
-	Config *CompositeScoreConfig // Must be provided, not nil
+	// Config *CompositeScoreConfig // Config is now passed via method
 }
 
 // initializeMaps creates and initializes maps for scores and confidence values
@@ -36,8 +36,8 @@ func (c *DefaultScoreCalculator) initializeMaps() (map[string]*float64, map[stri
 }
 
 // getPerspective determines the perspective (left/center/right) for a given model
-func (c *DefaultScoreCalculator) getPerspective(model string) string {
-	perspective := MapModelToPerspective(model, c.Config)
+func (c *DefaultScoreCalculator) getPerspective(model string, cfg *CompositeScoreConfig) string {
+	perspective := MapModelToPerspective(model, cfg)
 	if perspective != "" {
 		return perspective
 	}
@@ -80,8 +80,8 @@ func (c *DefaultScoreCalculator) extractConfidence(metadata string) float64 {
 	return 0.0
 }
 
-func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
-	if c.Config == nil {
+func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
+	if cfg == nil {
 		log.Printf("[ERROR][CONFIDENCE] Config is nil, returning error")
 		return 0, 0, fmt.Errorf("DefaultScoreCalculator: Config must not be nil")
 	}
@@ -90,14 +90,14 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 
 	// For each perspective, use the last provided score (and its confidence)
 	for _, s := range scores {
-		perspective := c.getPerspective(s.Model)
+		perspective := c.getPerspective(s.Model, cfg)
 
 		if perspective == "" || (perspective != "left" && perspective != "center" && perspective != "right") {
 			continue
 		}
 
 		val := s.Score
-		if isInvalid(val) || val < c.Config.MinScore || val > c.Config.MaxScore {
+		if isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore {
 			// Set out of range scores to 0.0 per test expectations
 			val = 0.0
 		}

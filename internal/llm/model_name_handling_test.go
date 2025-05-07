@@ -1,13 +1,28 @@
 package llm
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Helper to create a score with metadata containing confidence
+// (Copied from deleted composite_score_fix_test.go)
+func createScoreWithConfidence(articleID int64, model string, score float64, confidence float64) db.LLMScore {
+	metadata := fmt.Sprintf(`{"confidence": %.2f}`, confidence)
+	return db.LLMScore{
+		ArticleID: articleID,
+		Model:     model,
+		Score:     score,
+		Metadata:  metadata,
+		CreatedAt: time.Now(), // Set a consistent time for tests if needed
+	}
+}
 
 // Model name constants to avoid duplication
 const (
@@ -95,59 +110,104 @@ func CalculateCompositeScore(composite *CompositeScore) error {
 	return nil
 }
 
-// TestModelNameNormalization tests the normalization of model names in different contexts
-func TestModelNameNormalization(t *testing.T) {
-	// Create a test config
-	cfg := &CompositeScoreConfig{
+// Helper to create a test config for model name handling tests
+func createModelNameTestConfig() *CompositeScoreConfig {
+	return &CompositeScoreConfig{
 		Models: []ModelConfig{
-			{ModelName: modelLeft, Perspective: "left"},
-			{ModelName: modelCenter, Perspective: "center"},
-			{ModelName: modelRight, Perspective: "right"},
+			{ModelName: "meta-llama/llama-3-maverick:123", Perspective: "left"},
+			{ModelName: "google/gemini-pro", Perspective: "center"},
+			{ModelName: "openai/gpt-4-turbo", Perspective: "right"},
+			{ModelName: "Vendor/Legacy-Left", Perspective: "left"},
+			{ModelName: " Vendor / Mixed-Case-Center ", Perspective: "center"},
 		},
+		Formula: "average", DefaultMissing: 0.0, HandleInvalid: "default",
+		MinScore: -1.0, MaxScore: 1.0, ConfidenceMethod: "count_valid",
+		MinConfidence: 0.0, MaxConfidence: 1.0,
 	}
+}
+
+func TestMapModelToPerspective(t *testing.T) {
+	testCfg := createModelNameTestConfig()
 
 	testCases := []struct {
-		name                string
-		modelName           string
-		expectedPerspective string
+		modelName string
+		expected  string
 	}{
-		{
-			name:                "Model with extra spaces",
-			modelName:           "  " + modelLeft + "  ",
-			expectedPerspective: "left",
-		},
-		{
-			name:                "Model with mixed case",
-			modelName:           "Meta-Llama/Llama-4-Maverick",
-			expectedPerspective: "left",
-		},
-		{
-			name:                "Model with unusual spacing",
-			modelName:           modelCenter + "\t",
-			expectedPerspective: "center",
-		},
-		{
-			name:                "Model with non-breaking space",
-			modelName:           modelRight + "\u00A0",
-			expectedPerspective: "right",
-		},
+		{"meta-llama/llama-3-maverick:123", "left"},
+		{"meta-llama/llama-3-maverick:latest", "left"}, // Should match base name
+		{"meta-llama/llama-3-maverick", "left"},
+		{"google/gemini-pro", "center"},
+		{"openai/gpt-4-turbo", "right"},
+		{"Vendor/Legacy-Left", "left"},
+		{" Vendor / Mixed-Case-Center ", "center"}, // Should handle spacing and case
+		{"unknown/model", ""},                      // Not found
+		{":123", ""},                               // Invalid format
+		{"", ""},                                   // Empty string
+		{"left", "left"},                           // Legacy fallback
+		{"CENTER", "center"},                       // Legacy fallback (case-insensitive)
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			perspective := MapModelToPerspective(tc.modelName, cfg)
-			assert.Equal(t, tc.expectedPerspective, perspective)
+		t.Run(tc.modelName, func(t *testing.T) {
+			actual := MapModelToPerspective(tc.modelName, testCfg) // Pass testCfg
+			assert.Equal(t, tc.expected, actual)
 		})
 	}
+
+	// Test with nil config
+	t.Run("Nil Config", func(t *testing.T) {
+		actual := MapModelToPerspective("google/gemini-pro", nil)
+		assert.Equal(t, "", actual, "Should return empty string for nil config")
+	})
+}
+
+func TestComputeWithMixedModelNames(t *testing.T) {
+	testCfg := createModelNameTestConfig()
+
+	scores := []db.LLMScore{
+		createScoreWithConfidence(1, "meta-llama/llama-3-maverick:123", -0.8, 0.9), // left
+		createScoreWithConfidence(1, "google/gemini-pro", 0.1, 0.8),                // center
+		createScoreWithConfidence(1, " Vendor / Mixed-Case-Center ", 0.3, 0.7),     // center (duplicate, lower conf)
+		createScoreWithConfidence(1, "openai/gpt-4-turbo", 0.9, 0.95),              // right
+		createScoreWithConfidence(1, "unknown/model", 0.5, 0.5),                    // unknown
+	}
+
+	// Expected score (average): Uses -0.8 (left), 0.1 (center, higher conf), 0.9 (right)
+	// (-0.8 + 0.1 + 0.9) / 3 = 0.2 / 3 = 0.0667
+	expectedScore := 0.0667
+	expectedConfidence := 1.0 // Assumes count_valid, 3/3 perspectives found
+
+	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
+
+	assert.NoError(t, err)
+	assert.InDelta(t, expectedScore, score, 0.001)
+	assert.InDelta(t, expectedConfidence, confidence, 0.001)
+}
+
+// TestModelNameNormalization tests the normalization of model names in different contexts
+func TestModelNameNormalization(t *testing.T) {
+	testCfg := createModelNameTestConfig()
+
+	t.Run("MapModelToPerspective Normalization", func(t *testing.T) {
+		assert.Equal(t, "left", MapModelToPerspective("meta-llama/llama-3-maverick:latest", testCfg))
+		assert.Equal(t, "center", MapModelToPerspective(" google/gemini-pro ", testCfg))
+	})
+
+	t.Run("CompositeScore Calculation Normalization", func(t *testing.T) {
+		scores := []db.LLMScore{
+			createScoreWithConfidence(1, "meta-llama/llama-3-maverick:latest", -0.5, 0.9),
+			createScoreWithConfidence(1, " google/gemini-pro ", 0.0, 0.8),
+			createScoreWithConfidence(1, "openai/gpt-4-turbo", 0.5, 0.85),
+		}
+		score, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
+		assert.NoError(t, err)
+		assert.InDelta(t, 0.0, score, 0.001) // (-0.5 + 0.0 + 0.5) / 3 = 0
+	})
 }
 
 // TestModelNameFallbackLogic tests the fallback logic when model names aren't found in config
 func TestModelNameFallbackLogic(t *testing.T) {
-	// Save original config and restore after test
-	originalConfig := testModelConfig
-	defer func() { testModelConfig = originalConfig }()
-
-	// Create a test config
+	// Create a test config locally instead of using a global
 	testConfig := &CompositeScoreConfig{
 		Models: []ModelConfig{
 			{ModelName: modelLeft, Perspective: "left"},
@@ -164,9 +224,6 @@ func TestModelNameFallbackLogic(t *testing.T) {
 		MaxScore:         1.0,  // Accept all valid scores
 	}
 
-	// Set our test config
-	testModelConfig = testConfig
-
 	// Create test scores using both configured and legacy model names
 	scores := []db.LLMScore{
 		// Modern model names (configured)
@@ -179,8 +236,8 @@ func TestModelNameFallbackLogic(t *testing.T) {
 		{ArticleID: 1, Model: "unknown", Score: 0.7},
 	}
 
-	// Calculate score
-	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores)
+	// Calculate score, passing the local testConfig
+	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testConfig)
 
 	// Assertions
 	require.NoError(t, err)

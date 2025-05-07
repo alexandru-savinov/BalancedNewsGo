@@ -45,8 +45,8 @@ type MockScoreCalculator struct {
 	mock.Mock
 }
 
-func (m *MockScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
-	args := m.Called(scores)
+func (m *MockScoreCalculator) CalculateScore(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
+	args := m.Called(scores, cfg)
 	return args.Get(0).(float64), args.Get(1).(float64), args.Error(2)
 }
 
@@ -186,7 +186,7 @@ func (sm *TestableScoreManager) UpdateArticleScore(articleID int64, scores []db.
 	}
 
 	// Use the score calculator to compute the score and confidence
-	compositeScore, confidence, err := sm.calculator.CalculateScore(scores)
+	compositeScore, confidence, err := sm.calculator.CalculateScore(scores, cfg)
 	if err != nil {
 		if sm.mockProgress != nil {
 			ps := &models.ProgressState{
@@ -365,7 +365,7 @@ func TestUpdateArticleScoreSuccess(t *testing.T) {
 	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(mockTx, nil)
 
 	// Mock score calculation
-	mockCalculator.On("CalculateScore", testScores).Return(expectedScore, expectedConfidence, nil)
+	mockCalculator.On("CalculateScore", testScores, config).Return(expectedScore, expectedConfidence, nil)
 
 	// Mock progress tracking - Calculation
 	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
@@ -458,7 +458,7 @@ func TestUpdateArticleScoreCalculationError(t *testing.T) {
 	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(mockTx, nil)
 
 	// Mock score calculation error
-	mockCalculator.On("CalculateScore", testScores).Return(0.0, 0.0, assert.AnError)
+	mockCalculator.On("CalculateScore", testScores, config).Return(0.0, 0.0, assert.AnError)
 
 	// Mock rollback
 	mockTx.On("Rollback").Return(nil)
@@ -562,7 +562,7 @@ func TestUpdateArticleScoreCommitError(t *testing.T) {
 	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(mockTx, nil)
 
 	// Mock score calculation
-	mockCalculator.On("CalculateScore", testScores).Return(expectedScore, expectedConfidence, nil)
+	mockCalculator.On("CalculateScore", testScores, config).Return(expectedScore, expectedConfidence, nil)
 
 	// Mock DB operations with flexible parameter matching
 	mockSqlResult.On("LastInsertId").Return(int64(1), nil)
@@ -631,7 +631,7 @@ func TestUpdateArticleScoreCacheInvalidation(t *testing.T) {
 	// Mock all required calls
 	mockProgress.On("SetProgress", articleID, mock.AnythingOfType("*models.ProgressState")).Return()
 	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(mockTx, nil)
-	mockCalculator.On("CalculateScore", testScores).Return(expectedScore, expectedConfidence, nil)
+	mockCalculator.On("CalculateScore", testScores, config).Return(expectedScore, expectedConfidence, nil)
 	mockSqlResult.On("LastInsertId").Return(int64(1), nil)
 
 	// First Exec call for ensemble score insertion - more flexible matching
@@ -721,7 +721,7 @@ func TestScoreManagerWithAllZeroConfidenceScores(t *testing.T) {
 	})).Return()
 
 	// Mock calculator to return error for zero confidence scores
-	mockCalculator.On("CalculateScore", mock.AnythingOfType("[]db.LLMScore")).Return(0.0, 0.0, fmt.Errorf("all LLMs returned empty or zero-confidence responses"))
+	mockCalculator.On("CalculateScore", mock.AnythingOfType("[]db.LLMScore"), mock.AnythingOfType("*llm.CompositeScoreConfig")).Return(0.0, 0.0, fmt.Errorf("all LLMs returned empty or zero-confidence responses"))
 
 	// Test the UpdateArticleScore function
 	_, _, err := sm.UpdateArticleScore(articleID, scores, cfg)

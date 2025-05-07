@@ -26,7 +26,10 @@ func main() {
 		}
 	}()
 
-	llmClient := llm.NewLLMClient(conn)
+	llmClient, err := llm.NewLLMClient(conn)
+	if err != nil {
+		log.Fatalf("Failed to initialize LLM Client: %v", err)
+	}
 
 	feedURLs := []string{
 		// Left-leaning

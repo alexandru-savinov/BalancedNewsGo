@@ -38,8 +38,8 @@ Focus on building the fundamental political analysis capabilities:
 
 ### Phase 2: API and Frontend Integration (Days 11-20)
 Connect the political analysis to the user interface:
-- Improve API fallback: when no valid LLM scores are available, the API now returns `"composite_score": null` and includes `"status": "scoring_unavailable"` instead of zeros, to clearly indicate unavailable scoring data.
-- **Frontend now detects these cases and displays "Scoring unavailable" or "No data" instead of zeros, with UI elements adjusted accordingly.**
+- Improve API fallback: when no valid LLM scores are available, the API now returns `\"composite_score\": null` and includes `\"status\": \"scoring_unavailable\"` instead of zeros, to clearly indicate unavailable scoring data.
+- **Frontend now detects these cases and displays \"Scoring unavailable\" or \"No data\" instead of zeros, with UI elements adjusted accordingly.**
 - Extend API endpoints to support political filtering and sorting
 - Update templates to display political scores
 - Implement basic filtering controls
@@ -64,20 +64,20 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 		name string
 		url  string
 	}{
-		{"left", LeftModelURL},
-		{"center", CenterModelURL},
-		{"right", RightModelURL},
+		{\"left\", LeftModelURL},
+		{\"center\", CenterModelURL},
+		{\"right\", RightModelURL},
 	}
 
 	for _, m := range models {
 		score, err := c.analyzeContent(article.ID, article.Content, m.name, m.url)
 		if err != nil {
-			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.name, err)
+			log.Printf(\"Error analyzing article %d with model %s: %v\", article.ID, m.name, err)
 			continue
 		}
 		_, err = db.InsertLLMScore(c.db, score)
 		if err != nil {
-			log.Printf("Error inserting LLM score for article %d model %s: %v", article.ID, m.name, err)
+			log.Printf(\"Error inserting LLM score for article %d model %s: %v\", article.ID, m.name, err)
 		}
 	}
 	return nil
@@ -88,39 +88,39 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 New and modified database models to support political analysis:
 ```go
 type Article struct {
-	ID        int64     `db:"id"`
-	Source    string    `db:"source"`
-	PubDate   time.Time `db:"pub_date"`
-	URL       string    `db:"url"`
-	Title     string    `db:"title"`
-	Content   string    `db:"content"`
-	CreatedAt time.Time `db:"created_at"`
+	ID        int64     `db:\"id\"`
+	Source    string    `db:\"source\"`
+	PubDate   time.Time `db:\"pub_date\"`
+	URL       string    `db:\"url\"`
+	Title     string    `db:\"title\"`
+	Content   string    `db:\"content\"`
+	CreatedAt time.Time `db:\"created_at\"`
 }
 
 type LLMScore struct {
-	ID        int64     `db:"id"`
-	ArticleID int64     `db:"article_id"`
-	Model     string    `db:"model"` // "left", "center", "right"
-	Score     float64   `db:"score"`
-	Metadata  string    `db:"metadata"`
-	CreatedAt time.Time `db:"created_at"`
+	ID        int64     `db:\"id\"`
+	ArticleID int64     `db:\"article_id\"`
+	Model     string    `db:\"model\"` // \"left\", \"center\", \"right\"
+	Score     float64   `db:\"score\"`
+	Metadata  string    `db:\"metadata\"`
+	CreatedAt time.Time `db:\"created_at\"`
 }
 ```
 
 ### 3. API Endpoints
 Extended API to support political filtering and sorting:
 ```go
-router.GET("/api/articles", func(c *gin.Context) {
-	source := c.Query("source")
-	leaning := c.Query("leaning")
-	limitStr := c.DefaultQuery("limit", "20")
-	offsetStr := c.DefaultQuery("offset", "0")
+router.GET(\"/api/articles\", func(c *gin.Context) {
+	source := c.Query(\"source\")
+	leaning := c.Query(\"leaning\")
+	limitStr := c.DefaultQuery(\"limit\", \"20\")
+	offsetStr := c.DefaultQuery(\"offset\", \"0\")
 	limit, _ := strconv.Atoi(limitStr)
 	offset, _ := strconv.Atoi(offsetStr)
 
 	articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch articles"})
+		c.JSON(http.StatusInternalServerError, gin.H{\"error\": \"Failed to fetch articles\"})
 		return
 	}
 	c.JSON(http.StatusOK, articles)
@@ -136,7 +136,7 @@ func (c *Collector) FetchAndStore() {
 	for _, feedURL := range c.FeedURLs {
 		feed, err := parser.ParseURL(feedURL)
 		if err != nil {
-			log.Printf("[RSS] Failed to parse feed %s: %v", feedURL, err)
+			log.Printf(\"[RSS] Failed to parse feed %s: %v\", feedURL, err)
 			continue
 		}
 
@@ -165,7 +165,7 @@ func (c *Collector) FetchAndStore() {
 
 			_, err = db.InsertArticle(c.DB, article)
 			if err != nil {
-				log.Printf("[RSS] Failed to insert article: %v", err)
+				log.Printf(\"[RSS] Failed to insert article: %v\", err)
 			}
 		}
 	}
@@ -246,4 +246,4 @@ This development roadmap provides a clear path to implementing LLM-based politic
 
 The implementation prioritizes backend functionality first, focuses on a simple political spectrum, and aims for a quick MVP delivery. The modular design allows for future enhancements, including more sophisticated political analysis, improved UI, and integration of multiple LLM models.
 
-With this roadmap, you have a comprehensive guide to transform NewsBalancer into a tool that helps users access news from balanced political perspectives.
+With this roadmap, you have a comprehensive guide to transform NewsBalancer into a tool that helps users access news from balanced political perspectives. 

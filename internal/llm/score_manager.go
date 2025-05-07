@@ -48,8 +48,8 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 		return 0, 0, fmt.Errorf("all LLMs returned zero confidence - this indicates a serious issue with the LLM responses: %w", err)
 	}
 
-	// Use the score calculator to compute the score and confidence
-	compositeScore, confidence, err := sm.calculator.CalculateScore(scores)
+	// Use the score calculator to compute the score and confidence, passing the config
+	compositeScore, confidence, err := sm.calculator.CalculateScore(scores, cfg)
 	if err != nil {
 		log.Printf("[ERROR] Failed to compute composite score: %v", err)
 		sm.SetProgress(articleID, &models.ProgressState{

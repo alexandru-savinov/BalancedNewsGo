@@ -166,47 +166,57 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
+	defer dbConn.Close()
 
 	// Initialize LLM client
-	llmClient := llm.NewLLMClient(dbConn)
+	llmClient, err := llm.NewLLMClient(dbConn)
+	if err != nil {
+		log.Fatalf("Failed to initialize LLM Client: %v", err)
+	}
 
 	// Initialize RSS collector from external config
-	type FeedSource struct {
-		Category string `json:"category"`
-		URL      string `json:"url"`
-	}
-	type FeedSourcesConfig struct {
-		Sources []FeedSource `json:"sources"`
-	}
-
-	var feedConfig FeedSourcesConfig
-	feedConfigFile := "configs/feed_sources.json"
-	feedConfigData, err := os.ReadFile(feedConfigFile)
+	// Load feed URLs from config file first
+	feedSourcesPath := "configs/feed_sources.json"
+	feedConfigData, err := os.ReadFile(feedSourcesPath)
 	if err != nil {
-		log.Fatalf("Failed to read feed sources config: %v", err)
+		log.Fatalf("Failed to read feed sources config '%s': %v", feedSourcesPath, err)
+	}
+	var feedConfig struct { // Use anonymous struct for local parsing
+		Sources []struct {
+			URL string `json:"url"`
+		} `json:"sources"`
 	}
 	if err := json.Unmarshal(feedConfigData, &feedConfig); err != nil {
-		log.Fatalf("Failed to parse feed sources config: %v", err)
+		log.Fatalf("Failed to parse feed sources config '%s': %v", feedSourcesPath, err)
 	}
 	feedURLs := make([]string, 0, len(feedConfig.Sources))
 	for _, src := range feedConfig.Sources {
 		feedURLs = append(feedURLs, src.URL)
 	}
-	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
-	rssCollector.StartScheduler()
+
+	// Now initialize the collector with DB, URLs, and LLM client
+	collector := rss.NewCollector(dbConn, feedURLs, llmClient)
+	// Assuming NewCollector does not return an error based on previous usage
+
+	// Set HTTP client timeout if configured
+	if timeoutStr := os.Getenv("LLM_HTTP_TIMEOUT"); timeoutStr != "" {
+		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+			log.Printf("Setting LLM HTTP timeout to %v", timeout)
+			llmClient.SetHTTPLLMTimeout(timeout)
+		} else {
+			log.Printf("Warning: Invalid LLM_HTTP_TIMEOUT value: %s. Using default.", timeoutStr)
+		}
+	}
+
+	// Start cron job for fetching RSS feeds
 
 	// Initialize ScoreManager
 	cache := llm.NewCache()
-	calculator := &llm.DefaultScoreCalculator{
-		Config: &llm.CompositeScoreConfig{
-			MinScore: -1.0,
-			MaxScore: 1.0,
-		},
-	}
+	calculator := &llm.DefaultScoreCalculator{}
 	progressMgr := llm.NewProgressManager(10 * time.Minute) // Clean up progress data every 10 minutes
 	scoreManager := llm.NewScoreManager(dbConn, cache, calculator, progressMgr)
 
-	return dbConn, llmClient, rssCollector, scoreManager
+	return dbConn, llmClient, collector, scoreManager
 }
 
 func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
@@ -283,8 +293,18 @@ func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Fetch individual scores for the slider display
 		scores, _ := db.FetchLLMScores(dbConn, articleID)
-		composite, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
+
+		// Use the composite score and confidence already stored on the article
+		var composite float64
+		if article.CompositeScore != nil {
+			composite = *article.CompositeScore
+		}
+		var confidence float64
+		if article.Confidence != nil {
+			confidence = *article.Confidence
+		}
 
 		// Calculate bias label and confidence colors
 		var biasLabel string

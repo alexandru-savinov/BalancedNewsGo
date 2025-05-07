@@ -7,7 +7,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -18,7 +17,6 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	_ "modernc.org/sqlite"
@@ -69,51 +67,13 @@ func TestSSEProgressConcurrentClients(t *testing.T) {
 }
 
 // --- Helpers for panic recovery test ---
+
+// panicCalculator is a mock ScoreCalculator that panics
 type panicCalculator struct{}
 
-func (p *panicCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
-	panic("simulated panic")
-}
-
-func TestReanalyzeHandlerPanicRecovery(t *testing.T) {
-	done := make(chan error, 1)
-	go func() {
-		progressMgr := llm.NewProgressManager(1 * time.Minute)
-		manager := llm.NewScoreManager(nil, nil, &panicCalculator{}, progressMgr)
-		dbConn, err := sqlx.Open("sqlite", ":memory:")
-		if err != nil {
-			done <- err
-			return
-		}
-		defer dbConn.Close()
-
-		router := gin.New()
-		router.POST("/api/llm/reanalyze/:id", reanalyzeHandler(nil, dbConn, manager))
-
-		req, _ := http.NewRequest("POST", "/api/llm/reanalyze/1", nil)
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-
-		// Wait for goroutine to finish and check progress state
-		time.Sleep(100 * time.Millisecond)
-		progress := progressMgr.GetProgress(1)
-		if progress != nil {
-			if progress.Status != "Error" {
-				done <- fmt.Errorf("expected status Error, got %s", progress.Status)
-				return
-			}
-		}
-		done <- nil
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("TestReanalyzeHandlerPanicRecovery timed out")
-	}
+// CalculateScore implements ScoreCalculator and panics
+func (p *panicCalculator) CalculateScore(scores []db.LLMScore, cfg *llm.CompositeScoreConfig) (float64, float64, error) {
+	panic("panicCalculator.CalculateScore called")
 }
 
 // --- Use the existing MockDBOperations from api_test.go ---

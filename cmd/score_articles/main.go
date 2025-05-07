@@ -52,7 +52,11 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	llmClient := llm.NewLLMClient(conn)
+	// Handle both return values from NewLLMClient
+	llmClient, err := llm.NewLLMClient(conn)
+	if err != nil {
+		log.Fatalf("Failed to initialize LLM Client: %v", err)
+	}
 
 	// Load config-driven models
 	config, err := llm.LoadCompositeScoreConfig()

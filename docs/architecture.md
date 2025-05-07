@@ -6,8 +6,8 @@ This document traces the end-to-end data flow of the `CompositeScore` from its d
 
 ## 1. Score Display
 
-**Description:**  
-Rendered in `<span class="composite-score">`. Formatting (`toFixed(2)`) applied via JavaScript (`loadBiasData`) for the detail view.
+**Description:**
+Rendered in `<span class=\"composite-score\">`. Formatting (`toFixed(2)`) applied via JavaScript (`loadBiasData`) for the detail view.
 
 ### Potential Debugging Points:
 - Check for JavaScript errors in the browser console.
@@ -24,8 +24,8 @@ Rendered in `<span class="composite-score">`. Formatting (`toFixed(2)`) applied 
 
 ## 2. Frontend Data Retrieval
 
-**Description:**  
-Main article list uses htmx (`hx-get="/articles"`) on page load or filter. Detail view uses JavaScript fetch or htmx to `/articles/{id}`. Backend sends JSON with `CompositeScore` (float64).
+**Description:**
+Main article list uses htmx (`hx-get=\"/articles\"`) on page load or filter. Detail view uses JavaScript fetch or htmx to `/articles/{id}`. Backend sends JSON with `CompositeScore` (float64).
 
 ### Potential Debugging Points:
 - Inspect browser network tab for API calls and responses.
@@ -42,7 +42,7 @@ Main article list uses htmx (`hx-get="/articles"`) on page load or filter. Detai
 
 ## 3. Backend API Endpoint(s)
 
-**Description:**  
+**Description:**
 `getArticlesHandler` (`/articles`) and `getArticleByIDHandler` (`/articles/{id}`) in `internal/api/api.go`. Both return JSON including `CompositeScore`. The detail endpoint also returns raw perspective scores.
 
 ### Potential Debugging Points:
@@ -61,7 +61,7 @@ Main article list uses htmx (`hx-get="/articles"`) on page load or filter. Detai
 
 ## 4. Final Score Calculation/Transformation (Backend)
 
-**Description:**  
+**Description:**
 `llm.ComputeCompositeScore` is called in API handlers. It takes raw perspective scores (Left/Center/Right), averages them (missing scores default to 0), and calculates `1.0 - abs(average)`. This favors scores near 0 (balanced).
 
 ### Potential Debugging Points:
@@ -80,8 +80,8 @@ Main article list uses htmx (`hx-get="/articles"`) on page load or filter. Detai
 
 ## 5. Data Storage
 
-**Description:**  
-Raw perspective scores are stored in the `llm_scores` table (SQLite). Columns: `article_id` (FK), `model` (TEXT: "left"/"center"/"right"), `score` (REAL: -1.0 to +1.0).
+**Description:**
+Raw perspective scores are stored in the `llm_scores` table (SQLite). Columns: `article_id` (FK), `model` (TEXT: \"left\"/\"center\"/\"right\"), `score` (REAL: -1.0 to +1.0).
 
 ### Potential Debugging Points:
 - Check database connection and health.
@@ -104,7 +104,7 @@ Raw perspective scores are stored in the `llm_scores` table (SQLite). Columns: `
 
 ## 6. Data Processing/Aggregation
 
-**Description:**  
+**Description:**
 Background job `cmd/score_articles/main.go` runs `LLMClient.ProcessUnscoredArticles()`. This calls `LLMClient.AnalyzeAndStore()`, which uses `OpenAILLMService.AnalyzeWithPrompt` for each perspective (L/C/R) and saves results to `llm_scores` via `db.InsertLLMScore`.
 
 ### Potential Debugging Points:
@@ -124,7 +124,7 @@ Background job `cmd/score_articles/main.go` runs `LLMClient.ProcessUnscoredArtic
 
 ## 7. Raw Data Origin
 
-**Description:**  
+**Description:**
 Article content is fetched from a list of RSS feeds defined in `cmd/fetch_articles/main.go`.
 
 ### Potential Debugging Points:
@@ -142,7 +142,7 @@ Article content is fetched from a list of RSS feeds defined in `cmd/fetch_articl
 
 ## 8. Initial Data Ingestion & Calculation
 
-**Description:**  
+**Description:**
 `cmd/fetch_articles/main.go` triggers `(*Collector).FetchAndStore()` in `internal/rss/rss.go`. This stores article data (title, URL, content, etc.) in the `articles` table via `db.InsertArticle`.
 
 ### Potential Debugging Points:
@@ -159,15 +159,15 @@ Article content is fetched from a list of RSS feeds defined in `cmd/fetch_articl
 
 ---
 
-## LLM Model "Unsupported Model" Error Analysis (April 2025)
+## LLM Model \"Unsupported Model\" Error Analysis (April 2025)
 
 ### Problem Statement
-Scoring attempts for article 788 (and others) fail due to "unsupported model" errors for the left, center, and right models. The root cause is traced to the LLM backend not supporting the requested models.
+Scoring attempts for article 788 (and others) fail due to \"unsupported model\" errors for the left, center, and right models. The root cause is traced to the LLM backend not supporting the requested models.
 
 ### Initial Debugging Steps
 - Reflected on 5-7 possible sources of the problem:
   1. LLM service configuration does not list or enable the required models.
-  2. Mapping from "left", "center", "right" to actual model names is missing, incorrect, or not loaded.
+  2. Mapping from \"left\", \"center\", \"right\" to actual model names is missing, incorrect, or not loaded.
   3. Code in `internal/llm/` does not register or expose the required models to the scoring pipeline.
   4. Scoring pipeline requests model names that do not match those configured/available in the LLM backend.
   5. Typo or mismatch in model names between config and code.
@@ -176,11 +176,11 @@ Scoring attempts for article 788 (and others) fail due to "unsupported model" er
 
 - Most likely sources:
   - (1) The LLM service configuration does not list or enable the required models.
-  - (2) The mapping from "left", "center", "right" to actual model names is missing or incorrect.
+  - (2) The mapping from \"left\", \"center\", \"right\" to actual model names is missing or incorrect.
 
 ### Codebase Observations
-- `internal/llm/llm.go` uses constants for `LabelLeft`, `LabelRight`, and `LabelNeutral`, and in `ComputeCompositeScore`, it matches on `s.Model` being "left", "center", or "right".
-- The actual mapping or registration of which model names are available, and how "left", "center", "right" are mapped to real model names, is not yet visible. This is likely handled elsewhere in `llm.go` or in a config file (possibly in `configs/`).
+- `internal/llm/llm.go` uses constants for `LabelLeft`, `LabelRight`, and `LabelNeutral`, and in `ComputeCompositeScore`, it matches on `s.Model` being \"left\", \"center\", or \"right\".
+- The actual mapping or registration of which model names are available, and how \"left\", \"center\", \"right\" are mapped to real model names, is not yet visible. This is likely handled elsewhere in `llm.go` or in a config file (possibly in `configs/`).
 
 ### Next Steps
 - Inspect more of `llm.go` for model registration and selection logic.
@@ -193,7 +193,7 @@ Scoring attempts for article 788 (and others) fail due to "unsupported model" er
 
 ### Issue Resolution
 - The scoring pipeline issues were resolved by:
-  - Correcting the mapping between logical model labels ("left", "center", "right") and the actual LLM model names in both configuration and code.
+  - Correcting the mapping between logical model labels (\"left\", \"center\", \"right\") and the actual LLM model names in both configuration and code.
   - Ensuring all required models were registered and available in the LLM backend.
   - Verifying that the scoring job (`cmd/score_articles/main.go`) executed successfully for all articles, including those previously affected by model mapping errors.
 
@@ -204,4 +204,4 @@ Scoring attempts for article 788 (and others) fail due to "unsupported model" er
 ### Production-Ready Status
 - As of April 11, 2025, the scoring system is fully functional and production-ready.
 - The end-to-end pipeline (article selection, LLM model mapping, scoring job execution, frontend display) has been verified in a production environment.
-- Ongoing monitoring and documentation updates will continue as the system evolves.
+- Ongoing monitoring and documentation updates will continue as the system evolves. 
