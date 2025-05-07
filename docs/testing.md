@@ -15,107 +15,129 @@ Before running tests, ensure you have the following installed:
 
 ## Running Tests
 
-Tests are primarily run using scripts located in the project root or via `npm` / `Makefile` commands.
+Tests are primarily run using the consolidated test script (`scripts/test.cmd` for Windows, `scripts/test.sh` for Linux/macOS) or standard Go commands.
 
-### Using Root Scripts (`.cmd` for Windows, `.sh` for Linux/macOS)
+### Using the Consolidated Test Script
 
-These scripts execute specific test suites:
+This script provides various subcommands to run different test suites. Use `scripts/test.cmd help` or `scripts/test.sh help` to see all available commands.
 
-- **Unit Tests (Go):**
+Common commands:
+
+- **Go Unit Tests:**
   ```bash
   go test ./...
   ```
+  *(Note: This command is run directly, not via the test script)*
 
-- **Backend Integration / Fixes Tests:** Verifies core backend logic and recent fixes.
+- **Backend Integration Tests:**
   ```bash
   # Windows
-  ./run_backend_tests.cmd
-
+  scripts/test.cmd backend
   # Linux/macOS
-  ./run_backend_tests.sh # (or equivalent npm run test:backend)
+  scripts/test.sh backend 
   ```
 
-- **All Tests (including E2E):** Runs the most comprehensive suite, including backend, API, and potentially other tests like rescoring.
+- **API Tests:**
   ```bash
   # Windows
-  ./run_all_tests.cmd
-
+  scripts/test.cmd api
   # Linux/macOS
-  ./run_all_tests.sh # (or equivalent npm run test:all)
+  scripts/test.sh api 
   ```
 
-- **Debug Tests:** Runs tests with more verbose output, saving detailed results for debugging.
+- **Essential Tests:**
   ```bash
   # Windows
-  ./run_debug_tests.cmd
-
+  scripts/test.cmd essential
   # Linux/macOS
-  # (Equivalent npm run test:debug might exist)
+  scripts/test.sh essential 
   ```
 
-- **Essential Rescoring Tests:** Focuses on critical path tests for the rescoring logic.
+- **All Tests (Combined):** Runs essential, extended, and confidence tests.
   ```bash
   # Windows
-  ./run_essential_tests.cmd
-
+  scripts/test.cmd all
   # Linux/macOS
-  ./run_essential_tests.sh
+  scripts/test.sh all 
   ```
-  This script typically starts the server, runs the tests, saves results to `test-results/essential_rescoring_tests.json`, and exits with a status code.
 
-### Using NPM / Test Runner Commands
+- **Debug Tests:** Runs a specific debug collection.
+  ```bash
+  # Windows
+  scripts/test.cmd debug
+  # Linux/macOS
+  scripts/test.sh debug 
+  ```
 
-If configured in `package.json`, you might use `npm` or a custom `test` command:
+- **Confidence Validation Tests:**
+  ```bash
+  # Windows
+  scripts/test.cmd confidence
+  # Linux/macOS
+  scripts/test.sh confidence 
+  ```
 
-```bash
-# Examples (check package.json for actual commands)
-npm run test:backend
-npm run test:all
-npm run test:debug
-npm run test:report # Generate HTML report
-npm run test:analyze # Analyze results via CLI
-```
+- **Generate Report:** Creates an HTML report from latest results.
+  ```bash
+  # Windows
+  scripts/test.cmd report
+  # Linux/macOS
+  scripts/test.sh report 
+  ```
 
-Alternatively, a `test` command might exist:
+- **Analyze Results:** Runs a CLI analysis tool.
+  ```bash
+  # Windows
+  scripts/test.cmd analyze
+  # Linux/macOS
+  scripts/test.sh analyze 
+  ```
 
-```bash
-# Examples (check implementation for actual commands)
-test backend
-test all
-test debug
-test report
-test analyze
-test list
-test clean
-test help
-```
+- **List Results:** Shows existing result files.
+  ```bash
+  # Windows
+  scripts/test.cmd list
+  # Linux/macOS
+  scripts/test.sh list 
+  ```
+
+- **Clean Results:** Deletes generated test results and logs.
+  ```bash
+  # Windows
+  scripts/test.cmd clean
+  # Linux/macOS
+  scripts/test.sh clean 
+  ```
+
+### Important Note on Concurrency
+
+Due to concurrency limitations with SQLite and background LLM analysis tasks triggered by some API calls, tests involving Newman (`backend`, `api`, `essential`, `all`, `debug`, `confidence`) currently require the `NO_AUTO_ANALYZE=true` environment variable to be set. The provided `test.cmd` and `test.sh` scripts handle this automatically by setting the variable before starting the Go server for the test run. This prevents tests from failing due to database locks (`SQLITE_BUSY`) caused by contention between the test runner and background analysis.
 
 ## Analyzing and Debugging Results
 
 ### Generating Reports
 
-An HTML report summarizing test runs can often be generated:
+An HTML report summarizing test runs can be generated using the test script:
 
 ```bash
-npm run report # (or test report)
+# Windows
+scripts/test.cmd report
+# Linux/macOS
+scripts/test.sh report
 ```
 This usually saves a report to the `test-results/` directory (e.g., `test_report.html`).
 
 ### Command-Line Analysis
 
-You can analyze Newman/Postman results directly from the CLI without opening Postman, typically using a helper script:
+You can analyze Newman/Postman results directly from the CLI using the test script:
 
 1.  **List Result Files:** See available JSON results in `test-results/`.
     ```bash
-    test list # (or similar command)
+    scripts/test.cmd list
     ```
 2.  **Analyze Results:** Run the analyzer, which might prompt you to choose a file or analyze the latest.
     ```bash
-    test analyze # (or npm run test:analyze)
-    ```
-3.  **Direct Analysis:** Analyze a specific file.
-    ```bash
-    node analyze_test_results.js analyze <filename.json> # (Adjust script name/path as needed)
+    scripts/test.cmd analyze
     ```
 
 The analysis output usually includes:
@@ -126,7 +148,7 @@ The analysis output usually includes:
 
 For in-depth debugging, you can import the raw Newman result files (`.json` files saved in `test-results/`) into Postman:
 
-1.  Run the desired test suite (especially `run_debug_tests.cmd` which saves `debug_tests.json`).
+1.  Run the desired test suite (especially `scripts/test.cmd debug` which saves `debug_tests.json`).
 2.  Open Postman.
 3.  Click the "Import" button.
 4.  Select the "File" tab and upload the relevant `.json` file from `test-results/`.
@@ -148,19 +170,23 @@ The API may include specific endpoints to aid debugging:
 
 When tests fail, consider these common areas:
 
-1.  **Feedback Table Schema Issues**:
+1.  **Database Locking (`SQLITE_BUSY`):**
+    *   If you encounter errors related to the database being locked, ensure you are running tests via the `scripts/test.cmd` or `scripts/test.sh` scripts. These scripts set the `NO_AUTO_ANALYZE=true` environment variable, which prevents background LLM analysis from causing database contention during tests.
+    *   If running Newman manually or via other means, you may need to set this environment variable yourself.
+
+2.  **Feedback Table Schema Issues**:
     *   Ensure the `feedback` table has all required columns (e.g., `id`, `article_id`, `user_id`, `feedback_text`, `category`, `ensemble_output_id`, `source`, `created_at`). Missing columns cause submission failures.
     *   Use the `/api/debug/schema` endpoint (if available) or DB tools to verify the schema.
-2.  **Response Format Issues**:
+3.  **Response Format Issues**:
     *   The API likely follows a standard response structure (e.g., `{ "success": true/false, "data": {...} }` or `{ "success": false, "error_message": "..." }`).
     *   Verify tests are asserting against the correct fields and structure based on the actual API response (visible in Postman or CLI analysis).
-3.  **Cache Issues**:
+4.  **Cache Issues**:
     *   Endpoints like `GET /articles` might use caching.
     *   If tests seem to get stale data, try adding a unique query parameter (e.g., `?timestamp=<value>`) to the request URL to bypass the cache during debugging.
-4.  **Ensemble Details Issues**:
+5.  **Ensemble Details Issues**:
     *   Endpoints retrieving ensemble or detailed scores (e.g., `/api/articles/{id}/details`) might require the article to have been fully processed and scored by the LLMs.
     *   A `404 Not Found` might indicate the scoring process hasn't completed for that article yet.
-5.  **Data Collisions:**
+6.  **Data Collisions:**
     *   Ensure tests creating data (e.g., articles, feedback) use unique identifiers (titles, URLs, user IDs) per test run if the database isn't cleaned between runs, to avoid conflicts.
 
 ## Updating Tests

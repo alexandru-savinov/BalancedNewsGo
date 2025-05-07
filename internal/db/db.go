@@ -340,17 +340,43 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
 	return exists, nil
 }
 
-// InsertArticle creates a new article record
+// InsertArticle creates a new article record within a transaction to ensure atomicity of the duplicate check and insert.
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
-	result, err := db.NamedExec(`
+	tx, err := db.Beginx()
+	if err != nil {
+		return 0, handleError(err, "failed to begin transaction for article insert")
+	}
+	// Ensure transaction is rolled back in case of error
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback() // Rollback on panic
+			panic(p)          // Re-panic
+		} else if err != nil {
+			_ = tx.Rollback() // Rollback on error
+		}
+	}()
+
+	// 1. Check if URL exists within the transaction
+	var exists bool
+	err = tx.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", article.URL)
+	if err != nil && err != sql.ErrNoRows { // Allow ErrNoRows here, should return exists=false
+		return 0, handleError(err, "failed to check article URL existence in transaction")
+	}
+	if exists {
+		err = ErrDuplicateURL // Explicitly set the error to be returned
+		return 0, err
+	}
+
+	// 2. Insert the article if it doesn't exist
+	result, err := tx.NamedExec(`
         INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source,
                               status, fail_count, last_attempt, escalated)
         VALUES (:source, :pub_date, :url, :title, :content, :created_at, :composite_score, :confidence, :score_source,
                 :status, :fail_count, :last_attempt, :escalated)`,
 		article)
 	if err != nil {
-		// Enhanced error handling with detailed logging
-		log.Printf("[ERROR] Failed to insert article: %v", err)
+		log.Printf("[ERROR] Failed to insert article in transaction: %v", err)
+		// handleError will check for UNIQUE constraint error here again just in case of race conditions outside the explicit check
 		return 0, handleError(err, "failed to insert article")
 	}
 
@@ -358,6 +384,12 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 	if err != nil {
 		log.Printf("[ERROR] Failed to retrieve last insert ID: %v", err)
 		return 0, handleError(err, "failed to get inserted article ID")
+	}
+
+	// 3. Commit the transaction
+	err = tx.Commit()
+	if err != nil {
+		return 0, handleError(err, "failed to commit transaction for article insert")
 	}
 
 	log.Printf("[INFO] Article inserted successfully with ID: %d", id)
@@ -548,11 +580,77 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Hour)
 
+	// Set busy_timeout to help with concurrent access
+	_, err = db.Exec("PRAGMA busy_timeout = 5000") // 5 seconds
+	if err != nil {
+		log.Printf("Failed to set busy_timeout: %v", err)
+		// Not fatal, but log it
+	}
+
+	// Drop existing tables to ensure fresh schema for testing/debugging
+	dropSchema := `
+	DROP TABLE IF EXISTS articles;
+	DROP TABLE IF EXISTS llm_scores;
+	DROP TABLE IF EXISTS feedback;
+	DROP TABLE IF EXISTS labels;
+	`
+	_, err = db.Exec(dropSchema)
+	if err != nil {
+		log.Printf("Failed to drop existing tables: %v", err)
+		// Not fatal, but log it
+	}
+
 	// Define the database schema
-	// NOTE: score_source added
 	schema := `
 	CREATE TABLE IF NOT EXISTS articles (
-		// ... rest of schema definition ...
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		source TEXT NOT NULL,
+		pub_date TIMESTAMP NOT NULL,
+		url TEXT NOT NULL UNIQUE,
+		title TEXT NOT NULL,
+		content TEXT NOT NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		status TEXT DEFAULT 'pending',
+		fail_count INTEGER DEFAULT 0,
+		last_attempt DATETIME,
+		escalated BOOLEAN DEFAULT 0,
+		composite_score REAL,
+		confidence REAL,
+		score_source TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS llm_scores (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL,
+		model TEXT NOT NULL,
+		score REAL NOT NULL,
+		metadata TEXT,
+		version TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (article_id) REFERENCES articles (id)
+	);
+
+	CREATE TABLE IF NOT EXISTS feedback (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL,
+		user_id TEXT,
+		feedback_text TEXT,
+		category TEXT,
+		ensemble_output_id INTEGER,
+		source TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (article_id) REFERENCES articles (id)
+	);
+
+	CREATE TABLE IF NOT EXISTS labels (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		data TEXT NOT NULL,
+		label TEXT NOT NULL,
+		source TEXT NOT NULL,
+		date_labeled TIMESTAMP NOT NULL,
+		labeler TEXT NOT NULL,
+		confidence REAL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	`
 

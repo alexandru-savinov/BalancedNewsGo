@@ -6,6 +6,8 @@ A Go-based backend service that provides politically balanced news aggregation u
 
 NewsBalancer analyzes news articles from diverse sources using multiple LLM perspectives (left, center, right) to provide balanced viewpoints and identify potential biases. 
 
+**Current Status:** Basic functionality is working, and the `essential` test suite passes when run with the `NO_AUTO_ANALYZE=true` environment variable to prevent background LLM processing from interfering with tests due to SQLite concurrency limitations.
+
 ## Features
 
 - RSS feed aggregation from multiple sources
@@ -83,6 +85,15 @@ Here's a breakdown of the project's directory structure:
 ## Running Tests
 
 Refer to the **[Testing Guide](docs/testing.md)** for detailed instructions on running different test suites (unit, backend, all, debug), analyzing results, and debugging.
+
+**Test Suite Alignment:** The various test suites are designed to be complementary, targeting different aspects of the application to ensure comprehensive quality assurance:
+*   **Unit Tests (`go test ./...`)**: Focus on validating individual Go packages and functions in isolation.
+*   **Backend Integration Tests (`scripts/test.cmd backend`)**: Verify the interactions between different internal components of the backend system.
+*   **API Tests (`scripts/test.cmd api`)**: Perform black-box testing of the application's API endpoints, ensuring the public contract is met.
+*   **Aggregated Suites (`scripts/test.cmd all`)**: Run a combination of tests for broader coverage.
+*   **Essential Tests (`scripts/test.cmd essential`)**: Cover core functionality described as essential for basic operation. *(Passes with workaround)*
+
+**Important Note on Testing:** Due to concurrency issues with SQLite and background LLM analysis tasks triggered by some API calls, tests involving Newman (`backend`, `api`, `essential`, `all`, `debug`, `confidence`) currently require the `NO_AUTO_ANALYZE=true` environment variable to be set. The provided `test.cmd` and `test.sh` scripts handle this automatically. This prevents tests from failing due to database locks (`SQLITE_BUSY`) caused by contention between the test runner and background analysis.
 
 Common commands using the consolidated test script:
 

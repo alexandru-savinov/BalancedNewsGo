@@ -1,11 +1,7 @@
 #!/bin/bash
 
-# Ensure we are in the script's directory context (or project root)
-# cd "$(dirname "$0")/.." # Uncomment if script needs to run from project root
-
 # Create test-results directory if it doesn't exist
-RESULTS_DIR="test-results"
-mkdir -p "$RESULTS_DIR"
+mkdir -p test-results
 
 # Function to start server in background and capture PID
 start_server() {
@@ -75,7 +71,6 @@ run_newman_test() {
 
   echo "$test_name tests completed successfully. Results: $result_file"
 }
-
 
 # Function to generate report
 generate_report() {

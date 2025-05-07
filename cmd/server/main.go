@@ -47,6 +47,7 @@ func main() {
 	}
 	// Initialize services
 	dbConn, llmClient, rssCollector, scoreManager := initServices()
+	defer func() { _ = dbConn.Close() }()
 
 	// Initialize Gin
 	router := gin.Default()
@@ -169,7 +170,6 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 		log.Printf("ERROR: Failed to initialize database: %v", err)
 		os.Exit(1)
 	}
-	defer func() { _ = dbConn.Close() }()
 
 	// Initialize LLM client
 	llmClient, err := llm.NewLLMClient(dbConn)

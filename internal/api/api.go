@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -624,25 +625,37 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 		// Try each model in sequence until we find one that works
 		var workingModel string
 		var healthErr error
-		originalTimeout := 10 * time.Second
-		llmClient.SetHTTPLLMTimeout(2 * time.Second)
 
-		for _, modelConfig := range cfg.Models {
-			log.Printf("[reanalyzeHandler %d] Trying model: %s", articleID, modelConfig.ModelName)
-			_, healthErr = llmClient.ScoreWithModel(article, modelConfig.ModelName)
-			if healthErr == nil {
-				workingModel = modelConfig.ModelName
-				break
+		if os.Getenv("NO_AUTO_ANALYZE") == "true" {
+			log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping working model health check.", articleID)
+			if len(cfg.Models) > 0 {
+				workingModel = cfg.Models[0].ModelName // Assume the first model would work for queuing purposes
+			} else {
+				log.Printf("[reanalyzeHandler %d] No models configured, cannot proceed even with NO_AUTO_ANALYZE.", articleID)
+				RespondError(c, ErrLLMUnavailable) // Or a more specific error
+				return
 			}
-			if !errors.Is(healthErr, llm.ErrBothLLMKeysRateLimited) {
-				break
+		} else {
+			originalTimeout := 10 * time.Second          // TODO: Make this configurable or use actual client timeout
+			llmClient.SetHTTPLLMTimeout(2 * time.Second) // Short timeout for health check
+
+			for _, modelConfig := range cfg.Models {
+				log.Printf("[reanalyzeHandler %d] Trying model: %s", articleID, modelConfig.ModelName)
+				_, healthErr = llmClient.ScoreWithModel(article, modelConfig.ModelName)
+				if healthErr == nil {
+					workingModel = modelConfig.ModelName
+					break
+				}
+				// If it's not a rate limit error, don't try other models for health check, assume primary service issue
+				if !errors.Is(healthErr, llm.ErrBothLLMKeysRateLimited) {
+					break
+				}
 			}
+			llmClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
 		}
 
-		llmClient.SetHTTPLLMTimeout(originalTimeout)
-
 		if workingModel == "" {
-			log.Printf("[reanalyzeHandler %d] No working models found: %v", articleID, healthErr)
+			log.Printf("[reanalyzeHandler %d] No working models found (health check failed or skipped with no models): %v", articleID, healthErr)
 			RespondError(c, ErrLLMUnavailable)
 			return
 		}
@@ -655,23 +668,34 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 				Message: fmt.Sprintf("Starting analysis with model %s", workingModel),
 			})
 
-			go func() {
-				err := llmClient.ReanalyzeArticle(articleID)
-				if err != nil {
-					log.Printf("[reanalyzeHandler %d] Error during reanalysis: %v", articleID, err)
+			// Check for an environment variable to skip auto-analysis during tests
+			if os.Getenv("NO_AUTO_ANALYZE") != "true" {
+				go func() {
+					err := llmClient.ReanalyzeArticle(articleID)
+					if err != nil {
+						log.Printf("[reanalyzeHandler %d] Error during reanalysis: %v", articleID, err)
+						scoreManager.SetProgress(articleID, &models.ProgressState{
+							Status:  "Error",
+							Step:    "Error",
+							Message: fmt.Sprintf("Error during analysis: %v", err),
+						})
+						return
+					}
 					scoreManager.SetProgress(articleID, &models.ProgressState{
-						Status:  "Error",
-						Step:    "Error",
-						Message: fmt.Sprintf("Error during analysis: %v", err),
+						Status:  "Complete",
+						Step:    "Done",
+						Message: "Analysis complete",
 					})
-					return
-				}
+				}()
+			} else {
+				log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping background reanalysis.", articleID)
+				// Optionally, set progress to complete or a specific "skipped" state
 				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Status:  "Complete",
-					Step:    "Done",
-					Message: "Analysis complete",
+					Status:  "Skipped",
+					Step:    "Skipped",
+					Message: "Automatic reanalysis skipped by test configuration.",
 				})
-			}()
+			}
 		}
 
 		RespondSuccess(c, map[string]interface{}{

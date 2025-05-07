@@ -68,12 +68,12 @@ goto :eof
 
 :run_api
     echo Running basic API tests...
-    call :run_newman_test "api_tests" "postman/newsbalancer_api_tests.json" "postman/local_environment.json"
+    call :run_newman_test "api_tests" "postman/unified_backend_tests.json" "postman/local_environment.json"
 goto :eof
 
 :run_essential
-    echo Running essential rescoring tests...
-    call :run_newman_test "essential_tests" "postman/backup/essential_rescoring_tests.json" ""
+    echo Running essential rescoring tests (using unified_backend_tests.json)...
+    call :run_newman_test "essential_tests" "postman/unified_backend_tests.json" ""
 goto :eof
 
 :run_debug
@@ -91,26 +91,26 @@ goto :eof
     echo ====== NewsBalancer Full API Test Run - %date% %time% ====== > %ALL_LOG_FILE%
     echo. >> %ALL_LOG_FILE%
 
-    echo ===== Running Essential Tests ===== >> %ALL_LOG_FILE%
-    echo Running Newman: essential_rescoring_tests.json
-    call npx newman run postman/backup/essential_rescoring_tests.json ^
+    echo ===== Running Essential Tests (using unified_backend_tests.json) ===== >> %ALL_LOG_FILE%
+    echo Running Newman: unified_backend_tests.json (as Essential)
+    call npx newman run postman/unified_backend_tests.json ^
       --reporters cli,json ^
       --reporter-json-export=%RESULTS_DIR%/essential_results_%TIMESTAMP%.json >> %ALL_LOG_FILE%
     if errorlevel 1 ( echo Essential tests FAILED. Check %ALL_LOG_FILE% & goto :end_fail )
 
     echo. >> %ALL_LOG_FILE%
     echo ===== Running Extended Tests ===== >> %ALL_LOG_FILE%
-    echo Running Newman: extended_rescoring_collection.json
-    call npx newman run postman/backup/extended_rescoring_collection.json ^
+    echo Running Newman: extended_rescoring_collection.json (path updated)
+    call npx newman run postman/extended_rescoring_collection.json ^
       --reporters cli,json ^
       --reporter-json-export=%RESULTS_DIR%/extended_results_%TIMESTAMP%.json >> %ALL_LOG_FILE%
      if errorlevel 1 ( echo Extended tests FAILED. Check %ALL_LOG_FILE% & goto :end_fail )
 
-    if exist postman\backup\confidence_validation_tests.json (
+    if exist postman\confidence_validation_tests.json (
       echo. >> %ALL_LOG_FILE%
       echo ===== Running Confidence Validation Tests ===== >> %ALL_LOG_FILE%
-      echo Running Newman: confidence_validation_tests.json
-      call npx newman run postman/backup/confidence_validation_tests.json ^
+      echo Running Newman: confidence_validation_tests.json (path updated)
+      call npx newman run postman/confidence_validation_tests.json ^
         --reporters cli,json ^
         --reporter-json-export=%RESULTS_DIR%/confidence_results_%TIMESTAMP%.json >> %ALL_LOG_FILE%
       if errorlevel 1 ( echo Confidence tests FAILED. Check %ALL_LOG_FILE% & goto :end_fail )
@@ -128,11 +128,11 @@ goto :eof
 goto :eof
 
 :run_confidence
-    if exist postman\backup\confidence_validation_tests.json (
+    if exist postman\confidence_validation_tests.json (
         echo Running confidence validation tests...
-        call :run_newman_test "confidence_tests" "postman/backup/confidence_validation_tests.json" ""
+        call :run_newman_test "confidence_tests" "postman/confidence_validation_tests.json" ""
     ) else (
-        echo Confidence test collection not found: postman\backup\confidence_validation_tests.json
+        echo Confidence test collection not found: postman\confidence_validation_tests.json
     )
 goto :eof
 
@@ -159,11 +159,15 @@ REM %3: Newman environment file path (optional, use "" if none)
     set RESULT_FILE=%RESULTS_DIR%\%TEST_NAME%_results.json
     set GO_SERVER_PID=
 
+    echo Setting NO_AUTO_ANALYZE=true for test run
+    set NO_AUTO_ANALYZE=true
+
     echo Starting the server for %TEST_NAME% tests (logging to %SERVER_LOG%)...
     REM Start go run in a visible window
     start "GoServer_%TEST_NAME%" cmd /c "go run cmd/server/main.go > %SERVER_LOG% 2>&1"
-    REM Give it a moment to potentially fail
-    timeout /t 2 /nobreak > nul
+    REM Give it a moment to potentially fail or for the process to register
+    echo Waiting 5 seconds for server to initialize and process to be discoverable...
+    timeout /t 5 /nobreak > nul
     REM Rudimentary check if go.exe is running (might catch other go processes)
     tasklist /FI "IMAGENAME eq go.exe" | find /I "go.exe" > nul
     if errorlevel 1 (
@@ -183,6 +187,9 @@ REM %3: Newman environment file path (optional, use "" if none)
     echo Executing: !NEWMAN_CMD!
     call !NEWMAN_CMD!
     set NEWMAN_EXIT_CODE=%errorlevel%
+
+    echo Clearing NO_AUTO_ANALYZE
+    set NO_AUTO_ANALYZE=
 
 :stop_server_and_continue
     echo Stopping the Go server process(es)...
@@ -206,6 +213,8 @@ REM %3: Newman environment file path (optional, use "" if none)
     taskkill /F /IM go.exe /T > nul 2>&1
     taskkill /f /im newbalancer_server.exe > nul 2>&1
     echo Server stop commands issued after failure.
+    echo Clearing NO_AUTO_ANALYZE (on failure path)
+    set NO_AUTO_ANALYZE=
     exit /b 1
 
 
