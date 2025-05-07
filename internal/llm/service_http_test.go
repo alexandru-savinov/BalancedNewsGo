@@ -19,7 +19,7 @@ func TestHTTPLLMServiceUsesOpenRouterURL(t *testing.T) {
 			t.Errorf("Expected path /api/v1/chat/completions, got %s", r.URL.Path)
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0.5,\"explanation\":\"ok\",\"confidence\":0.9}"}}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":0.5,\"explanation\":\"ok\",\"confidence\":0.9}"}}]}`))
 	}))
 	defer ts.Close()
 

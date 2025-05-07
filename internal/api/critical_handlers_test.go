@@ -62,9 +62,13 @@ func TestCreateArticleHandlerSuccess(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.True(t, response["success"].(bool))
-	data := response["data"].(map[string]interface{})
-	assert.Equal(t, float64(1), data["article_id"])
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.True(t, successVal, "\"success\" field should be true")
+
+	dataVal, okData := response["data"].(map[string]interface{})
+	assert.True(t, okData, "\"data\" field should be a map")
+	assert.Equal(t, float64(1), dataVal["article_id"])
 }
 
 // TestCreateArticleHandlerValidationErrors tests article creation validation errors
@@ -136,8 +140,19 @@ func TestCreateArticleHandlerValidationErrors(t *testing.T) {
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			assert.NoError(t, err)
 
-			assert.False(t, response["success"].(bool))
-			assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), tc.expectedMsg)
+			successVal, okSuccess := response["success"].(bool)
+			assert.True(t, okSuccess, "\"success\" field should be a boolean")
+			assert.False(t, successVal, "\"success\" field should be false")
+
+			errorField, okErrorField := response["error"].(map[string]interface{})
+			assert.True(t, okErrorField, "\"error\" field should be a map")
+			if okErrorField {
+				messageVal, okMsg := errorField["message"].(string)
+				assert.True(t, okMsg, "\"message\" field in error should be a string")
+				assert.Contains(t, messageVal, tc.expectedMsg)
+			} else {
+				t.Log("Skipping message check as error field was not a map")
+			}
 		})
 	}
 }
@@ -180,8 +195,19 @@ func TestCreateArticleDuplicateURL(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.False(t, response["success"].(bool))
-	assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "already exists")
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.False(t, successVal, "\"success\" field should be false")
+
+	errorField, okErrorField := response["error"].(map[string]interface{})
+	assert.True(t, okErrorField, "\"error\" field should be a map")
+	if okErrorField {
+		messageVal, okMsg := errorField["message"].(string)
+		assert.True(t, okMsg, "\"message\" field in error should be a string")
+		assert.Contains(t, messageVal, "already exists")
+	} else {
+		t.Log("Skipping message check as error field was not a map")
+	}
 }
 
 // ======= Get Articles Tests =======
@@ -225,10 +251,13 @@ func TestGetArticlesHandlerSuccess(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.True(t, response["success"].(bool))
-	data, ok := response["data"].([]interface{})
-	assert.True(t, ok)
-	assert.Equal(t, 2, len(data))
+	successValAll, okSuccessAll := response["success"].(bool)
+	assert.True(t, okSuccessAll, "\"success\" field should be a boolean")
+	assert.True(t, successValAll, "\"success\" field should be true")
+
+	dataAll, okDataAll := response["data"].([]interface{})
+	assert.True(t, okDataAll, "\"data\" field should be an array")
+	assert.Len(t, dataAll, 2, "Expected 2 articles in data array")
 }
 
 // TestGetArticlesHandlerFilters tests article retrieval with filters
@@ -309,7 +338,11 @@ func TestGetArticlesHandlerErrors(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false")
+		// TODO: Add check for error message content if needed
 	})
 
 	// Test invalid offset
@@ -334,7 +367,11 @@ func TestGetArticlesHandlerErrors(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false")
+		// TODO: Add check for error message content if needed
 	})
 
 	// Test negative offset
@@ -359,7 +396,11 @@ func TestGetArticlesHandlerErrors(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false")
+		// TODO: Add check for error message content if needed
 	})
 
 	// Test database error
@@ -384,8 +425,20 @@ func TestGetArticlesHandlerErrors(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "Failed to fetch articles")
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map")
+		if okErrorField {
+			messageVal, okMsg := errorField["message"].(string)
+			assert.True(t, okMsg, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "Failed to fetch articles")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 }
 
@@ -436,12 +489,18 @@ func TestGetArticleByIDHandlerSuccess(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.True(t, response["success"].(bool))
-	data := response["data"].(map[string]interface{})
-	assert.Equal(t, float64(1), data["article_id"])
-	assert.Equal(t, "Test Article", data["Title"])
-	assert.Equal(t, 0.75, data["CompositeScore"])
-	assert.Equal(t, 0.85, data["Confidence"])
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.True(t, successVal, "\"success\" field should be true")
+
+	data, okData := response["data"].(map[string]interface{})
+	assert.True(t, okData, "\"data\" field should be a map")
+	if okData {
+		assert.Equal(t, float64(1), data["article_id"])
+		assert.Equal(t, "Test Article", data["Title"])
+		assert.Equal(t, 0.75, data["CompositeScore"])
+		assert.Equal(t, 0.85, data["Confidence"])
+	}
 }
 
 // TestGetArticleByIDHandlerErrors tests error cases for article retrieval by ID
@@ -471,8 +530,20 @@ func TestGetArticleByIDHandlerErrors(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "Invalid article ID")
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map")
+		if okErrorField {
+			messageVal, okMsg := errorField["message"].(string)
+			assert.True(t, okMsg, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "Invalid article ID")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 
 	// Test article not found
@@ -498,8 +569,20 @@ func TestGetArticleByIDHandlerErrors(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "Article not found")
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map")
+		if okErrorField {
+			messageVal, okMsg := errorField["message"].(string)
+			assert.True(t, okMsg, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "Article not found")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 
 	// Test database error
@@ -525,8 +608,20 @@ func TestGetArticleByIDHandlerErrors(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "Failed to fetch article")
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map")
+		if okErrorField {
+			messageVal, okMsg := errorField["message"].(string)
+			assert.True(t, okMsg, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "Failed to fetch article")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 }
 
@@ -588,10 +683,16 @@ func TestBiasHandlerWithEnsemble(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.True(t, response["success"].(bool))
-	data := response["data"].(map[string]interface{})
-	assert.Equal(t, 0.75, data["composite_score"])
-	assert.IsType(t, []interface{}{}, data["results"])
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.True(t, successVal, "\"success\" field should be true")
+
+	data, okData := response["data"].(map[string]interface{})
+	assert.True(t, okData, "\"data\" field should be a map")
+	if okData {
+		assert.Equal(t, 0.75, data["composite_score"])
+		assert.IsType(t, []interface{}{}, data["results"])
+	}
 }
 
 // TestBiasHandlerWithoutEnsemble tests the bias handler without ensemble scores
@@ -637,10 +738,16 @@ func TestBiasHandlerWithoutEnsemble(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.True(t, response["success"].(bool))
-	data := response["data"].(map[string]interface{})
-	assert.Nil(t, data["composite_score"])
-	assert.Equal(t, "scoring_unavailable", data["status"])
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.True(t, successVal, "\"success\" field should be true")
+
+	data, okData := response["data"].(map[string]interface{})
+	assert.True(t, okData, "\"data\" field should be a map")
+	if okData {
+		assert.Nil(t, data["composite_score"])
+		assert.Equal(t, "scoring_unavailable", data["status"])
+	}
 }
 
 // ======= Summary Handler Tests =======
@@ -675,11 +782,19 @@ func TestSummaryHandlerSuccess(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.True(t, response["success"].(bool))
-	data := response["data"].(map[string]interface{})
-	assert.Equal(t, "This is a test summary", data["summary"])
-	_, ok := data["created_at"]
-	assert.True(t, ok, "created_at should be included")
+	assert.NoError(t, err)
+
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.True(t, successVal, "\"success\" field should be true")
+
+	data, okData := response["data"].(map[string]interface{})
+	assert.True(t, okData, "\"data\" field should be a map")
+	if okData {
+		assert.Equal(t, "This is a test summary", data["summary"])
+		_, ok := data["created_at"]
+		assert.True(t, ok, "created_at should be included")
+	}
 }
 
 func TestSummaryHandlerNotFound(t *testing.T) {
@@ -711,8 +826,19 @@ func TestSummaryHandlerNotFound(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 
-	assert.False(t, response["success"].(bool))
-	assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "summary not available")
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.False(t, successVal, "\"success\" field should be false")
+
+	errorField, okErrorField := response["error"].(map[string]interface{})
+	assert.True(t, okErrorField, "\"error\" field should be a map")
+	if okErrorField {
+		messageVal, okMsg := errorField["message"].(string)
+		assert.True(t, okMsg, "\"message\" field in error should be a string")
+		assert.Contains(t, messageVal, "summary not available")
+	} else {
+		t.Log("Skipping message check as error field was not a map")
+	}
 }
 
 func TestSummaryHandlerErrors(t *testing.T) {

@@ -537,7 +537,9 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 
 	// Verify database connection is working
 	if err = db.Ping(); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Error closing DB after ping failure: %v", closeErr)
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -545,6 +547,24 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Hour)
+
+	// Define the database schema
+	// NOTE: score_source added
+	schema := `
+	CREATE TABLE IF NOT EXISTS articles (
+		// ... rest of schema definition ...
+	);
+	`
+
+	// Initialize database schema
+	_, err = db.Exec(schema)
+	if err != nil {
+		log.Printf("Failed to initialize DB schema: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Error closing DB after schema init failure: %v", closeErr)
+		}
+		return nil, err
+	}
 
 	// Return the database connection
 	return db, nil

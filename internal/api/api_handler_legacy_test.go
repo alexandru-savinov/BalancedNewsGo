@@ -92,5 +92,13 @@ func (m *MockScoreManager) GetProgress(articleID int64) *models.ProgressState {
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*models.ProgressState)
+	val, ok := args.Get(0).(*models.ProgressState)
+	if !ok {
+		// This might indicate a misconfiguration of the mock's Return arguments
+		// or the test is intentionally providing a different type.
+		// For a mock, returning nil might be acceptable, or you could panic.
+		// log.Printf("WARN: MockScoreManager.GetProgress: type assertion to *models.ProgressState failed for articleID %d", articleID)
+		return nil
+	}
+	return val
 }

@@ -190,7 +190,7 @@ func TestHTTPLLMServiceWithMockServer(t *testing.T) {
 
 				// Set response status and body
 				w.WriteHeader(tc.responseStatus)
-				fmt.Fprintln(w, tc.responseBody)
+				_, _ = fmt.Fprintln(w, tc.responseBody)
 			}
 
 			server, client := MockLLMServer(t, mockHandler)
@@ -238,11 +238,11 @@ func TestHTTPLLMServiceWithBackupKey(t *testing.T) {
 		if strings.Contains(authHeader, "test-primary-key") {
 			// Simulate rate limit on primary key
 			w.WriteHeader(http.StatusTooManyRequests)
-			fmt.Fprintln(w, `{"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}`)
+			_, _ = fmt.Fprintln(w, `{"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}`)
 		} else if strings.Contains(authHeader, "test-backup-key") {
 			// Success on backup key
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintln(w, `{
+			_, _ = fmt.Fprintln(w, `{
 				"id": "backup-response",
 				"object": "chat.completion",
 				"choices": [
@@ -258,7 +258,7 @@ func TestHTTPLLMServiceWithBackupKey(t *testing.T) {
 		} else {
 			// Invalid key
 			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintln(w, `{"error": {"message": "Invalid API key", "type": "auth_error"}}`)
+			_, _ = fmt.Fprintln(w, `{"error": {"message": "Invalid API key", "type": "auth_error"}}`)
 		}
 
 		requestCount++
@@ -304,17 +304,13 @@ func TestHTTPLLMServiceWithServerErrors(t *testing.T) {
 		{
 			name: "Connection reset by peer",
 			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
-				hj, ok := w.(http.Hijacker)
-				if !ok {
-					http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
-					return
+				// Simulate connection reset by peer
+				if conn, ok := w.(http.Hijacker); ok {
+					netConn, _, _ := conn.Hijack()
+					_ = netConn.Close() // Abruptly close the connection
+				} else {
+					t.Fatal("Response writer does not support hijacking")
 				}
-				conn, _, err := hj.Hijack()
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				conn.Close() // Abruptly close the connection
 			},
 			description: "Connection reset errors should be handled gracefully",
 		},
@@ -323,7 +319,7 @@ func TestHTTPLLMServiceWithServerErrors(t *testing.T) {
 			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
 				// In a real test, we'd use time.Sleep but in this mock we'll just return an error
 				w.WriteHeader(http.StatusGatewayTimeout)
-				fmt.Fprintln(w, `{"error": {"message": "Request timed out", "type": "timeout_error"}}`)
+				_, _ = fmt.Fprintln(w, `{"error": {"message": "Request timed out", "type": "timeout_error"}}`)
 			},
 			description: "Timeout errors should be handled gracefully",
 		},
@@ -339,7 +335,7 @@ func TestHTTPLLMServiceWithServerErrors(t *testing.T) {
 			name: "Non-JSON response",
 			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				fmt.Fprintln(w, "This is not a JSON response")
+				_, _ = fmt.Fprintln(w, "This is not a JSON response")
 			},
 			description: "Non-JSON responses should be handled gracefully",
 		},
@@ -347,7 +343,7 @@ func TestHTTPLLMServiceWithServerErrors(t *testing.T) {
 			name: "Missing required fields",
 			serverBehavior: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				fmt.Fprintln(w, `{"id": "missing-fields-response", "object": "chat.completion"}`)
+				_, _ = fmt.Fprintln(w, `{"id": "missing-fields-response", "object": "chat.completion"}`)
 			},
 			description: "Responses missing required fields should be handled gracefully",
 		},

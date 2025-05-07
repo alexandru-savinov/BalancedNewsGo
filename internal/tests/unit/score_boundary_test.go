@@ -26,7 +26,8 @@ func TestScoreBoundaryValidation(t *testing.T) {
 		expectError   bool
 	}
 
-	var tests []boundaryTest
+	// Preallocate slice with estimated capacity
+	tests := make([]boundaryTest, 0, 25)
 
 	// Exact boundary tests
 	tests = append(tests, boundaryTest{

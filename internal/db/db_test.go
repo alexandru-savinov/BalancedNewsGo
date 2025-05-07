@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupTestDB(t *testing.T) (*sqlx.DB, *DBInstance) {
+func setupTestDB(t *testing.T) *sqlx.DB {
 	// Use in-memory SQLite database for tests to avoid file locking issues
 	dbInstance, err := New(":memory:")
 	assert.NoError(t, err)
@@ -79,11 +79,11 @@ func setupTestDB(t *testing.T) (*sqlx.DB, *DBInstance) {
 		}
 	})
 
-	return dbInstance.DB, dbInstance
+	return dbInstance.DB
 }
 
 func TestInsertDuplicateArticle(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	url := "https://example.com/test-article-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	article1 := &Article{
@@ -114,7 +114,7 @@ func TestInsertDuplicateArticle(t *testing.T) {
 }
 
 func TestArticlePagination(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	_, err := FetchArticles(dbConn, "test", "", 10, 0)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestArticlePagination(t *testing.T) {
 }
 
 func TestInsertAndFetchLLMScore(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	article := &Article{
 		Source:  "Test Source",
@@ -162,7 +162,7 @@ func TestInsertAndFetchLLMScore(t *testing.T) {
 }
 
 func TestArticleWithNullFields(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	// Create an article with null score_source
 	article := &Article{
@@ -207,7 +207,7 @@ func TestArticleWithNullFields(t *testing.T) {
 }
 
 func TestTransactionRollback(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	tx, err := dbConn.Beginx()
 	if err != nil {
@@ -245,7 +245,7 @@ func TestTransactionRollback(t *testing.T) {
 }
 
 func TestConcurrentInserts(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	// SQLite has limitations with concurrent writes
 	// Instead of using goroutines, we'll simulate concurrency with sequential writes
@@ -282,7 +282,7 @@ func TestConcurrentInserts(t *testing.T) {
 }
 
 func TestInsertAndFetchArticle(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	article := &Article{
 		Source:    "test",
 		PubDate:   time.Now().UTC(),
@@ -302,7 +302,7 @@ func TestInsertAndFetchArticle(t *testing.T) {
 }
 
 func TestArticleExistsByURL(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	exists, err := ArticleExistsByURL(dbConn, "http://nope")
 	assert.NoError(t, err)
 	assert.False(t, exists)
@@ -317,7 +317,7 @@ func TestArticleExistsByURL(t *testing.T) {
 }
 
 func TestInsertAndFetchLLMScores(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	// insert article first
 	article := &Article{Source: "src", PubDate: time.Now(), URL: "u2", Title: "t2", Content: "c2", CreatedAt: time.Now()}
 	artID, err := InsertArticle(dbConn, article)
@@ -335,7 +335,7 @@ func TestInsertAndFetchLLMScores(t *testing.T) {
 }
 
 func TestUpdateArticleScoreAndFetchConfidence(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	// insert article
 	article := &Article{Source: "src", PubDate: time.Now(), URL: "u3", Title: "t3", Content: "c3", CreatedAt: time.Now()}
 	artID, err := InsertArticle(dbConn, article)
@@ -350,7 +350,7 @@ func TestUpdateArticleScoreAndFetchConfidence(t *testing.T) {
 }
 
 func TestFetchLatestEnsembleScore(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	// insert article
 	article := &Article{Source: "s", PubDate: time.Now(), URL: "u4", Title: "t4", Content: "c4", CreatedAt: time.Now()}
 	artID, err := InsertArticle(dbConn, article)
@@ -387,7 +387,7 @@ func TestWithTransaction(t *testing.T) {
 }
 
 func TestArticleWithNewFields(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	// Create test data
 	status := "processing"

@@ -2,7 +2,6 @@ package llm
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,10 +12,10 @@ import (
 
 // Helper to create a score with metadata containing confidence
 // (Copied from deleted composite_score_fix_test.go)
-func createScoreWithConfidence(articleID int64, model string, score float64, confidence float64) db.LLMScore {
+func createScoreWithConfidence(model string, score float64, confidence float64) db.LLMScore {
 	metadata := fmt.Sprintf(`{"confidence": %.2f}`, confidence)
 	return db.LLMScore{
-		ArticleID: articleID,
+		ArticleID: 1, // Hardcode article ID as it's not relevant for these tests
 		Model:     model,
 		Score:     score,
 		Metadata:  metadata,
@@ -45,45 +44,6 @@ type CompositeScore struct {
 	Formula      string                   `json:"formula"`
 	FinalScore   float64                  `json:"final_score"`
 	Perspectives []string                 `json:"perspectives"`
-}
-
-// Helper function to normalize model names for tests
-func testNormalizeModelName(modelName string) string {
-	// Trim spaces and convert to lowercase for case-insensitive comparison
-	name := strings.TrimSpace(modelName)
-	name = strings.ToLower(name)
-
-	// Remove any version or revision information after colon
-	if colonIndex := strings.Index(name, ":"); colonIndex != -1 {
-		name = name[:colonIndex]
-	}
-
-	// Remove any complex version info (e.g. @v1.2.3+experimental)
-	if atIndex := strings.Index(name, "@"); atIndex != -1 {
-		name = name[:atIndex]
-	}
-
-	return name
-}
-
-// Helper function for model perspective mapping in tests
-func testGetPerspectiveFromModel(modelName string, cfg *CompositeScoreConfig) string {
-	// First try using MapModelToPerspective function
-	perspective := MapModelToPerspective(modelName, cfg)
-	if perspective != "" {
-		return perspective
-	}
-
-	// Fall back to legacy mapping
-	normalizedModel := testNormalizeModelName(modelName)
-	if normalizedModel == "left" || strings.Contains(normalizedModel, "left") {
-		return "left"
-	} else if normalizedModel == "center" || strings.Contains(normalizedModel, "center") {
-		return "center"
-	} else if normalizedModel == "right" || strings.Contains(normalizedModel, "right") {
-		return "right"
-	}
-	return ""
 }
 
 // CalculateCompositeScore calculates the final score from individual model scores
@@ -165,11 +125,11 @@ func TestComputeWithMixedModelNames(t *testing.T) {
 	testCfg := createModelNameTestConfig()
 
 	scores := []db.LLMScore{
-		createScoreWithConfidence(1, "meta-llama/llama-3-maverick:123", -0.8, 0.9), // left
-		createScoreWithConfidence(1, "google/gemini-pro", 0.1, 0.8),                // center
-		createScoreWithConfidence(1, " Vendor / Mixed-Case-Center ", 0.3, 0.7),     // center (duplicate, lower conf)
-		createScoreWithConfidence(1, "openai/gpt-4-turbo", 0.9, 0.95),              // right
-		createScoreWithConfidence(1, "unknown/model", 0.5, 0.5),                    // unknown
+		createScoreWithConfidence("meta-llama/llama-3-maverick:123", -0.8, 0.9), // left
+		createScoreWithConfidence("google/gemini-pro", 0.1, 0.8),                // center
+		createScoreWithConfidence(" Vendor / Mixed-Case-Center ", 0.3, 0.7),     // center (duplicate, lower conf)
+		createScoreWithConfidence("openai/gpt-4-turbo", 0.9, 0.95),              // right
+		createScoreWithConfidence("unknown/model", 0.5, 0.5),                    // unknown
 	}
 
 	// Expected score (average): Uses -0.8 (left), 0.1 (center, higher conf), 0.9 (right)
@@ -195,9 +155,9 @@ func TestModelNameNormalization(t *testing.T) {
 
 	t.Run("CompositeScore Calculation Normalization", func(t *testing.T) {
 		scores := []db.LLMScore{
-			createScoreWithConfidence(1, "meta-llama/llama-3-maverick:latest", -0.5, 0.9),
-			createScoreWithConfidence(1, " google/gemini-pro ", 0.0, 0.8),
-			createScoreWithConfidence(1, "openai/gpt-4-turbo", 0.5, 0.85),
+			createScoreWithConfidence("meta-llama/llama-3-maverick:latest", -0.5, 0.9),
+			createScoreWithConfidence(" google/gemini-pro ", 0.0, 0.8),
+			createScoreWithConfidence("openai/gpt-4-turbo", 0.5, 0.85),
 		}
 		score, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
 		assert.NoError(t, err)

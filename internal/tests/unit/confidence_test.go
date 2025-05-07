@@ -1,39 +1,12 @@
 package unit
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/stretchr/testify/assert"
 )
-
-type testScoreCalculator struct {
-	*llm.DefaultScoreCalculator
-}
-
-// extractConfidence extracts confidence value from score metadata
-func (c *testScoreCalculator) extractConfidence(metadata string) float64 {
-	var meta map[string]interface{}
-	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
-		return 0.0
-	}
-
-	if conf, ok := meta["confidence"]; ok {
-		switch v := conf.(type) {
-		case float64:
-			return v
-		case int:
-			return float64(v)
-		case int64:
-			return float64(v)
-		default:
-			return 0.0
-		}
-	}
-	return 0.0
-}
 
 func TestExtractConfidence(t *testing.T) {
 	cfg := &llm.CompositeScoreConfig{

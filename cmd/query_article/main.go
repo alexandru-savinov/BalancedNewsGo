@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 
 	"github.com/jmoiron/sqlx"
@@ -28,7 +29,8 @@ func main() {
 
 	db, err := sqlx.Open("sqlite", dbPath)
 	if err != nil {
-		log.Fatalf("Failed to open DB: %v", err)
+		log.Printf("ERROR: Failed to open DB: %v", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -39,7 +41,8 @@ func main() {
 	var article Article
 	err = db.Get(&article, "SELECT id, title, content FROM articles WHERE id = ?", articleID)
 	if err != nil {
-		log.Fatalf("Failed to fetch article: %v", err)
+		log.Printf("ERROR: Failed to fetch article: %v", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("ID: %d\nTitle: %s\nContent length: %d\nContent preview: %.100s\n",

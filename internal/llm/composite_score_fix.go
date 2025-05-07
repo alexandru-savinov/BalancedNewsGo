@@ -38,12 +38,12 @@ func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 	}
 
 	// Fallback to legacy names
-	if normalizedModelName == "left" {
-		return "left"
-	} else if normalizedModelName == "center" {
-		return "center"
-	} else if normalizedModelName == "right" {
-		return "right"
+	if normalizedModelName == LabelLeft {
+		return LabelLeft
+	} else if normalizedModelName == LabelCenter {
+		return LabelCenter
+	} else if normalizedModelName == LabelRight {
+		return LabelRight
 	}
 
 	log.Printf("Warning: Model '%s' not found in composite score configuration", modelName)
@@ -133,8 +133,8 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 	for _, s := range scores {
 		// Handle ensemble scores specially - map to center perspective
 		if strings.ToLower(s.Model) == "ensemble" {
-			log.Printf("Mapping ensemble model (score %.2f) to perspective 'center'", s.Score)
-			perspectiveModels["center"] = append(perspectiveModels["center"], s)
+			log.Printf("Mapping ensemble model (score %.2f) to perspective '%s'", s.Score, LabelCenter)
+			perspectiveModels[LabelCenter] = append(perspectiveModels[LabelCenter], s)
 			continue
 		}
 
@@ -145,12 +145,12 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 		if perspective == "" {
 			modelLower := strings.ToLower(s.Model)
 			// Direct check for legacy model names - these are the model names themselves
-			if modelLower == "left" || modelLower == LabelLeft {
-				perspective = "left"
-			} else if modelLower == "center" || modelLower == LabelNeutral {
-				perspective = "center"
-			} else if modelLower == "right" || modelLower == LabelRight {
-				perspective = "right"
+			if modelLower == LabelLeft {
+				perspective = LabelLeft
+			} else if modelLower == LabelCenter || modelLower == LabelNeutral {
+				perspective = LabelCenter
+			} else if modelLower == LabelRight {
+				perspective = LabelRight
 			} else {
 				// Skip unknown models
 				log.Printf("Skipping unknown model: %s", s.Model)
@@ -159,7 +159,7 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 		}
 
 		// Ensure perspective is one of the expected values
-		if perspective != "left" && perspective != "center" && perspective != "right" {
+		if perspective != LabelLeft && perspective != LabelCenter && perspective != LabelRight {
 			log.Printf("Skipping model with invalid perspective: %s -> %s", s.Model, perspective)
 			continue
 		}
@@ -175,61 +175,6 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 	}
 
 	return perspectiveModels
-}
-
-// findBestConfidenceScore selects the score with highest confidence from a group of models
-func findBestConfidenceScore(models []db.LLMScore) db.LLMScore {
-	if len(models) == 1 {
-		return models[0]
-	}
-
-	bestScore := models[0]
-	bestConfidence := extractConfidence(bestScore.Metadata)
-	allSameConfidence := true
-
-	for _, model := range models[1:] {
-		modelConfidence := extractConfidence(model.Metadata)
-		if modelConfidence != bestConfidence {
-			allSameConfidence = false
-		}
-		if modelConfidence > bestConfidence {
-			bestScore = model
-			bestConfidence = modelConfidence
-		} else if modelConfidence == bestConfidence {
-			if model.Score > bestScore.Score {
-				bestScore = model
-			}
-		}
-	}
-
-	// If all confidences are equal, pick the highest score
-	if allSameConfidence {
-		maxScore := bestScore.Score
-		for _, model := range models {
-			if model.Score > maxScore {
-				bestScore = model
-				maxScore = model.Score
-			}
-		}
-	}
-
-	return bestScore
-}
-
-// extractConfidence gets the confidence value from model metadata, defaulting to 0.5
-func extractConfidence(metadata string) float64 {
-	defaultConfidence := 0.5
-
-	var metaMap map[string]interface{}
-	if err := json.Unmarshal([]byte(metadata), &metaMap); err != nil {
-		return defaultConfidence
-	}
-
-	if conf, ok := metaMap["confidence"].(float64); ok {
-		return conf
-	}
-
-	return defaultConfidence
 }
 
 // calculateCompositeScore calculates the final composite score based on the configuration and intermediate values
@@ -299,13 +244,13 @@ func calculateConfidence(cfg *CompositeScoreConfig, validModels map[string]bool,
 
 	// Count how many perspectives we have
 	perspectiveCount := 0
-	if _, ok := validModels["left"]; ok {
+	if _, ok := validModels[LabelLeft]; ok {
 		perspectiveCount++
 	}
-	if _, ok := validModels["center"]; ok {
+	if _, ok := validModels[LabelCenter]; ok {
 		perspectiveCount++
 	}
-	if _, ok := validModels["right"]; ok {
+	if _, ok := validModels[LabelRight]; ok {
 		perspectiveCount++
 	}
 
@@ -354,9 +299,9 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *Composi
 
 	// Map for left/center/right
 	scoreMap := map[string]float64{
-		"left":   cfg.DefaultMissing,
-		"center": cfg.DefaultMissing,
-		"right":  cfg.DefaultMissing,
+		LabelLeft:   cfg.DefaultMissing,
+		LabelCenter: cfg.DefaultMissing,
+		LabelRight:  cfg.DefaultMissing,
 	}
 
 	validCount := 0

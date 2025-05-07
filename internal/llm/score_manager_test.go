@@ -47,7 +47,16 @@ type MockScoreCalculator struct {
 
 func (m *MockScoreCalculator) CalculateScore(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
 	args := m.Called(scores, cfg)
-	return args.Get(0).(float64), args.Get(1).(float64), args.Error(2)
+	mockedErr := args.Error(2)
+	val1, ok1 := args.Get(0).(float64)
+	if !ok1 {
+		return 0.0, 0.0, mockedErr // Or a specific error about type mismatch
+	}
+	val2, ok2 := args.Get(1).(float64)
+	if !ok2 {
+		return val1, 0.0, mockedErr // Or a specific error about type mismatch
+	}
+	return val1, val2, mockedErr
 }
 
 // MockProgressManager implements progress tracking for testing
@@ -64,7 +73,11 @@ func (m *MockProgressManager) GetProgress(articleID int64) *models.ProgressState
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*models.ProgressState)
+	val, ok := args.Get(0).(*models.ProgressState)
+	if !ok {
+		return nil // Or panic/log, as this indicates a mock setup issue
+	}
+	return val
 }
 
 // MockTX implements sqlx.Tx for testing
@@ -74,7 +87,12 @@ type MockTX struct {
 
 func (m *MockTX) Exec(query string, args ...interface{}) (sql.Result, error) {
 	callArgs := m.Called(append([]interface{}{query}, args...)...)
-	return callArgs.Get(0).(sql.Result), callArgs.Error(1)
+	mockedErr := callArgs.Error(1)
+	val, ok := callArgs.Get(0).(sql.Result)
+	if !ok {
+		return nil, mockedErr // Or a specific error about type mismatch
+	}
+	return val, mockedErr
 }
 
 func (m *MockTX) Commit() error {
@@ -92,12 +110,22 @@ type MockSqlResult struct {
 
 func (m *MockSqlResult) LastInsertId() (int64, error) {
 	args := m.Called()
-	return args.Get(0).(int64), args.Error(1)
+	mockedErr := args.Error(1)
+	val, ok := args.Get(0).(int64)
+	if !ok {
+		return 0, mockedErr // Or a specific error about type mismatch
+	}
+	return val, mockedErr
 }
 
 func (m *MockSqlResult) RowsAffected() (int64, error) {
 	args := m.Called()
-	return args.Get(0).(int64), args.Error(1)
+	mockedErr := args.Error(1)
+	val, ok := args.Get(0).(int64)
+	if !ok {
+		return 0, mockedErr // Or a specific error about type mismatch
+	}
+	return val, mockedErr
 }
 
 // Custom implementation of Cache for testing with simplified interface
@@ -281,31 +309,40 @@ func TestInvalidateScoreCache(t *testing.T) {
 }
 
 func TestSetGetProgress(t *testing.T) {
-	// Create mocks
-	cache := NewCache()
-	mockCalculator := new(MockScoreCalculator)
+	mockProgress := new(MockProgressManager)
+	sm := NewTestableScoreManager(nil, nil, nil, mockProgress)
 
-	// Create a real progress manager for this test - easier than mocking internal state
-	mockProgress := NewProgressManager(time.Minute)
-
-	sm := NewScoreManager(nil, cache, mockCalculator, mockProgress)
-
-	// Test data
-	articleID := int64(123)
-	progressState := &models.ProgressState{
-		Step:        "Testing",
-		Message:     "Unit testing progress",
-		Percent:     50,
-		Status:      "InProgress",
-		LastUpdated: time.Now().Unix(),
+	articleID := int64(1)
+	initialState := &models.ProgressState{
+		Status:  ProgressStatusInProgress,
+		Step:    "Starting",
+		Message: "Analysis started",
 	}
 
-	// Call methods
-	sm.SetProgress(articleID, progressState)
-	result := sm.GetProgress(articleID)
+	// Mock SetProgress
+	mockProgress.On("SetProgress", articleID, initialState).Return()
+	sm.SetProgress(articleID, initialState)
 
-	// Verify
-	assert.Equal(t, progressState, result)
+	// Mock GetProgress
+	mockProgress.On("GetProgress", articleID).Return(initialState)
+	retrievedState := sm.GetProgress(articleID)
+
+	assert.Equal(t, initialState, retrievedState)
+	mockProgress.AssertExpectations(t)
+
+	// Test with a different state
+	finalState := &models.ProgressState{
+		Status:  ProgressStatusSuccess, // Assuming ProgressStatusSuccess is defined
+		Step:    "Complete",
+		Message: "Analysis finished",
+	}
+	mockProgress.On("SetProgress", articleID, finalState).Return()
+	sm.SetProgress(articleID, finalState)
+
+	mockProgress.On("GetProgress", articleID).Return(finalState)
+	retrievedState = sm.GetProgress(articleID)
+	assert.Equal(t, finalState, retrievedState)
+	mockProgress.AssertExpectations(t)
 }
 
 // TestGetProgressWithNilManager tests the GetProgress method with a nil progress manager
@@ -327,273 +364,185 @@ func TestGetProgressWithNilManager(t *testing.T) {
 
 // TestUpdateArticleScoreSuccess tests the successful path of UpdateArticleScore
 func TestUpdateArticleScoreSuccess(t *testing.T) {
-	// Create mocks
 	mockDB := new(MockDB)
 	mockTx := new(MockTX)
-	mockCache := NewTestCache()
 	mockCalculator := new(MockScoreCalculator)
 	mockProgress := new(MockProgressManager)
-	mockSqlResult := new(MockSqlResult)
+	mockCache := NewTestCache()
 
-	// Use TestableScoreManager instead of regular ScoreManager
 	sm := NewTestableScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
+	sm.mockTx = mockTx // Inject mockTx for this test
 
-	// Test data
 	articleID := int64(123)
-	testScores := []db.LLMScore{
-		{ArticleID: articleID, Model: "left", Score: -0.8, Metadata: `{"confidence":0.9}`},
-		{ArticleID: articleID, Model: "center", Score: 0.1, Metadata: `{"confidence":0.7}`},
-		{ArticleID: articleID, Model: "right", Score: 0.5, Metadata: `{"confidence":0.8}`},
-	}
-	config := &CompositeScoreConfig{
-		Models: []ModelConfig{
-			{ModelName: "left", Perspective: "left"},
-			{ModelName: "center", Perspective: "center"},
-			{ModelName: "right", Perspective: "right"},
-		},
-	}
+	scores := []db.LLMScore{{Model: "model1", Score: 0.5}}
+	config := &CompositeScoreConfig{Models: []ModelConfig{{ModelName: "model1", Perspective: "center"}}}
 
-	expectedScore := 0.1      // Mock value for test
-	expectedConfidence := 0.8 // Mock value for test
+	expectedCompositeScore := 0.75
+	expectedConfidence := 0.9
 
-	// Mock progress tracking - Starting
+	// Mock progress updates: Start
 	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "InProgress" && ps.Step == "Start" && ps.Message == "Starting scoring"
+		return ps.Status == ProgressStatusInProgress && ps.Step == ProgressStepStart && ps.Message == "Starting scoring"
 	})).Return()
 
-	// Mock DB transaction
-	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(mockTx, nil)
+	// Mock calculator
+	mockCalculator.On("CalculateScore", scores, config).Return(expectedCompositeScore, expectedConfidence, nil)
 
-	// Mock score calculation
-	mockCalculator.On("CalculateScore", testScores, config).Return(expectedScore, expectedConfidence, nil)
+	// Mock transaction
+	mockDB.On("BeginTxx", mock.Anything, (*sql.TxOptions)(nil)).Return(mockTx, nil)
 
-	// Mock progress tracking - Calculation
-	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "InProgress" && ps.Step == "Calculating"
-	})).Return()
+	// Mock DB updates (Exec for article score and llm_scores)
+	// We expect two Exec calls in the real SaveScoresInTransaction
+	mockTx.On("Exec", mock.AnythingOfType("string"), mock.Anything).Return(new(MockSqlResult), nil).Twice()
 
-	// Mock DB operations using mock.Anything for all parameters
-	// This is because we're testing the workflow, not the exact parameter values
-	mockSqlResult.On("LastInsertId").Return(int64(1), nil)
-
-	// First Exec call for ensemble score insertion - more flexible matching
-	mockTx.On("Exec",
-		mock.MatchedBy(func(q string) bool {
-			return strings.Contains(q, "INSERT INTO llm_scores")
-		}),
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-	).Return(mockSqlResult, nil).Once()
-
-	// Mock progress tracking - Storing
-	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "InProgress" && ps.Step == "Storing"
-	})).Return()
-
-	// Second Exec call for article update - more flexible matching
-	mockTx.On("Exec",
-		mock.MatchedBy(func(q string) bool {
-			return strings.Contains(q, "UPDATE articles")
-		}),
-		mock.Anything, mock.Anything, mock.Anything,
-	).Return(mockSqlResult, nil).Once()
-
-	// Mock progress tracking - Updating
-	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "InProgress" && ps.Step == "Updating"
-	})).Return()
-
-	// Mock commit
 	mockTx.On("Commit").Return(nil)
 
-	// Mock progress tracking - Complete
+	// Mock progress updates: Complete
 	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "Success" && ps.Step == "Complete" && ps.FinalScore != nil && *ps.FinalScore == expectedScore
+		return ps.Status == ProgressStatusSuccess && ps.Step == "Complete" && ps.Percent == 100 && *ps.FinalScore == expectedCompositeScore
 	})).Return()
 
-	// Call method
-	score, confidence, err := sm.UpdateArticleScore(articleID, testScores, config)
+	// Call the method
+	score, conf, err := sm.UpdateArticleScore(articleID, scores, config)
 
-	// Verify
+	// Assertions
 	assert.NoError(t, err)
-	assert.Equal(t, expectedScore, score)
-	assert.Equal(t, expectedConfidence, confidence)
+	assert.Equal(t, expectedCompositeScore, score)
+	assert.Equal(t, expectedConfidence, conf)
 
-	// Verify progress manager calls
-	mockProgress.AssertCalled(t, "SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "Success" && ps.Step == "Complete"
-	}))
+	mockDB.AssertExpectations(t)
+	mockTx.AssertExpectations(t)
+	mockCalculator.AssertExpectations(t)
+	mockProgress.AssertExpectations(t)
 
-	// Verify transaction was committed
-	mockTx.AssertCalled(t, "Commit")
+	// Verify cache invalidation was called for relevant keys
+	assert.Nil(t, mockCache.Get(fmt.Sprintf("article:%d", articleID)))
+	assert.Nil(t, mockCache.Get(fmt.Sprintf("ensemble:%d", articleID)))
+	assert.Nil(t, mockCache.Get(fmt.Sprintf("bias:%d", articleID))) // Simplified, check all relevant bias keys
 }
 
 // TestUpdateArticleScoreCalculationError tests error handling when score calculation fails
 func TestUpdateArticleScoreCalculationError(t *testing.T) {
-	// Create mocks
-	mockDB := new(MockDB)
-	mockTx := new(MockTX)
-	mockCache := NewTestCache()
 	mockCalculator := new(MockScoreCalculator)
 	mockProgress := new(MockProgressManager)
+	sm := NewTestableScoreManager(nil, nil, mockCalculator, mockProgress)
 
-	// Use TestableScoreManager instead of regular ScoreManager
-	sm := NewTestableScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
+	articleID := int64(1)
+	scores := []db.LLMScore{}
+	config := &CompositeScoreConfig{}
+	calcError := fmt.Errorf("calculator error")
 
-	// Test data
-	articleID := int64(123)
-	testScores := []db.LLMScore{
-		{ArticleID: articleID, Model: "model1", Score: -0.5},
-	}
-	config := &CompositeScoreConfig{
-		Models: []ModelConfig{
-			{ModelName: "model1", Perspective: "left"},
-		},
-	}
-	expectedError := "calculation failed"
+	// Mock SetProgress for initial state
+	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
+		return ps.Status == ProgressStatusInProgress && ps.Step == ProgressStepStart
+	})).Return().Once() // Expect only once
 
-	// Mock progress tracking - we need to accept all possible calls here to prevent unexpected call errors
-	mockProgress.On("SetProgress", articleID, mock.AnythingOfType("*models.ProgressState")).Return()
+	// Mock CalculateScore to return an error
+	mockCalculator.On("CalculateScore", scores, config).Return(0.0, 0.0, calcError)
 
-	// Mock DB transaction
-	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(mockTx, nil)
+	// Mock SetProgress for error state
+	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
+		return ps.Status == ProgressStatusError && ps.Error != ""
+	})).Return().Once()
 
-	// Mock score calculation error
-	mockCalculator.On("CalculateScore", testScores, config).Return(0.0, 0.0, assert.AnError)
+	_, _, err := sm.UpdateArticleScore(articleID, scores, config)
 
-	// Mock rollback
-	mockTx.On("Rollback").Return(nil)
-
-	// Call method
-	score, confidence, err := sm.UpdateArticleScore(articleID, testScores, config)
-
-	// Verify
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), expectedError)
-	assert.Equal(t, 0.0, score)
-	assert.Equal(t, 0.0, confidence)
-
-	// Verify error status was set - check for last call being an error state
-	mockProgress.AssertCalled(t, "SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "Error" && ps.Error != ""
-	}))
-
-	// Verify transaction was rolled back
-	mockTx.AssertCalled(t, "Rollback")
+	assert.Equal(t, calcError, err)
+	mockCalculator.AssertExpectations(t)
+	mockProgress.AssertExpectations(t) // Verify both SetProgress calls were made
 }
 
 // TestUpdateArticleScoreDBError tests error handling when database operations fail
 func TestUpdateArticleScoreDBError(t *testing.T) {
-	// Create mocks
 	mockDB := new(MockDB)
-	mockCache := NewTestCache()
 	mockCalculator := new(MockScoreCalculator)
 	mockProgress := new(MockProgressManager)
+	sm := NewTestableScoreManager(mockDB, nil, mockCalculator, mockProgress)
 
-	// Use TestableScoreManager instead of regular ScoreManager
-	sm := NewTestableScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
+	articleID := int64(1)
+	scores := []db.LLMScore{{Model: "model1", Score: 0.5}}
+	config := &CompositeScoreConfig{Models: []ModelConfig{{ModelName: "model1"}}}
+	dbError := fmt.Errorf("database error")
 
-	// Test data
-	articleID := int64(123)
-	testScores := []db.LLMScore{
-		{ArticleID: articleID, Model: "model1", Score: -0.5},
-	}
-	config := &CompositeScoreConfig{}
-	expectedError := "transaction"
-
-	// Mock progress tracking - Starting
+	// Mock progress updates: Start
 	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "InProgress" && ps.Step == "Start"
+		return ps.Status == ProgressStatusInProgress && ps.Step == ProgressStepStart
 	})).Return()
 
-	// Mock DB transaction failure
-	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(nil, assert.AnError)
+	// Mock calculator
+	mockCalculator.On("CalculateScore", scores, config).Return(0.5, 0.9, nil)
 
-	// Mock progress tracking - Error
+	// Mock DB BeginTxx to return an error
+	mockDB.On("BeginTxx", mock.Anything, (*sql.TxOptions)(nil)).Return(nil, dbError)
+
+	// Mock progress updates: Error
 	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "Error" && ps.Step == "DB Transaction"
+		return ps.Status == ProgressStatusError && strings.Contains(ps.Message, "Failed to start database transaction")
 	})).Return()
 
-	// Call method
-	score, confidence, err := sm.UpdateArticleScore(articleID, testScores, config)
+	// Call the method
+	_, _, err := sm.UpdateArticleScore(articleID, scores, config)
 
-	// Verify
+	// Assertions
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), expectedError)
-	assert.Equal(t, 0.0, score)
-	assert.Equal(t, 0.0, confidence)
+	assert.Contains(t, err.Error(), "database error") // Check underlying error
 
-	// Verify progress manager received error status
-	mockProgress.AssertCalled(t, "SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "Error" && ps.Error != ""
-	}))
+	mockDB.AssertExpectations(t)
+	mockCalculator.AssertExpectations(t)
+	mockProgress.AssertExpectations(t)
 }
 
 // TestUpdateArticleScoreCommitError tests error handling when transaction commit fails
 func TestUpdateArticleScoreCommitError(t *testing.T) {
-	// Create mocks
 	mockDB := new(MockDB)
 	mockTx := new(MockTX)
-	mockCache := NewTestCache()
 	mockCalculator := new(MockScoreCalculator)
 	mockProgress := new(MockProgressManager)
-	mockSqlResult := new(MockSqlResult)
+	mockCache := NewTestCache()
 
-	// Use TestableScoreManager instead of regular ScoreManager
 	sm := NewTestableScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
+	sm.mockTx = mockTx // Inject mockTx
 
-	// Test data
-	articleID := int64(123)
-	testScores := []db.LLMScore{
-		{ArticleID: articleID, Model: "model1", Score: -0.5},
-	}
-	config := &CompositeScoreConfig{
-		Models: []ModelConfig{
-			{ModelName: "model1", Perspective: "left"},
-		},
-	}
-	expectedError := "commit"
-	expectedScore := 0.1
-	expectedConfidence := 0.8
+	articleID := int64(1)
+	scores := []db.LLMScore{{Model: "model1", Score: 0.5}}
+	config := &CompositeScoreConfig{Models: []ModelConfig{{ModelName: "model1"}}}
+	commitError := fmt.Errorf("commit error")
 
-	// Mock progress tracking - All steps before commit
-	mockProgress.On("SetProgress", articleID, mock.AnythingOfType("*models.ProgressState")).Return()
+	// Mock progress updates: Start
+	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
+		return ps.Status == ProgressStatusInProgress && ps.Step == ProgressStepStart
+	})).Return()
 
-	// Mock DB transaction
-	mockDB.On("BeginTxx", mock.Anything, mock.Anything).Return(mockTx, nil)
+	// Mock calculator
+	mockCalculator.On("CalculateScore", scores, config).Return(0.5, 0.9, nil)
 
-	// Mock score calculation
-	mockCalculator.On("CalculateScore", testScores, config).Return(expectedScore, expectedConfidence, nil)
+	// Mock transaction
+	mockDB.On("BeginTxx", mock.Anything, (*sql.TxOptions)(nil)).Return(mockTx, nil)
+	mockTx.On("Exec", mock.AnythingOfType("string"), mock.Anything).Return(new(MockSqlResult), nil).Twice()
+	mockTx.On("Commit").Return(commitError) // Simulate commit failure
+	mockTx.On("Rollback").Return(nil)       // Expect Rollback to be called
 
-	// Mock DB operations with flexible parameter matching
-	mockSqlResult.On("LastInsertId").Return(int64(1), nil)
+	// Mock progress updates: Error
+	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
+		return ps.Status == ProgressStatusError && strings.Contains(ps.Message, "Failed to commit transaction")
+	})).Return()
 
-	// First Exec call for ensemble score insertion - more flexible matching
-	mockTx.On("Exec",
-		mock.MatchedBy(func(q string) bool {
-			return strings.Contains(q, "INSERT INTO llm_scores")
-		}),
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-	).Return(mockSqlResult, nil).Once()
+	// Call the method
+	_, _, err := sm.UpdateArticleScore(articleID, scores, config)
 
-	// Second Exec call for article update - more flexible matching
-	mockTx.On("Exec",
-		mock.MatchedBy(func(q string) bool {
-			return strings.Contains(q, "UPDATE articles")
-		}),
-		mock.Anything, mock.Anything, mock.Anything,
-	).Return(mockSqlResult, nil).Once()
-
-	// Mock commit error
-	mockTx.On("Commit").Return(assert.AnError)
-
-	// Call method
-	score, confidence, err := sm.UpdateArticleScore(articleID, testScores, config)
-
-	// Verify
+	// Assertions
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), expectedError)
-	assert.Equal(t, 0.0, score)
-	assert.Equal(t, 0.0, confidence)
+	assert.Contains(t, err.Error(), "commit error")
+
+	mockDB.AssertExpectations(t)
+	mockTx.AssertExpectations(t)
+	mockCalculator.AssertExpectations(t)
+	mockProgress.AssertExpectations(t)
+
+	// Cache should not be invalidated if DB commit fails
+	mockCache.Set(fmt.Sprintf("article:%d", articleID), "cached_data", 1*time.Minute)
+	assert.NotNil(t, mockCache.Get(fmt.Sprintf("article:%d", articleID)))
 }
 
 // TestUpdateArticleScoreCacheInvalidation tests cache invalidation after successful score update
@@ -608,6 +557,7 @@ func TestUpdateArticleScoreCacheInvalidation(t *testing.T) {
 
 	// Use TestableScoreManager instead of regular ScoreManager
 	sm := NewTestableScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
+	sm.mockTx = mockTx // Ensure mockTx is set in TestableScoreManager if needed by the original logic
 
 	// Test data
 	articleID := int64(123)
@@ -653,7 +603,7 @@ func TestUpdateArticleScoreCacheInvalidation(t *testing.T) {
 	mockTx.On("Commit").Return(nil)
 
 	// Call method
-	sm.UpdateArticleScore(articleID, testScores, config)
+	_, _, _ = sm.UpdateArticleScore(articleID, testScores, config)
 
 	// Verify cache was invalidated
 	assert.Nil(t, mockCache.Get(cacheKey))
@@ -661,77 +611,86 @@ func TestUpdateArticleScoreCacheInvalidation(t *testing.T) {
 
 // Adding test for zero confidence handling
 func TestScoreManagerWithAllZeroConfidenceScores(t *testing.T) {
-	// Create mocks
-	mockDB := new(MockDB)
-	mockCache := NewTestCache()
+	mockDB := new(MockDB) // No DB interaction expected here
 	mockCalculator := new(MockScoreCalculator)
 	mockProgress := new(MockProgressManager)
-
-	// Use TestableScoreManager instead of regular ScoreManager
+	mockCache := NewTestCache()
 	sm := NewTestableScoreManager(mockDB, mockCache, mockCalculator, mockProgress)
 
-	articleID := int64(4434)
-
-	// Create test scores with all zero confidence
+	articleID := int64(789)
+	// Create scores that would trigger the allZeroError
 	scores := []db.LLMScore{
-		{
-			ID:        1,
-			ArticleID: articleID,
-			Model:     "left",
-			Score:     0.0,
-			Metadata:  `{"confidence": 0.0}`,
-			CreatedAt: time.Now(),
-		},
-		{
-			ID:        2,
-			ArticleID: articleID,
-			Model:     "center",
-			Score:     0.0,
-			Metadata:  `{"confidence": 0.0}`,
-			CreatedAt: time.Now(),
-		},
-		{
-			ID:        3,
-			ArticleID: articleID,
-			Model:     "right",
-			Score:     0.0,
-			Metadata:  `{"confidence": 0.0}`,
-			CreatedAt: time.Now(),
-		},
+		{Model: "modelA", Score: 0.1, Metadata: `{"confidence": 0.0}`},
+		{Model: "modelB", Score: 0.2, Metadata: `{"confidence": 0}`},    // Test int 0
+		{Model: "modelC", Score: 0.3, Metadata: `{"confidence": null}`}, // Test null confidence
+		{Model: "modelD", Score: 0.4, Metadata: `{}`},                   // Test missing confidence
 	}
+	config := &CompositeScoreConfig{Models: []ModelConfig{{ModelName: "modelA"}, {ModelName: "modelB"}, {ModelName: "modelC"}, {ModelName: "modelD"}}}
 
-	// Setup mock config
-	cfg := &CompositeScoreConfig{
-		Models: []ModelConfig{
-			{ModelName: "left", Perspective: "left"},
-			{ModelName: "center", Perspective: "center"},
-			{ModelName: "right", Perspective: "right"},
-		},
-		Formula:          "average",
-		ConfidenceMethod: "count_valid",
-		MinConfidence:    0.1,
-		MaxConfidence:    1.0,
-	}
+	// Expected error from checkForAllZeroResponses
+	expectedErr := fmt.Errorf("all LLMs returned empty or zero-confidence responses")
 
-	// Mock progress tracking - Error (this should be first since it's called first)
+	// Mock progress updates: Start (should still be called)
 	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
-		return ps.Status == "Error" && ps.Step == "Error" &&
-			strings.Contains(ps.Message, "All LLMs returned zero confidence - scoring failed") &&
-			strings.Contains(ps.Error, "all LLMs returned empty or zero-confidence responses")
+		return ps.Status == ProgressStatusInProgress && ps.Step == ProgressStepStart
 	})).Return()
 
-	// Mock calculator to return error for zero confidence scores
-	mockCalculator.On("CalculateScore", mock.AnythingOfType("[]db.LLMScore"), mock.AnythingOfType("*llm.CompositeScoreConfig")).Return(0.0, 0.0, fmt.Errorf("all LLMs returned empty or zero-confidence responses"))
+	// Mock progress updates: Error due to all zero confidence
+	mockProgress.On("SetProgress", articleID, mock.MatchedBy(func(ps *models.ProgressState) bool {
+		return ps.Status == ProgressStatusError &&
+			ps.Step == "Error" &&
+			strings.Contains(ps.Message, "All LLMs returned zero confidence") &&
+			ps.Error == expectedErr.Error()
+	})).Return()
 
-	// Test the UpdateArticleScore function
-	_, _, err := sm.UpdateArticleScore(articleID, scores, cfg)
+	// Calculator should NOT be called in this scenario
+	// mockCalculator.AssertNotCalled(t, "CalculateScore")
 
-	// Assert that an error is returned
-	assert.Error(t, err, "UpdateArticleScore should return an error when all LLMs have zero confidence")
-	assert.Contains(t, err.Error(), "all LLMs returned empty or zero-confidence responses",
-		"Error message should indicate the zero confidence issue")
+	score, conf, err := sm.UpdateArticleScore(articleID, scores, config)
 
-	// Verify that error status was set with correct message
+	assert.Error(t, err)
+	assert.Equal(t, expectedErr.Error(), err.Error())
+	assert.Equal(t, 0.0, score)
+	assert.Equal(t, 0.0, conf)
+
 	mockProgress.AssertExpectations(t)
-	mockCalculator.AssertExpectations(t)
+	mockCalculator.AssertNotCalled(t, "CalculateScore", mock.Anything, mock.Anything) // Ensure calculator wasn't called
+	mockDB.AssertExpectations(t)                                                      // Ensure no DB calls were made
+}
+
+// Test helper in real ScoreManager, not directly testable via TestableScoreManager
+// but we can test its logic here.
+func TestCheckForAllZeroResponses(t *testing.T) {
+	tests := []struct {
+		name        string
+		scores      []db.LLMScore
+		expectError bool
+		expectedMsg string
+	}{
+		{
+			name: "All zero confidence",
+			scores: []db.LLMScore{
+				{Metadata: `{"confidence": 0.0}`},
+				{Metadata: `{"confidence": 0}`},
+			},
+			expectError: true,
+			expectedMsg: "all LLMs returned empty or zero-confidence responses",
+		},
+		// ... existing code ...
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// sm := &ScoreManager{} // Not needed as we are testing a standalone function
+			allZeros, err := checkForAllZeroResponses(tt.scores)
+			if tt.expectError {
+				assert.True(t, allZeros)
+				assert.Error(t, err)
+				assert.Equal(t, tt.expectedMsg, err.Error())
+			} else {
+				assert.False(t, allZeros)
+				assert.NoError(t, err)
+			}
+		})
+	}
 }

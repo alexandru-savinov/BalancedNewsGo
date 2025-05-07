@@ -31,9 +31,9 @@ func NewHTTPLLMService(c *resty.Client, primaryKey string, backupKey string, bas
 	// Ensure baseURL ends with /chat/completions
 	if !strings.HasSuffix(baseURL, "/chat/completions") {
 		if strings.HasSuffix(baseURL, "/") {
-			baseURL = baseURL + "chat/completions"
+			baseURL += "chat/completions"
 		} else {
-			baseURL = baseURL + "/chat/completions"
+			baseURL += "/chat/completions"
 		}
 	}
 	return &HTTPLLMService{

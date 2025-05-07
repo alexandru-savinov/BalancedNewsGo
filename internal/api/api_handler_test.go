@@ -49,7 +49,12 @@ func TestSummaryHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		data := response["data"].(map[string]interface{})
+		data, ok := response["data"].(map[string]interface{})
+		assert.True(t, ok, "data field should be a map[string]interface{}")
+		if !ok { // Guard against using a nil map if assertion failed, though assert.True should stop it
+			t.FailNow() // Or handle more gracefully depending on test needs
+			return
+		}
 		summary, ok := data["summary"].(string)
 		assert.True(t, ok, "summary should be a string")
 		assert.Equal(t, "This is a test summary", summary)
@@ -84,8 +89,20 @@ func TestSummaryHandler(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "summary not available")
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false for this error case")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map[string]interface{}")
+		if okErrorField { // Proceed only if errorField is the correct type
+			messageVal, okMessageVal := errorField["message"].(string)
+			assert.True(t, okMessageVal, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "summary not available")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 
 		// Verify mock expectations
 		mockDB.AssertExpectations(t)
@@ -109,8 +126,20 @@ func TestSummaryHandler(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "Invalid article ID")
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false for this error case")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map[string]interface{}")
+		if okErrorField { // Proceed only if errorField is the correct type
+			messageVal, okMessageVal := errorField["message"].(string)
+			assert.True(t, okMessageVal, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "Invalid article ID")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 
 	t.Run("Article Not Found", func(t *testing.T) {
@@ -135,8 +164,20 @@ func TestSummaryHandler(t *testing.T) {
 		var response map[string]interface{}
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"], "Article not found")
+
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false for this error case")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map[string]interface{}")
+		if okErrorField { // Proceed only if errorField is the correct type
+			messageVal, okMessageVal := errorField["message"].(string)
+			assert.True(t, okMessageVal, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "Article not found")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 
 		mockDB.AssertExpectations(t)
 	})
@@ -188,11 +229,18 @@ func TestBiasHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		data := response["data"].(map[string]interface{})
+		data, okData := response["data"].(map[string]interface{})
+		assert.True(t, okData, "\"data\" field should be a map[string]interface{}")
+		if !okData {
+			t.FailNow()
+			return
+		}
+
 		assert.Equal(t, 0.75, data["composite_score"])
 		assert.IsType(t, []interface{}{}, data["results"])
-		results := data["results"].([]interface{})
-		assert.Equal(t, 2, len(results)) // Should include both gpt and claude scores
+		resultsVal, okResults := data["results"].([]interface{})
+		assert.True(t, okResults, "\"results\" field should be an []interface{}")
+		assert.Equal(t, 2, len(resultsVal)) // Should include both gpt and claude scores
 
 		// Verify mock expectations
 		mockDB.AssertExpectations(t)
@@ -228,7 +276,13 @@ func TestBiasHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		data := response["data"].(map[string]interface{})
+		data, okData := response["data"].(map[string]interface{})
+		assert.True(t, okData, "\"data\" field should be a map[string]interface{}")
+		if !okData {
+			t.FailNow()
+			return
+		}
+
 		assert.Nil(t, data["composite_score"]) // Should be nil when no ensemble score exists
 		assert.Equal(t, "scoring_unavailable", data["status"])
 
@@ -278,9 +332,16 @@ func TestBiasHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		data := response["data"].(map[string]interface{})
-		results := data["results"].([]interface{})
-		assert.Equal(t, 1, len(results)) // Should only include gpt score which is within range
+		data, okData := response["data"].(map[string]interface{})
+		assert.True(t, okData, "\"data\" field should be a map[string]interface{}")
+		if !okData {
+			t.FailNow()
+			return
+		}
+
+		resultsVal, okResults := data["results"].([]interface{})
+		assert.True(t, okResults, "\"results\" field should be an []interface{}")
+		assert.Equal(t, 1, len(resultsVal)) // Should only include gpt score which is within range
 
 		// Verify mock expectations
 		mockDB.AssertExpectations(t)
@@ -346,7 +407,10 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		assert.True(t, response["success"].(bool))
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.True(t, successVal, "\"success\" field should be true for this case")
+
 		assert.Contains(t, response, "scores")
 		scores, ok := response["scores"].([]interface{})
 		assert.True(t, ok, "scores should be an array")
@@ -392,7 +456,11 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		assert.True(t, response["success"].(bool))
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.True(t, successVal, "\"success\" field should be true for this case")
+
+		assert.Contains(t, response, "scores")
 		scores, ok := response["scores"].([]interface{})
 		assert.True(t, ok, "scores should be an array")
 		assert.Equal(t, 1, len(scores))
@@ -435,8 +503,19 @@ func TestEnsembleDetailsHandler(t *testing.T) {
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		assert.NoError(t, err)
 
-		assert.False(t, response["success"].(bool))
-		assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "Ensemble data not found")
+		successVal, okSuccess := response["success"].(bool)
+		assert.True(t, okSuccess, "\"success\" field should be a boolean")
+		assert.False(t, successVal, "\"success\" field should be false for this error case")
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map[string]interface{}")
+		if okErrorField { // Proceed only if errorField is the correct type
+			messageVal, okMessageVal := errorField["message"].(string)
+			assert.True(t, okMessageVal, "\"message\" field in error should be a string")
+			assert.Contains(t, messageVal, "Ensemble data not found")
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 
 		// Verify mock expectations
 		mockDB.AssertExpectations(t)

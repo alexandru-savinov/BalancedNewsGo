@@ -30,6 +30,7 @@ const (
 	LabelLeft    = "left"
 	LabelRight   = "right"
 	LabelNeutral = "neutral"
+	LabelCenter  = "center"
 )
 
 type ModelConfig struct {

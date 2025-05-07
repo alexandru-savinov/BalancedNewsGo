@@ -7,6 +7,20 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 )
 
+// Define constants for progress states
+const (
+	ProgressStatusInProgress = "InProgress"
+	ProgressStatusSuccess    = "Success"
+	ProgressStatusError      = "Error"
+
+	ProgressStepStart       = "Start"
+	ProgressStepCalculating = "Calculating"
+	ProgressStepStoring     = "Storing"
+	ProgressStepUpdating    = "Updating"
+	ProgressStepComplete    = "Complete"
+	ProgressStepError       = "Error" // Also a step
+)
+
 // ProgressManager tracks scoring progress with cleanup
 type ProgressManager struct {
 	progressMap     map[int64]*models.ProgressState
@@ -53,11 +67,11 @@ func (pm *ProgressManager) cleanup() {
 	defer pm.progressMapLock.Unlock()
 	now := time.Now().Unix()
 	for id, progress := range pm.progressMap {
-		if (progress.Status == "Success" || progress.Status == "Error") && now-progress.LastUpdated > 300 {
+		if (progress.Status == ProgressStatusSuccess || progress.Status == ProgressStatusError) && now-progress.LastUpdated > 300 {
 			delete(pm.progressMap, id)
 			continue
 		}
-		if progress.Status == "InProgress" && now-progress.LastUpdated > 1800 {
+		if progress.Status == ProgressStatusInProgress && now-progress.LastUpdated > 1800 {
 			delete(pm.progressMap, id)
 		}
 	}

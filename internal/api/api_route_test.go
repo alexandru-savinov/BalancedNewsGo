@@ -28,7 +28,14 @@ func (m *MockRSSCollector) ManualRefresh() {
 // Update the CheckFeedHealth method to match the CollectorInterface
 func (m *MockRSSCollector) CheckFeedHealth() map[string]bool {
 	args := m.Called()
-	return args.Get(0).(map[string]bool)
+	val, ok := args.Get(0).(map[string]bool)
+	if !ok {
+		// This indicates a misconfiguration of the mock's Return arguments.
+		// Returning nil is acceptable; test assertions should catch unexpected nil.
+		// log.Printf("WARN: MockRSSCollector.CheckFeedHealth: type assertion to map[string]bool failed")
+		return nil
+	}
+	return val
 }
 
 // TestRegisterRoutes tests that all routes are registered correctly
@@ -100,8 +107,20 @@ func TestSafeHandler(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
-	assert.False(t, response["success"].(bool))
-	assert.Contains(t, response["error"].(map[string]interface{})["message"].(string), "Internal server error")
+
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.False(t, successVal, "\"success\" field should be false for this error case")
+
+	errorField, okErrorField := response["error"].(map[string]interface{})
+	assert.True(t, okErrorField, "\"error\" field should be a map[string]interface{}")
+	if okErrorField {
+		messageVal, okMessageVal := errorField["message"].(string)
+		assert.True(t, okMessageVal, "\"message\" field in error should be a string")
+		assert.Contains(t, messageVal, "Internal server error")
+	} else {
+		t.Log("Skipping message check as error field was not a map")
+	}
 }
 
 // TestRefreshHandlerFunc tests the refresh handler
@@ -146,8 +165,20 @@ func TestRefreshHandlerFunc(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
-	assert.True(t, response["success"].(bool))
-	assert.Equal(t, "refresh started", response["data"].(map[string]interface{})["status"])
+
+	successVal, okSuccess := response["success"].(bool)
+	assert.True(t, okSuccess, "\"success\" field should be a boolean")
+	assert.True(t, successVal, "\"success\" field should be true for this case")
+
+	dataField, okDataField := response["data"].(map[string]interface{})
+	assert.True(t, okDataField, "\"data\" field should be a map[string]interface{}")
+	if okDataField {
+		statusVal, okStatusVal := dataField["status"].(string)
+		assert.True(t, okStatusVal, "\"status\" field in data should be a string")
+		assert.Equal(t, "refresh started", statusVal)
+	} else {
+		t.Log("Skipping status check as data field was not a map")
+	}
 
 	// Verify that ManualRefresh was called
 	mockRSS.AssertCalled(t, "ManualRefresh")

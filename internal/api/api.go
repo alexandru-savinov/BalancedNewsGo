@@ -22,6 +22,14 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Define constants for commonly used strings
+const (
+	ModelEnsemble   = "ensemble"
+	ModelSummarizer = "summarizer"
+	SortAsc         = "asc"
+	SortDesc        = "desc"
+)
+
 var (
 	articlesCache     = NewSimpleCache()
 	articlesCacheLock sync.RWMutex
@@ -351,18 +359,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 }
 
 // Utility function for handling article array results
-type ArticleResult struct {
-	Article  *db.Article            `json:"article"`
-	Scores   []db.LLMScore          `json:"scores"`
-	Metadata map[string]interface{} `json:"metadata"`
-}
-
-// handleArticleBatch processes a batch of articles
-func handleArticleBatch(dbConn *sqlx.DB, articles []db.Article) ([]*ArticleResult, error) {
-	results := make([]*ArticleResult, 0, len(articles))
-	// ...existing code...
-	return results, nil
-}
+// ... remove handleArticleBatch function ...
 
 // getArticlesHandler handles GET /articles
 // @Summary Get articles
@@ -727,7 +724,10 @@ func scoreProgressSSEHandler() gin.HandlerFunc {
 				if data, err := json.Marshal(progress); err == nil {
 					currentProgress := string(data)
 					if currentProgress != lastProgress {
-						fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+						if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", data); err != nil {
+							// Client disconnected or error writing
+							return
+						}
 						c.Writer.Flush()
 						lastProgress = currentProgress
 
@@ -823,7 +823,7 @@ func (h *SummaryHandler) Handle(c *gin.Context) {
 	}
 
 	for _, score := range scores {
-		if score.Model == "summarizer" {
+		if score.Model == ModelSummarizer {
 			// Extract summary text from JSON metadata
 			var summaryText string
 			var meta map[string]interface{}
@@ -848,53 +848,6 @@ func (h *SummaryHandler) Handle(c *gin.Context) {
 
 	RespondError(c, NewAppError(ErrNotFound, "Article summary not available"))
 	LogPerformance("summaryHandler", start)
-}
-
-func parseArticleID(c *gin.Context) (int64, bool) {
-	idStr := c.Param("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
-		return 0, false
-	}
-	return int64(id), true
-}
-
-func filterAndTransformScores(scores []db.LLMScore, min, max float64) []map[string]interface{} {
-	results := make([]map[string]interface{}, 0, len(scores))
-	for _, score := range scores {
-		if score.Model != "ensemble" {
-			continue
-		}
-		var meta map[string]interface{}
-		if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
-			continue
-		}
-		agg, _ := meta["aggregation"].(map[string]interface{})
-		weightedMean, _ := agg["weighted_mean"].(float64)
-		if weightedMean < min || weightedMean > max {
-			continue
-		}
-		result := map[string]interface{}{
-			"score":      weightedMean,
-			"metadata":   meta,
-			"created_at": score.CreatedAt,
-		}
-		results = append(results, result)
-	}
-	return results
-}
-
-func sortResults(results []map[string]interface{}, order string) {
-	if order == "asc" {
-		sort.Slice(results, func(i, j int) bool {
-			return results[i]["score"].(float64) < results[j]["score"].(float64)
-		})
-	} else {
-		sort.Slice(results, func(i, j int) bool {
-			return results[i]["score"].(float64) > results[j]["score"].(float64)
-		})
-	}
 }
 
 // biasHandler returns article bias scores and composite score.
@@ -941,8 +894,8 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			LogError("biasHandler: invalid max_score", err)
 			return
 		}
-		sortOrder := c.DefaultQuery("sort", "desc")
-		if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder := c.DefaultQuery("sort", SortDesc)
+		if sortOrder != SortAsc && sortOrder != SortDesc {
 			RespondError(c, NewAppError(ErrValidation, "Invalid sort order"))
 			LogError("biasHandler: invalid sort order", nil)
 			return
@@ -973,7 +926,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		for i := range scores {
 			score := scores[i] // Create a copy to avoid loop variable issues if needed later
 
-			if score.Model == "ensemble" {
+			if score.Model == ModelEnsemble {
 				if latestEnsembleScore == nil || score.CreatedAt.After(latestEnsembleScore.CreatedAt) {
 					latestEnsembleScore = &score // Store pointer to the score
 				}
@@ -1017,9 +970,24 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		// Sort individual results
 		sort.SliceStable(individualResults, func(i, j int) bool {
-			scoreI := individualResults[i]["score"].(float64)
-			scoreJ := individualResults[j]["score"].(float64)
-			if sortOrder == "asc" {
+			scoreI, okI := individualResults[i]["score"].(float64)
+			scoreJ, okJ := individualResults[j]["score"].(float64)
+
+			if !okI && !okJ { // Both are invalid
+				log.Printf("WARN: biasHandler sorting: both scores invalid for comparison at indices %d and %d. Treating as equal.", i, j)
+				return false
+			}
+			if !okI { // item i is invalid, j is valid. Invalid items go to the end.
+				log.Printf("WARN: biasHandler sorting: invalid score for result at index %d. Sorting to end.", i)
+				return false
+			}
+			if !okJ { // item i is valid, j is invalid. Invalid items go to the end.
+				log.Printf("WARN: biasHandler sorting: invalid score for result at index %d. Sorting to end.", j)
+				return true
+			}
+
+			// Both are valid
+			if sortOrder == SortAsc {
 				return scoreI < scoreJ
 			}
 			return scoreI > scoreJ // desc
@@ -1139,7 +1107,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 	details := make([]map[string]interface{}, 0)
 	for _, score := range scores {
-		if score.Model != "ensemble" {
+		if score.Model != ModelEnsemble {
 			continue
 		}
 

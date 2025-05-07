@@ -31,7 +31,7 @@ func TestIntegrationUpdateArticleScore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create mock DB: %v", err)
 	}
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	// Wrap with sqlx
 	sqlxDB := sqlx.NewDb(mockDB, "sqlmock")
@@ -97,7 +97,7 @@ func TestIntegrationUpdateArticleScore_CalculationError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create mock DB: %v", err)
 	}
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	// Wrap with sqlx
 	sqlxDB := sqlx.NewDb(mockDB, "sqlmock")
@@ -194,7 +194,7 @@ func setupIntegrationTest(t *testing.T) (*sqlx.DB, *ScoreManager, *ProgressManag
 
 func TestScoreManagerIntegration_UpdateArticleScore_ZeroConfidenceError(t *testing.T) {
 	mockDB, scoreManager, _, _ := setupIntegrationTest(t) // Keep sqlMock reference if needed for expectations
-	defer mockDB.Close()                                  // Close the sqlxDB wrapper
+	defer func() { _ = mockDB.Close() }()                 // Close the sqlxDB wrapper
 
 	// Prepare mock calculator to return zero confidence
 	// (This mock setup might need adjustment based on how MockRealCalculator is implemented)
@@ -244,7 +244,7 @@ func setupFailedIntegrationTest(t *testing.T) (*sqlx.DB, *ScoreManager, *Progres
 
 func TestScoreManagerIntegration_CalculateScore_Error(t *testing.T) {
 	mockDB, scoreManager, _, sqlMock := setupFailedIntegrationTest(t)
-	defer mockDB.Close()
+	defer func() { _ = mockDB.Close() }()
 
 	articleID := int64(1)
 	config := &CompositeScoreConfig{ /* ... */ }

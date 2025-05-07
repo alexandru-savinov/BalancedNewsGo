@@ -9,7 +9,7 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
-var perspectives = []string{"left", "center", "right"}
+var perspectives = []string{LabelLeft, LabelCenter, LabelRight}
 
 // ScoreCalculator defines the interface for composite score calculation
 // Returns (score, confidence, error)
@@ -39,18 +39,37 @@ func (c *DefaultScoreCalculator) initializeMaps() (map[string]*float64, map[stri
 func (c *DefaultScoreCalculator) getPerspective(model string, cfg *CompositeScoreConfig) string {
 	perspective := MapModelToPerspective(model, cfg)
 	if perspective != "" {
-		return perspective
+		// Ensure mapped perspective is one of the known constants
+		switch perspective {
+		case LabelLeft, LabelCenter, LabelRight:
+			return perspective
+		default:
+			// If mapped perspective is not a known constant, log and fall through
+			log.Printf("[WARN] Mapped perspective '%s' for model '%s' is not a standard label. Falling back to default logic.", perspective, model)
+		}
 	}
 
 	model = strings.ToLower(model)
+	// Allow model names to directly match constants (e.g. "left", "center", "right" from config)
+	// or common variations.
 	switch model {
-	case LabelLeft:
-		return "left"
-	case LabelRight:
-		return "right"
-	case "center":
-		return "center"
+	case LabelLeft, "left_leaning", "liberal": // "left" is already LabelLeft
+		return LabelLeft
+	case LabelRight, "right_leaning", "conservative": // "right" is already LabelRight
+		return LabelRight
+	case LabelCenter, "centrist", "neutral": // "center" is already LabelCenter
+		return LabelCenter
 	default:
+		// Try matching based on contains, as a fallback
+		if strings.Contains(model, LabelLeft) {
+			return LabelLeft
+		}
+		if strings.Contains(model, LabelRight) {
+			return LabelRight
+		}
+		if strings.Contains(model, LabelCenter) {
+			return LabelCenter
+		}
 		return ""
 	}
 }
@@ -92,7 +111,7 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore, cfg *Compo
 	for _, s := range scores {
 		perspective := c.getPerspective(s.Model, cfg)
 
-		if perspective == "" || (perspective != "left" && perspective != "center" && perspective != "right") {
+		if perspective == "" || (perspective != LabelLeft && perspective != LabelCenter && perspective != LabelRight) {
 			continue
 		}
 

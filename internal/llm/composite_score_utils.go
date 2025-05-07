@@ -88,14 +88,14 @@ func LoadCompositeScoreConfig() (*CompositeScoreConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening composite score config %q: %w", configPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	decoder := json.NewDecoder(f)
 	var cfg CompositeScoreConfig
 	if e := decoder.Decode(&cfg); e != nil {
 		return nil, fmt.Errorf("decoding composite score config %q: %w", configPath, e)
 	}
-	if cfg.Models == nil || len(cfg.Models) == 0 {
+	if len(cfg.Models) == 0 {
 		return nil, fmt.Errorf("composite score config %q loaded but Models array is null or empty", configPath)
 	}
 	log.Printf("Successfully loaded and parsed composite score config from: %s", configPath)

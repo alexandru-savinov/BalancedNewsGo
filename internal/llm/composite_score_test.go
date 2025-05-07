@@ -1,8 +1,6 @@
 package llm
 
 import (
-	"encoding/json"
-	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -10,30 +8,6 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
 )
-
-// Helper to create ensemble metadata for tests
-func createEnsembleMetadata(confidence float64, variance float64) string {
-	meta := map[string]interface{}{
-		"confidence": confidence, // The crucial top-level confidence
-		"all_sub_results": []map[string]interface{}{ // Dummy sub-results
-			{"model": "model1", "score": 0.1, "confidence": 0.8},
-			{"model": "model2", "score": -0.1, "confidence": 0.7},
-		},
-		"per_model_results":     map[string]interface{}{}, // Dummy data
-		"per_model_aggregation": map[string]interface{}{}, // Dummy data
-		"final_aggregation": map[string]interface{}{
-			"weighted_mean":    0.0, // Matching the test score
-			"variance":         variance,
-			"uncertainty_flag": variance > 0.1,
-		},
-		"timestamp": time.Now().Format(time.RFC3339),
-	}
-	metaBytes, err := json.Marshal(meta)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to marshal test metadata: %v", err)) // Panic in test helper is okay
-	}
-	return string(metaBytes)
-}
 
 // TestComputeCompositeScoreWithAllZeroResponses tests the critical edge case
 // where all LLMs return empty or zero-value responses, including ensemble results.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -148,7 +149,8 @@ func main() {
 	// go startReprocessingLoop(dbConn, llmClient) // Temporarily disabled for debugging
 
 	if err := router.Run(":8080"); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		log.Printf("ERROR: Failed to start server: %v", err)
+		os.Exit(1)
 	}
 }
 
@@ -164,14 +166,16 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	// Initialize database
 	dbConn, err := db.InitDB("news.db")
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Printf("ERROR: Failed to initialize database: %v", err)
+		os.Exit(1)
 	}
-	defer dbConn.Close()
+	defer func() { _ = dbConn.Close() }()
 
 	// Initialize LLM client
 	llmClient, err := llm.NewLLMClient(dbConn)
 	if err != nil {
-		log.Fatalf("Failed to initialize LLM Client: %v", err)
+		log.Printf("ERROR: Failed to initialize LLM Client: %v", err)
+		os.Exit(1)
 	}
 
 	// Initialize RSS collector from external config
@@ -179,7 +183,8 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	feedSourcesPath := "configs/feed_sources.json"
 	feedConfigData, err := os.ReadFile(feedSourcesPath)
 	if err != nil {
-		log.Fatalf("Failed to read feed sources config '%s': %v", feedSourcesPath, err)
+		log.Printf("ERROR: Failed to read feed sources config '%s': %v", feedSourcesPath, err)
+		os.Exit(1)
 	}
 	var feedConfig struct { // Use anonymous struct for local parsing
 		Sources []struct {
@@ -187,7 +192,8 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 		} `json:"sources"`
 	}
 	if err := json.Unmarshal(feedConfigData, &feedConfig); err != nil {
-		log.Fatalf("Failed to parse feed sources config '%s': %v", feedSourcesPath, err)
+		log.Printf("ERROR: Failed to parse feed sources config '%s': %v", feedSourcesPath, err)
+		os.Exit(1)
 	}
 	feedURLs := make([]string, 0, len(feedConfig.Sources))
 	for _, src := range feedConfig.Sources {
@@ -277,87 +283,10 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// TODO: Restore articleDetailHandler function definition
 func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	// Placeholder implementation
 	return func(c *gin.Context) {
-		id := c.Param("id")
-
-		articleID, err := strconv.ParseInt(id, 10, 64)
-		if err != nil {
-			c.String(400, "Invalid article ID")
-			return
-		}
-
-		article, err := db.FetchArticleByID(dbConn, articleID)
-		if err != nil {
-			c.String(404, "Article not found")
-			return
-		}
-
-		// Fetch individual scores for the slider display
-		scores, _ := db.FetchLLMScores(dbConn, articleID)
-
-		// Use the composite score and confidence already stored on the article
-		var composite float64
-		if article.CompositeScore != nil {
-			composite = *article.CompositeScore
-		}
-		var confidence float64
-		if article.Confidence != nil {
-			confidence = *article.Confidence
-		}
-
-		// Calculate bias label and confidence colors
-		var biasLabel string
-		if composite < -0.5 {
-			biasLabel = "Left"
-		} else if composite < -0.1 {
-			biasLabel = "Slightly Left"
-		} else if composite > 0.5 {
-			biasLabel = "Right"
-		} else if composite > 0.1 {
-			biasLabel = "Slightly Right"
-		} else {
-			biasLabel = "Center"
-		}
-
-		var confidenceColor string
-		if confidence >= 0.8 {
-			confidenceColor = "var(--confidence-high)"
-		} else if confidence >= 0.5 {
-			confidenceColor = "var(--confidence-medium)"
-		} else {
-			confidenceColor = "var(--confidence-low)"
-		}
-
-		// Calculate model indicators for the bias slider
-		var modelIndicators []map[string]interface{}
-		for _, s := range scores {
-			var meta struct {
-				Confidence float64 `json:"confidence"`
-			}
-			_ = json.Unmarshal([]byte(s.Metadata), &meta)
-
-			modelIndicators = append(modelIndicators, map[string]interface{}{
-				"Position": ((s.Score + 1) / 2) * 100,
-				"Title":    fmt.Sprintf("%s: %.2f (Confidence: %.0f%%)", s.Model, s.Score, meta.Confidence*100),
-			})
-		}
-
-		// Render HTML template
-		c.HTML(200, "article.html", gin.H{
-			"ID":                article.ID,
-			"Title":             article.Title,
-			"Content":           article.Content,
-			"Source":            article.Source,
-			"PubDate":           article.PubDate.Format("2006-01-02 15:04:05"),
-			"CreatedAt":         article.CreatedAt.Format("2006-01-02 15:04:05"),
-			"CompositeScore":    fmt.Sprintf("%.2f", composite),
-			"BiasLabel":         biasLabel,
-			"ConfidencePercent": fmt.Sprintf("%.0f", confidence*100),
-			"ConfidenceColor":   confidenceColor,
-			"SliderPosition":    ((composite + 1) / 2) * 100,
-			"ModelIndicators":   modelIndicators,
-			"Explanation":       "Analysis based on multiple machine learning models evaluating political bias.",
-		})
+		c.String(http.StatusNotImplemented, "Handler not implemented yet")
 	}
 }

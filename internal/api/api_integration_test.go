@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -41,7 +42,15 @@ func (m *MockProgressManager) GetProgress(articleID int64) *models.ProgressState
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*models.ProgressState)
+	val, ok := args.Get(0).(*models.ProgressState)
+	if !ok {
+		// This might indicate a misconfiguration of the mock's Return arguments
+		// or the test is intentionally providing a different type.
+		// For a mock, returning nil might be acceptable, or you could panic.
+		// log.Printf("WARN: MockProgressManager.GetProgress: type assertion to *models.ProgressState failed for articleID %d", articleID)
+		return nil
+	}
+	return val
 }
 
 // MockCache mocks the cache functionality of ScoreManager
@@ -69,7 +78,21 @@ type MockScoreCalculator struct {
 
 func (m *MockScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
 	args := m.Called(scores)
-	return args.Get(0).(float64), args.Get(1).(float64), args.Error(2)
+	scoreVal, okScore := args.Get(0).(float64)
+	confidenceVal, okConfidence := args.Get(1).(float64)
+	originalError := args.Error(2)
+
+	if !okScore || !okConfidence {
+		log.Printf("WARN: MockScoreCalculator.CalculateScore: type assertion failed. Score ok: %v, Confidence ok: %v", okScore, okConfidence)
+		// Return zero values for score/confidence and the original error from the mock setup
+		// or a new error indicating assertion failure if originalError is nil.
+		if originalError == nil {
+			return 0.0, 0.0, fmt.Errorf("MockScoreCalculator: type assertion failed for score or confidence")
+		}
+		return 0.0, 0.0, originalError
+	}
+
+	return scoreVal, confidenceVal, originalError
 }
 
 // MockDBTx mocks a database transaction
@@ -104,19 +127,41 @@ func (m *IntegrationMockLLMClient) CheckHealth() error {
 // AnalyzeArticle mocks the LLMClient.AnalyzeArticle method
 func (m *IntegrationMockLLMClient) AnalyzeArticle(ctx context.Context, article *db.Article) (*llm.ArticleAnalysis, error) {
 	args := m.Called(ctx, article)
+	originalError := args.Error(1)
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		return nil, originalError
 	}
-	return args.Get(0).(*llm.ArticleAnalysis), args.Error(1)
+	val, ok := args.Get(0).(*llm.ArticleAnalysis)
+	if !ok {
+		log.Printf("WARN: IntegrationMockLLMClient.AnalyzeArticle: type assertion to *llm.ArticleAnalysis failed for article ID %d", article.ID)
+		// Return nil and the original error from mock setup,
+		// or a new error if originalError is nil.
+		if originalError == nil {
+			return nil, fmt.Errorf("IntegrationMockLLMClient.AnalyzeArticle: type assertion failed")
+		}
+		return nil, originalError
+	}
+	return val, originalError
 }
 
 // FetchScores mocks the LLMClient.FetchScores method
 func (m *IntegrationMockLLMClient) FetchScores(articleID int64) ([]db.LLMScore, error) {
 	args := m.Called(articleID)
+	originalError := args.Error(1)
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		return nil, originalError
 	}
-	return args.Get(0).([]db.LLMScore), args.Error(1)
+	val, ok := args.Get(0).([]db.LLMScore)
+	if !ok {
+		log.Printf("WARN: IntegrationMockLLMClient.FetchScores: type assertion to []db.LLMScore failed for articleID %d", articleID)
+		// Return nil and the original error from mock setup,
+		// or a new error if originalError is nil.
+		if originalError == nil {
+			return nil, fmt.Errorf("IntegrationMockLLMClient.FetchScores: type assertion failed")
+		}
+		return nil, originalError
+	}
+	return val, originalError
 }
 
 // Helper function to create a test server with real API handlers and mocked dependencies
@@ -147,7 +192,7 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *
 			}
 
 			// Get the article
-			article, err := mockDB.GetArticleByID(nil, id)
+			article, err := mockDB.GetArticleByID(context.TODO(), id)
 			if err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Article not found"})
 				return
@@ -182,10 +227,16 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *
 			state := mockProgress.GetProgress(articleID)
 
 			if state != nil {
-				jsonData, _ := json.Marshal(state)
-				c.Writer.Write([]byte(fmt.Sprintf("data: %s\n\n", jsonData)))
+				jsonData, marshalErr := json.Marshal(state)
+				if marshalErr != nil {
+					log.Printf("WARN: Mock SSE: Error marshalling progress state: %v", marshalErr)
+					// Optionally send an error event or close
+					_, _ = c.Writer.Write([]byte("data: {\"error\":\"internal marshalling error\"}\n\n"))
+					return
+				}
+				_, _ = c.Writer.Write([]byte(fmt.Sprintf("data: %s\n\n", jsonData)))
 			} else {
-				c.Writer.Write([]byte("data: {\"step\":\"No data\",\"percent\":0}\n\n"))
+				_, _ = c.Writer.Write([]byte("data: {\"step\":\"No data\",\"percent\":0}\n\n"))
 			}
 		})
 
@@ -204,8 +255,8 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *
 			}
 
 			// Call the mock DB
-			mockDB.FetchArticleByID(nil, id)
-			mockDB.UpdateArticleScore(nil, id, req.Score, 0)
+			_, _ = mockDB.FetchArticleByID(context.TODO(), id)              // Explicitly ignore return values
+			_ = mockDB.UpdateArticleScore(context.TODO(), id, req.Score, 0) // Explicitly ignore return value
 
 			// Invalidate cache
 			cacheKey := fmt.Sprintf("article:%d", id)
@@ -224,6 +275,7 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *
 
 // Test that the ScoreManager's progress tracking is integrated with the reanalyze endpoint
 func TestReanalyzeEndpointProgressTracking(t *testing.T) {
+	// Setup test server
 	router, mockDB, mockProgress, _, _, _ := setupIntegrationTestServer(t)
 
 	// Setup test data
@@ -258,6 +310,7 @@ func TestReanalyzeEndpointProgressTracking(t *testing.T) {
 
 // Test that SSE progress endpoint correctly connects to ScoreManager's progress tracking
 func TestSSEProgressEndpointIntegration(t *testing.T) {
+	// Setup test server - we only need the progress manager mock here
 	router, _, mockProgress, _, _, _ := setupIntegrationTestServer(t)
 
 	// Setup test data
@@ -293,6 +346,7 @@ func TestSSEProgressEndpointIntegration(t *testing.T) {
 
 // Test that ScoreManager's cache invalidation is triggered during manual score updates
 func TestManualScoreCacheInvalidation(t *testing.T) {
+	// Setup test server - need DB and Cache mocks
 	router, mockDB, _, mockCache, _, _ := setupIntegrationTestServer(t)
 
 	// Setup test data
@@ -455,6 +509,7 @@ func TestFullWorkflowArticleScoring(t *testing.T) {
 
 // Test concurrent requests to ensure thread safety of ScoreManager
 func TestConcurrentRequestsThreadSafety(t *testing.T) {
+	// Setup test server
 	router, mockDB, mockProgress, _, _, _ := setupIntegrationTestServer(t)
 
 	// Setup test data
@@ -493,9 +548,8 @@ func TestConcurrentRequestsThreadSafety(t *testing.T) {
 		doneChan <- struct{}{}
 	}()
 
-	// Signal both requests to start concurrently
-	reqChan <- struct{}{}
-	reqChan <- struct{}{}
+	// Start both requests nearly simultaneously
+	close(reqChan)
 
 	// Wait for both to finish
 	<-doneChan
@@ -508,10 +562,11 @@ func TestConcurrentRequestsThreadSafety(t *testing.T) {
 
 // Test that database errors during scoring are properly handled and reported
 func TestDatabaseErrorsErrorHandling(t *testing.T) {
+	// Setup test server
 	router, mockDB, mockProgress, _, _, _ := setupIntegrationTestServer(t)
 
 	// Setup test data
-	testArticleID := int64(505)
+	testArticleID := int64(999)
 	testArticle := &db.Article{
 		ID:      testArticleID,
 		Title:   "DB Error Test Article",

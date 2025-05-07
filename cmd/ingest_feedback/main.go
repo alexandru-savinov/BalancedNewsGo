@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -24,12 +25,14 @@ func main() {
 	flag.Parse()
 
 	if *articleID == 0 || *feedbackText == "" || *category == "" {
-		log.Fatal("Missing required fields: article_id, feedback_text, category")
+		log.Printf("ERROR: Missing required fields: article_id, feedback_text, category")
+		os.Exit(1)
 	}
 
 	dbConn, err := sqlx.Open("sqlite3", *dbPath)
 	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
+		log.Printf("ERROR: Failed to open database: %v", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := dbConn.Close(); err != nil {
@@ -55,7 +58,8 @@ func main() {
 	// Store the feedback
 	err = db.InsertFeedback(dbConn, &feedback)
 	if err != nil {
-		log.Fatalf("Failed to insert feedback: %v", err)
+		log.Printf("ERROR: Failed to insert feedback: %v", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("Feedback ingested successfully")

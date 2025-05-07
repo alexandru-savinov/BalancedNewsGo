@@ -32,15 +32,17 @@ func main() {
 
 	database, err := db.InitDB(*dbPath)
 	if err != nil {
-		log.Fatalf("Failed to open DB: %v", err)
+		log.Printf("ERROR: Failed to open DB: %v", err)
+		os.Exit(1)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	f, err := os.Open(*filePath)
 	if err != nil {
-		log.Fatalf("Failed to open file: %v", err)
+		log.Printf("ERROR: Failed to open file: %v", err)
+		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var count int
 	switch *format {
@@ -49,10 +51,12 @@ func main() {
 	case "json":
 		count, err = importJSON(database, f, *source, *labeler, *confidence)
 	default:
-		log.Fatalf("Unsupported format: %s", *format)
+		log.Printf("ERROR: Unsupported format: %s", *format)
+		os.Exit(1)
 	}
 	if err != nil {
-		log.Fatalf("Import failed: %v", err)
+		log.Printf("ERROR: Import failed: %v", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("Imported %d labels from %s\n", count, *filePath)
