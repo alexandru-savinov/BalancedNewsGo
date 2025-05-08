@@ -48,9 +48,12 @@ Here's a breakdown of the project's directory structure:
 *   `LICENSE`: Project license information.
 *   `CHANGELOG.md`: Record of changes across versions.
 *   `docs/`: Contains detailed documentation:
+    *   [Codebase Documentation](docs/codebase_documentation.md): Detailed breakdown of Go source files and structure.
     *   `architecture.md`: Describes the data flow and architecture (e.g., CompositeScore calculation).
     *   `testing.md`: Comprehensive guide on running, analyzing, and debugging tests.
     *   `swagger.yaml`, `swagger.json`, `docs.go`: API documentation (Swagger/OpenAPI).
+    *   `PR/handle_total_analysis_failure.md`: Technical recommendation for handling total analysis failure.
+    *   [Potential Codebase Improvements](docs/plans/potential_improvements.md): Suggestions for future development and enhancements.
     *   `archive/`: Contains historical documents (e.g., past roadmaps, fix details).
 
 **Development & Environment Configuration:**

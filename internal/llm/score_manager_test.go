@@ -15,6 +15,12 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+const (
+	articleCacheKeyFormat  = "article:%d"
+	ensembleCacheKeyFormat = "ensemble:%d" // Adding for consistency, though not in lint error
+	biasCacheKeyFormat     = "bias:%d"     // Adding for consistency, though not in lint error
+)
+
 // DBInterface defines the database operations needed by ScoreManager
 // We'll use this to create a testable version of ScoreManager
 type DBInterface interface {
@@ -108,24 +114,25 @@ type MockSqlResult struct {
 	mock.Mock
 }
 
-func (m *MockSqlResult) LastInsertId() (int64, error) {
+// helperGetInt64AndError is a helper to reduce duplication in LastInsertId and RowsAffected
+func (m *MockSqlResult) helperGetInt64AndError() (int64, error) {
 	args := m.Called()
 	mockedErr := args.Error(1)
 	val, ok := args.Get(0).(int64)
 	if !ok {
-		return 0, mockedErr // Or a specific error about type mismatch
+		// Consider returning a specific error if the type assertion fails, e.g.:
+		// return 0, fmt.Errorf("expected int64, got %T for mock result", args.Get(0))
+		return 0, mockedErr
 	}
 	return val, mockedErr
 }
 
+func (m *MockSqlResult) LastInsertId() (int64, error) {
+	return m.helperGetInt64AndError()
+}
+
 func (m *MockSqlResult) RowsAffected() (int64, error) {
-	args := m.Called()
-	mockedErr := args.Error(1)
-	val, ok := args.Get(0).(int64)
-	if !ok {
-		return 0, mockedErr // Or a specific error about type mismatch
-	}
-	return val, mockedErr
+	return m.helperGetInt64AndError()
 }
 
 // Custom implementation of Cache for testing with simplified interface
@@ -267,9 +274,9 @@ func (sm *TestableScoreManager) InvalidateScoreCache(articleID int64) {
 	}
 	// Invalidate all relevant cache keys (matching API cache usage)
 	keys := []string{
-		fmt.Sprintf("article:%d", articleID),
-		fmt.Sprintf("ensemble:%d", articleID),
-		fmt.Sprintf("bias:%d", articleID),
+		fmt.Sprintf(articleCacheKeyFormat, articleID),
+		fmt.Sprintf(ensembleCacheKeyFormat, articleID),
+		fmt.Sprintf(biasCacheKeyFormat, articleID),
 	}
 	for _, key := range keys {
 		sm.cache.Delete(key)
@@ -416,9 +423,9 @@ func TestUpdateArticleScoreSuccess(t *testing.T) {
 	mockProgress.AssertExpectations(t)
 
 	// Verify cache invalidation was called for relevant keys
-	assert.Nil(t, mockCache.Get(fmt.Sprintf("article:%d", articleID)))
-	assert.Nil(t, mockCache.Get(fmt.Sprintf("ensemble:%d", articleID)))
-	assert.Nil(t, mockCache.Get(fmt.Sprintf("bias:%d", articleID))) // Simplified, check all relevant bias keys
+	assert.Nil(t, mockCache.Get(fmt.Sprintf(articleCacheKeyFormat, articleID)))
+	assert.Nil(t, mockCache.Get(fmt.Sprintf(ensembleCacheKeyFormat, articleID)))
+	assert.Nil(t, mockCache.Get(fmt.Sprintf(biasCacheKeyFormat, articleID))) // Simplified, check all relevant bias keys
 }
 
 // TestUpdateArticleScoreCalculationError tests error handling when score calculation fails
@@ -541,8 +548,8 @@ func TestUpdateArticleScoreCommitError(t *testing.T) {
 	mockProgress.AssertExpectations(t)
 
 	// Cache should not be invalidated if DB commit fails
-	mockCache.Set(fmt.Sprintf("article:%d", articleID), "cached_data", 1*time.Minute)
-	assert.NotNil(t, mockCache.Get(fmt.Sprintf("article:%d", articleID)))
+	mockCache.Set(fmt.Sprintf(articleCacheKeyFormat, articleID), "cached_data", 1*time.Minute)
+	assert.NotNil(t, mockCache.Get(fmt.Sprintf(articleCacheKeyFormat, articleID)))
 }
 
 // TestUpdateArticleScoreCacheInvalidation tests cache invalidation after successful score update
@@ -561,7 +568,7 @@ func TestUpdateArticleScoreCacheInvalidation(t *testing.T) {
 
 	// Test data
 	articleID := int64(123)
-	cacheKey := "article:123"
+	cacheKey := fmt.Sprintf(articleCacheKeyFormat, articleID)
 
 	// Seed the cache with test data
 	mockCache.Set(cacheKey, "test-data", time.Minute)

@@ -11,6 +11,8 @@ import (
 	// Use the correct package name for llm types
 )
 
+const errFailedToCreateMockDB = "Failed to create mock DB: %v"
+
 // MockRealCalculator implements ScoreCalculator for integration tests
 type MockRealCalculator struct{}
 
@@ -29,7 +31,7 @@ func TestIntegrationUpdateArticleScore(t *testing.T) {
 	// Create a mock DB that satisfies the sqlx.DB interface
 	mockDB, sqlMock, err := sqlmock.New()
 	if err != nil {
-		t.Fatalf("Failed to create mock DB: %v", err)
+		t.Fatalf(errFailedToCreateMockDB, err)
 	}
 	defer func() { _ = mockDB.Close() }()
 
@@ -90,12 +92,12 @@ func TestIntegrationUpdateArticleScore(t *testing.T) {
 	assert.Equal(t, 100, progressState.Percent, "Expected percent to be 100")
 }
 
-// TestIntegrationUpdateArticleScore_CalculationError tests error handling for calculation failures
-func TestIntegrationUpdateArticleScore_CalculationError(t *testing.T) {
+// TestIntegrationUpdateArticleScoreCalculationError tests error handling for calculation failures
+func TestIntegrationUpdateArticleScoreCalculationError(t *testing.T) {
 	// Create a mock DB that satisfies the sqlx.DB interface
-	mockDB, sqlMock, err := sqlmock.New()
+	mockDB, _, err := sqlmock.New()
 	if err != nil {
-		t.Fatalf("Failed to create mock DB: %v", err)
+		t.Fatalf(errFailedToCreateMockDB, err)
 	}
 	defer func() { _ = mockDB.Close() }()
 
@@ -136,9 +138,7 @@ func TestIntegrationUpdateArticleScore_CalculationError(t *testing.T) {
 	assert.Equal(t, 0.0, confidence, "Confidence should be 0.0 on error")
 
 	// Verify that all database expectations were met
-	if err := sqlMock.ExpectationsWereMet(); err != nil {
-		t.Errorf("Database expectations were not met: %v", err)
-	}
+	// No expectations to check as DB interaction should not occur on calculation error
 
 	// Verify progress manager has error state
 	progressState := sm.GetProgress(articleID)
@@ -174,7 +174,7 @@ func setupIntegrationTest(t *testing.T) (*sqlx.DB, *ScoreManager, *ProgressManag
 	// Create a mock DB that satisfies the sqlx.DB interface
 	mockDB, sqlMock, err := sqlmock.New()
 	if err != nil {
-		t.Fatalf("Failed to create mock DB: %v", err)
+		t.Fatalf(errFailedToCreateMockDB, err)
 	}
 	// No need to defer close here, handled by caller
 
@@ -192,8 +192,8 @@ func setupIntegrationTest(t *testing.T) (*sqlx.DB, *ScoreManager, *ProgressManag
 	return sqlxDB, sm, progressMgr, sqlMock // Return sqlxDB and sqlMock
 }
 
-func TestScoreManagerIntegration_UpdateArticleScore_ZeroConfidenceError(t *testing.T) {
-	mockDB, scoreManager, _, _ := setupIntegrationTest(t) // Keep sqlMock reference if needed for expectations
+func TestScoreManagerIntegrationUpdateArticleScoreZeroConfidenceError(t *testing.T) {
+	mockDB, scoreManager, _, _ := setupIntegrationTest(t) // Assign sqlMock to _
 	defer func() { _ = mockDB.Close() }()                 // Close the sqlxDB wrapper
 
 	// Prepare mock calculator to return zero confidence
@@ -220,30 +220,8 @@ func TestScoreManagerIntegration_UpdateArticleScore_ZeroConfidenceError(t *testi
 	assert.Contains(t, err.Error(), "all LLMs returned zero confidence")
 }
 
-func setupFailedIntegrationTest(t *testing.T) (*sqlx.DB, *ScoreManager, *ProgressManager, sqlmock.Sqlmock) {
-	// Create a mock DB that satisfies the sqlx.DB interface
-	mockDB, sqlMock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("Failed to create mock DB: %v", err)
-	}
-	// No need to defer close here
-
-	// Wrap with sqlx
-	sqlxDB := sqlx.NewDb(mockDB, "sqlmock")
-
-	// Create the rest of our dependencies
-	cache := NewCache()
-	calculator := &MockRealCalculator{}
-	progressMgr := NewProgressManager(time.Minute)
-
-	// Create a real ScoreManager with our dependencies
-	sm := NewScoreManager(sqlxDB, cache, calculator, progressMgr)
-
-	return sqlxDB, sm, progressMgr, sqlMock // Return sqlxDB and sqlMock
-}
-
-func TestScoreManagerIntegration_CalculateScore_Error(t *testing.T) {
-	mockDB, scoreManager, _, sqlMock := setupFailedIntegrationTest(t)
+func TestScoreManagerIntegrationCalculateScoreError(t *testing.T) {
+	mockDB, scoreManager, _, sqlMock := setupIntegrationTest(t)
 	defer func() { _ = mockDB.Close() }()
 
 	articleID := int64(1)
