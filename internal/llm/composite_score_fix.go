@@ -178,7 +178,11 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 }
 
 // calculateCompositeScore calculates the final composite score based on the configuration and intermediate values
-func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64, sum float64, weightedSum float64, weightTotal float64, actualValidCount int, validModels map[string]bool) float64 {
+func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64, sum float64, weightedSum float64, weightTotal float64, actualValidCount int, validModels map[string]bool) (float64, error) {
+	if actualValidCount == 0 {
+		return 0.0, ErrAllPerspectivesInvalid
+	}
+
 	// Check if all scores *that were included* are 0
 	allZeros := true
 	// No need to check validModels here again, as the loop calling this already filtered
@@ -190,7 +194,7 @@ func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]floa
 		}
 	}
 	if allZeros && actualValidCount > 0 { // Check count > 0 to avoid returning 0 for empty valid set
-		return 0.0
+		return 0.0, ErrAllPerspectivesInvalid
 	}
 
 	// If only one valid score, return it directly (avoids averaging with defaults)
@@ -199,12 +203,12 @@ func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]floa
 			if _, isValid := validModels[p]; isValid { // Still need this check to find the *one* valid score
 				// Apply bounds before returning
 				if score < cfg.MinScore {
-					return cfg.MinScore
+					return cfg.MinScore, nil
 				}
 				if score > cfg.MaxScore {
-					return cfg.MaxScore
+					return cfg.MaxScore, nil
 				}
-				return score
+				return score, nil
 			}
 		}
 	}
@@ -232,7 +236,7 @@ func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]floa
 		composite = cfg.MaxScore
 	}
 
-	return composite
+	return composite, nil
 }
 
 // calculateConfidence calculates the final confidence score based on the configuration and intermediate values
@@ -355,10 +359,13 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *Composi
 	}
 
 	// Calculate composite score using the new actualValidCount if needed
-	composite := calculateCompositeScore(cfg, scoreMap, sum, weightedSum, weightTotal, actualValidCount, validModels)
+	compositeScore, calcErr := calculateCompositeScore(cfg, scoreMap, sum, weightedSum, weightTotal, actualValidCount, validModels)
+	if calcErr != nil {
+		return 0.0, 0.0, calcErr
+	}
 
 	// Calculate confidence using the proper calculation function
 	confidence := calculateConfidence(cfg, validModels, scoreMap)
 
-	return composite, confidence, nil
+	return compositeScore, confidence, nil
 }

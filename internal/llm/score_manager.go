@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -51,15 +52,38 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 	// Use the score calculator to compute the score and confidence, passing the config
 	compositeScore, confidence, err := sm.calculator.CalculateScore(scores, cfg)
 	if err != nil {
-		log.Printf("[ERROR] Failed to compute composite score: %v", err)
-		sm.SetProgress(articleID, &models.ProgressState{
-			Step:        "Error",
-			Message:     "Failed to compute composite score",
-			Status:      "Error",
-			Error:       err.Error(),
-			LastUpdated: time.Now().Unix(),
-		})
-		return 0, 0, err
+		// Check for the specific "all invalid" error
+		if errors.Is(err, ErrAllPerspectivesInvalid) {
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: %v. Score will not be updated.", articleID, err)
+			// Update progress to reflect the error state
+			errorState := models.ProgressState{
+				Step:        "Error",
+				Message:     err.Error(),
+				Status:      "Error",
+				Percent:     100,
+				LastUpdated: time.Now().Unix(),
+			}
+			if sm.progressMgr != nil {
+				sm.progressMgr.SetProgress(articleID, &errorState)
+			}
+			// IMPORTANT: Do NOT proceed to update the DB score. Return the error.
+			return 0, 0, err
+		} else {
+			// Handle other, unexpected errors from CalculateScore
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: Unexpected error calculating score: %v. Score will not be updated.", articleID, err)
+			// Update progress similarly
+			errorState := models.ProgressState{
+				Step:        "Error",
+				Message:     fmt.Sprintf("Internal error calculating score: %v", err),
+				Status:      "Error",
+				Percent:     100,
+				LastUpdated: time.Now().Unix(),
+			}
+			if sm.progressMgr != nil {
+				sm.progressMgr.SetProgress(articleID, &errorState)
+			}
+			return 0, 0, err
+		}
 	}
 
 	// Update the article score in the database
@@ -80,14 +104,18 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 	sm.InvalidateScoreCache(articleID)
 
 	// Update progress
-	sm.SetProgress(articleID, &models.ProgressState{
+	successState := models.ProgressState{
 		Step:        "Complete",
-		Message:     "Score update complete",
+		Message:     "Analysis complete.",
 		Status:      "Success",
 		Percent:     100,
 		FinalScore:  &compositeScore,
 		LastUpdated: time.Now().Unix(),
-	})
+	}
+	if sm.progressMgr != nil {
+		sm.progressMgr.SetProgress(articleID, &successState)
+	}
+	log.Printf("[INFO] ScoreManager: ArticleID %d: Score updated successfully.", articleID)
 
 	return compositeScore, confidence, nil
 }
