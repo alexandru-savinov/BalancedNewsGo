@@ -1,3 +1,0 @@
-# Project Brief: BalancedNewsGo
-
-BalancedNewsGo is a news aggregation platform designed to provide users with a balanced, multi-perspective view of current events. It leverages Large Language Models (LLMs) to analyze news articles from diverse sources, summarize differing viewpoints, and highlight potential biases. The goal is to help users break out of echo chambers and develop a more nuanced understanding of the news.

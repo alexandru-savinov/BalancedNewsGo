@@ -1,0 +1,1348 @@
+{
+  "info": {
+    "name": "NewsBalancer API Tests (2025 Edition)",
+    "description": "Comprehensive test suite for the News Filter API as of April 2025, including article creation, bias analysis, feedback, rescoring, SSE monitoring, and feed management. Tests cover all success and error paths based on the current Swagger documentation.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.globals.set('articleSchema', {",
+          "    type: 'object',",
+          "    required: ['success', 'data'],",
+          "    properties: {",
+          "        success: { type: 'boolean' },",
+          "        data: {",
+          "            type: 'object',",
+          "            required: ['article_id', 'Title', 'Content', 'URL', 'Source'],",
+          "            properties: {",
+          "                article_id: { type: 'number' },",
+          "                Title: { type: 'string' },",
+          "                Content: { type: 'string' },",
+          "                URL: { type: 'string' },",
+          "                Source: { type: 'string' },",
+          "                CompositeScore: { type: ['number', 'null'] },",
+          "                Confidence: { type: ['number', 'null'] }",
+          "            }",
+          "        }",
+          "    }",
+          "});",
+          "",
+          "pm.globals.set('errorSchema', {",
+          "    type: 'object',",
+          "    required: ['success', 'error'],",
+          "    properties: {",
+          "        success: { type: 'boolean' },",
+          "        error: {",
+          "            type: 'object',",
+          "            required: ['code', 'message'],",
+          "            properties: {",
+          "                code: { type: 'string' },",
+          "                message: { type: 'string' }",
+          "            }",
+          "        }",
+          "    }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Article Management",
+      "item": [
+        {
+          "name": "1.1 Article Creation",
+          "item": [
+            {
+              "name": "Create Article - Missing Fields",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Test Article\",\n  \"content\": \"This is a test article.\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400 for missing fields\", function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains error about missing fields\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.include('Missing required fields');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Create Article - Invalid URL Format",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Test Article\",\n  \"content\": \"This is a test article.\",\n  \"source\": \"test\",\n  \"url\": \"invalid-url\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400 for invalid URL\", function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains error about invalid URL\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.include('Invalid URL format');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Create Article - Valid",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Test Article\",\n  \"content\": \"This is a test article.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/test-duplicate\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 201\", function () {",
+                      "    pm.expect([200, 201]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches article schema\", function () {",
+                      "    const schema = pm.globals.get('articleSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200 || pm.response.code === 201) {",
+                      "    var json = pm.response.json();",
+                      "    pm.environment.set(\"articleId\", json.data.article_id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Create Article - Duplicate URL",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Test Article Duplicate\",\n  \"content\": \"This is a duplicate test article.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/test-duplicate\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 409 for duplicate URL\", function () {",
+                      "    pm.response.to.have.status(409);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains error about duplicate URL\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.include('already exists');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "1.2 Article Retrieval",
+          "item": [
+            {
+              "name": "Get Articles - Default Parameters",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains articles\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data).to.be.an('array');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Articles - With Source Filter",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?source=test",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "source",
+                      "value": "test"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response includes only articles from specified source\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data).to.be.an('array');",
+                      "    if (json.data && json.data.length > 0) {",
+                      "        json.data.forEach(article => {",
+                      "            pm.expect(article.Source).to.equal('test');",
+                      "        });",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Articles - With Pagination",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?limit=5&offset=0",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "5"
+                    },
+                    {
+                      "key": "offset",
+                      "value": "0"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response respects pagination limit\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data).to.be.an('array');",
+                      "    pm.expect(json.data.length).to.be.at.most(5);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Article By ID",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains the correct article\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data.article_id).to.equal(parseInt(pm.environment.get(\"articleId\")));",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Non-existent Article",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/99999999",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "99999999"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 404 for non-existent article\", function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains error message\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.false;",
+                      "    pm.expect(json.error.message).to.include('not found');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Analysis and Scoring",
+      "item": [
+        {
+          "name": "2.1 Bias Analysis",
+          "item": [
+            {
+              "name": "Get Bias Analysis",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}/bias",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}", "bias"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains bias data\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data).to.be.an('object');",
+                      "    pm.expect(json.data).to.have.property('composite_score');",
+                      "    pm.expect(json.data).to.have.property('results');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Bias Analysis - With Filters",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}/bias?min_score=-0.5&max_score=0.5&sort=asc",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}", "bias"],
+                  "query": [
+                    {
+                      "key": "min_score",
+                      "value": "-0.5"
+                    },
+                    {
+                      "key": "max_score",
+                      "value": "0.5"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "asc"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains filtered bias data\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    ",
+                      "    // Check if results are present and filtered correctly",
+                      "    if (json.data && json.data.results && json.data.results.length > 0) {",
+                      "        // Check score range for each result",
+                      "        json.data.results.forEach(result => {",
+                      "            pm.expect(result.score).to.be.at.least(-0.5);",
+                      "            pm.expect(result.score).to.be.at.most(0.5);",
+                      "        });",
+                      "        ",
+                      "        // Check sort order if multiple results exist",
+                      "        if (json.data.results.length > 1) {",
+                      "            for (let i = 0; i < json.data.results.length - 1; i++) {",
+                      "                pm.expect(json.data.results[i].score).to.be.at.most(json.data.results[i+1].score);",
+                      "            }",
+                      "        }",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Bias Analysis - Invalid Parameters",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}/bias?min_score=invalid&sort=wrong",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}", "bias"],
+                  "query": [
+                    {
+                      "key": "min_score",
+                      "value": "invalid"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "wrong"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400 for invalid parameters\", function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains error about invalid parameters\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.false;",
+                      "    pm.expect(json.error.message).to.satisfy(function(message) {",
+                      "        return message.includes('Invalid min_score') || message.includes('Invalid sort order');",
+                      "    });",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "2.2 Ensemble Analysis",
+          "item": [
+            {
+              "name": "Get Ensemble Details",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}/ensemble",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}", "ensemble"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 404\", function () {",
+                      "    pm.expect([200, 404]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200) {",
+                      "    pm.test(\"Response contains ensemble data\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.success).to.be.true;",
+                      "        pm.expect(json.scores).to.be.an('array');",
+                      "    });",
+                      "} else if (pm.response.code === 404) {",
+                      "    pm.test(\"Response contains not found error\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.success).to.be.false;",
+                      "        pm.expect(json.error.message).to.include('not found');",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Ensemble Details - With Cache Busting",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}/ensemble?_t={{$timestamp}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}", "ensemble"],
+                  "query": [
+                    {
+                      "key": "_t",
+                      "value": "{{$timestamp}}"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 404\", function () {",
+                      "    pm.expect([200, 404]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "// Cache busting should still return valid data",
+                      "if (pm.response.code === 200) {",
+                      "    pm.test(\"Response contains ensemble data with cache busting\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.success).to.be.true;",
+                      "        pm.expect(json.scores).to.be.an('array');",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "2.3 Article Summary",
+          "item": [
+            {
+              "name": "Get Article Summary",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{articleId}}/summary",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{articleId}}", "summary"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 404\", function () {",
+                      "    pm.expect([200, 404]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200) {",
+                      "    pm.test(\"Response contains summary data\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.success).to.be.true;",
+                      "        pm.expect(json.data).to.have.property('summary');",
+                      "        pm.expect(json.data).to.have.property('created_at');",
+                      "    });",
+                      "} else if (pm.response.code === 404) {",
+                      "    pm.test(\"Response contains not available error\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.success).to.be.false;",
+                      "        pm.expect(json.error.message).to.include('not available');",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Scoring and Reanalysis",
+      "item": [
+        {
+          "name": "3.1 Create Test Article",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/articles",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "articles"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Scoring Test Article\",\n  \"content\": \"This is a test article for scoring tests.\",\n  \"source\": \"test\",\n  \"url\": \"https://example.com/scoring-test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var json = pm.response.json();",
+                  "    pm.environment.set(\"scoringArticleId\", json.data.article_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Manual Scoring",
+          "item": [
+            {
+              "name": "Set Manual Score",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/manual-score/{{scoringArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "manual-score", "{{scoringArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"score\": 0.7\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response indicates successful score update\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "});",
+                      "",
+                      "// Verify the score was actually set by checking the article",
+                      "pm.sendRequest({",
+                      "    url: pm.globals.get('baseUrl') + '/api/articles/' + pm.environment.get('scoringArticleId'),",
+                      "    method: 'GET'",
+                      "}, function (err, res) {",
+                      "    if (err) {",
+                      "        pm.expect.fail(err);",
+                      "    } else {",
+                      "        var article = res.json();",
+                      "        pm.test(\"Article has updated score\", function () {",
+                      "            pm.expect(article.data.CompositeScore).to.be.closeTo(0.7, 0.01);",
+                      "        });",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Set Manual Score - Invalid Score Value",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/manual-score/{{scoringArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "manual-score", "{{scoringArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"score\": 2.5\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400 for invalid score value\", function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains error about score range\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.false;",
+                      "    pm.expect(json.error.message).to.include('between -1.0 and 1.0');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Set Manual Score - Extra Fields",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/manual-score/{{scoringArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "manual-score", "{{scoringArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"score\": 0.5,\n  \"extra\": \"field\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400 for extra fields\", function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains error about payload format\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.false;",
+                      "    pm.expect(json.error.message).to.satisfy(function(message) {",
+                      "        return message.includes('only') || message.includes('Payload');",
+                      "    });",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "3.3 LLM Reanalysis",
+          "item": [
+            {
+              "name": "Reanalyze with Direct Score",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/{{scoringArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "{{scoringArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"score\": -0.3\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response indicates successful score update\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data.status).to.equal('score updated');",
+                      "    pm.expect(json.data.score).to.equal(-0.3);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reanalyze with LLM (Empty Body)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/{{scoringArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "{{scoringArticleId}}"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response indicates reanalysis queued\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data.status).to.equal('reanalyze queued');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Reanalyze Non-existent Article",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/99999999",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "99999999"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 404 for non-existent article\", function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains article not found error\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.false;",
+                      "    pm.expect(json.error.message).to.include('not found');",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Check Score Progress",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/score-progress/{{scoringArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "score-progress", "{{scoringArticleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "// This endpoint returns event-stream, so we can only validate headers",
+                      "pm.test(\"Response has correct Content-Type for SSE\", function () {",
+                      "    pm.response.to.have.header(\"Content-Type\", \"text/event-stream\");",
+                      "});",
+                      "",
+                      "pm.test(\"Response has correct cache headers for SSE\", function () {",
+                      "    pm.response.to.have.header(\"Cache-Control\", \"no-cache\");",
+                      "    pm.response.to.have.header(\"Connection\", \"keep-alive\");",
+                      "});",
+                      "",
+                      "// Set a short timeout to close the connection",
+                      "setTimeout(function() {}, 100);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Check Score Progress - Invalid ID",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/score-progress/invalid",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "score-progress", "invalid"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400 for invalid ID\", function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "LLM Rescore Confidence Test",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "// Test to verify confidence is not 0 after rescoring",
+                      "const articleId = pm.variables.get(\"scoringArticleId\");",
+                      "let maxRetries = 30; // Maximum number of retries",
+                      "let retryInterval = 500; // Time between retries in ms",
+                      "",
+                      "// Step 1: Trigger LLM rescore",
+                      "pm.sendRequest({",
+                      "    url: pm.globals.get('baseUrl') + '/api/llm/reanalyze/' + articleId,",
+                      "    method: 'POST',",
+                      "    header: {",
+                      "        'Content-Type': 'application/json'",
+                      "    },",
+                      "    body: {",
+                      "        mode: 'raw',",
+                      "        raw: JSON.stringify({}) // Empty body to trigger LLM rescoring",
+                      "    }",
+                      "}, function (err, res) {",
+                      "    if (err) {",
+                      "        pm.test(\"Failed to trigger rescoring\", function() {",
+                      "            pm.expect.fail(err);",
+                      "        });",
+                      "        return;",
+                      "    }",
+                      "",
+                      "    pm.test(\"Successfully triggered LLM rescoring\", function() {",
+                      "        pm.expect(res.code).to.be.oneOf([200, 202]);",
+                      "        const resBody = res.json();",
+                      "        pm.expect(resBody.success).to.be.true;",
+                      "        pm.expect(resBody.data.status).to.equal('reanalyze queued');",
+                      "    });",
+                      "",
+                      "    // Step 2 & 3: Poll article until rescoring is complete",
+                      "    let retryCount = 0;",
+                      "    let intervalId = setInterval(function() {",
+                      "        pm.sendRequest({",
+                      "            url: pm.globals.get('baseUrl') + '/api/articles/' + articleId,",
+                      "            method: 'GET'",
+                      "        }, function(err, response) {",
+                      "            retryCount++;",
+                      "            ",
+                      "            // Stop checking if max retries reached",
+                      "            if (retryCount >= maxRetries) {",
+                      "                clearInterval(intervalId);",
+                      "                pm.test(\"Rescoring timed out\", function() {",
+                      "                    pm.expect.fail(\"Timed out waiting for rescoring to complete after \" + (maxRetries * retryInterval) + \"ms\");",
+                      "                });",
+                      "                return;",
+                      "            }",
+                      "",
+                      "            if (err) {",
+                      "                return; // Continue retrying on error",
+                      "            }",
+                      "",
+                      "            try {",
+                      "                const article = response.json();",
+                      "",
+                      "                // Check if article has a score and is not null",
+                      "                if (article.data && article.data.CompositeScore !== null && article.data.Confidence !== null) {",
+                      "                    clearInterval(intervalId);",
+                      "",
+                      "                    // Step 4: Verify confidence is not 0",
+                      "                    pm.test(\"Article should have non-zero confidence after LLM rescoring\", function() {",
+                      "                        pm.expect(article.data.Confidence).to.be.a('number');",
+                      "                        pm.expect(article.data.Confidence).to.be.greaterThan(0);",
+                      "                        console.log(\"Article rescored successfully with score: \" + article.data.CompositeScore + \" and confidence: \" + article.data.Confidence);",
+                      "                    });",
+                      "",
+                      "                    // Additional verification",
+                      "                    pm.test(\"Article has valid score\", function() {",
+                      "                        pm.expect(article.data.CompositeScore).to.be.a('number');",
+                      "                        pm.expect(article.data.CompositeScore).to.be.within(-1, 1);",
+                      "                    });",
+                      "                }",
+                      "            } catch (e) {",
+                      "                // Continue retrying if there's a parsing error",
+                      "            }",
+                      "        });",
+                      "    }, retryInterval);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/dummy-endpoint",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "dummy-endpoint"]
+                },
+                "description": "This is a container for the LLM rescore confidence test, which is run entirely in the test script."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Feedback System",
+      "item": [
+        {
+          "name": "Submit Feedback - Valid",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"This seems accurate.\",\n  \"category\": \"agree\",\n  \"source\": \"integration-test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates feedback received\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.data.status).to.equal('feedback received');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Feedback - Missing Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for missing fields\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error about missing fields\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.false;",
+                  "    pm.expect(json.error.message).to.include('Missing required fields');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit Feedback - Invalid Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/feedback",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feedback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"article_id\": {{articleId}},\n  \"user_id\": \"test-user\",\n  \"feedback_text\": \"Test feedback.\",\n  \"category\": \"invalid-category\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 for invalid category\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error about invalid category\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.false;",
+                  "    pm.expect(json.error.message).to.include('category');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Feed Management",
+      "item": [
+        {
+          "name": "Get Feed Health Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/feeds/healthz",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "feeds", "healthz"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains feed health data\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json).to.be.an('object');",
+                  "    // Health data should have at least one feed status",
+                  "    pm.expect(Object.keys(json).length).to.be.at.least(1);",
+                  "    ",
+                  "    // For each feed, check if it's a boolean value",
+                  "    Object.keys(json).forEach(feed => {",
+                  "        pm.expect(json[feed]).to.be.a('boolean');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Trigger Feed Refresh",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "refresh"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates refresh started\", function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.success).to.be.true;",
+                  "    pm.expect(json.data.status).to.equal('refresh started');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    }
+  ]
+}

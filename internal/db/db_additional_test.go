@@ -26,7 +26,11 @@ func openTestDB(t *testing.T) *sqlx.DB {
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			composite_score REAL,
 			confidence REAL,
-			score_source TEXT
+			score_source TEXT,
+			status TEXT, -- Added missing column
+			fail_count INTEGER,
+			last_attempt TIMESTAMP,
+			escalated BOOLEAN
 		);
 		
 		CREATE TABLE IF NOT EXISTS llm_scores (
@@ -149,6 +153,7 @@ func TestInsertLabelAndFeedback(t *testing.T) {
 
 func TestUpdateArticleScoreLLM(t *testing.T) {
 	dbConn := openTestDB(t)
+
 	// Insert article
 	article := &db.Article{
 		Source:    "x",
@@ -161,10 +166,16 @@ func TestUpdateArticleScoreLLM(t *testing.T) {
 	id, err := db.InsertArticle(dbConn, article)
 	assert.NoError(t, err)
 
+	// Debug log for inserted article ID
+	t.Logf("Inserted article ID: %d", id)
+
 	// Use ExecContext on UpdateArticleScoreLLM
 	exec := dbConn
 	err = db.UpdateArticleScoreLLM(exec, id, 0.33, 0.66)
 	assert.NoError(t, err)
+
+	// Debug log for updated article ID
+	t.Logf("Updated article ID: %d", id)
 
 	// Verify via FetchArticleByID
 	fetched, err := db.FetchArticleByID(dbConn, id)

@@ -5,6 +5,50 @@
     <title>NewsBalancer</title>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script>
+        // Error handling utility for standardized error management
+        const errorHandler = {
+            // Parse error from response
+            parseError: async function(response) {
+                try {
+                    const data = await response.json();
+                    if (data.error && data.error.message) {
+                        return data.error.message;
+                    }
+                    return `HTTP error ${response.status}: ${response.statusText}`;
+                } catch (e) {
+                    return `HTTP error ${response.status}: ${response.statusText}`;
+                }
+            },
+            
+            // Display error in a specific element
+            showError: function(element, message) {
+                if (!element) return;
+                element.textContent = message;
+                element.style.display = 'block';
+                console.error(message);
+            },
+            
+            // Show a timed success message
+            showSuccess: function(element, message, timeout = 3000) {
+                if (!element) return;
+                const originalColor = element.style.color || '';
+                element.textContent = message;
+                element.style.color = 'green';
+                element.style.display = 'block';
+                
+                setTimeout(() => {
+                    element.style.display = 'none';
+                    element.style.color = originalColor;
+                }, timeout);
+            },
+            
+            // Show an alert with error (fallback)
+            alertError: function(message) {
+                console.error(message);
+                alert(`Error: ${message}`);
+            }
+        };
+        
         // --- Article List Caching and Loading/Error Handling ---
         document.addEventListener('DOMContentLoaded', function() {
             const articlesContainer = document.getElementById('articles');
@@ -40,21 +84,21 @@
                     }
                     let articlesHtml = '';
                     for (const article of articles) {
-                        // Extract article properties with fallbacks
+                        // Extract article properties with fallbacks (use backend field names)
                         const articleId = article.id || article.article_id || 'N/A';
-                        const articleTitle = article.title || 'Untitled';
-                        const articleUrl = article.url || '#';
-                        const articleSource = article.source || 'N/A';
-                        const articleContent = article.content || 'No content available.';
-                        const pubDate = article.pub_date ? new Date(article.pub_date).toLocaleString() : 'N/A';
-                        const createdAt = article.created_at ? new Date(article.created_at).toLocaleString() : 'N/A';
-                        const compositeScore = article.composite_score !== undefined ? article.composite_score : null;
-                        const confidence = article.confidence !== undefined ? article.confidence : null;
+                        const articleTitle = article.Title || article.title || 'Untitled';
+                        const articleUrl = article.URL || article.url || '#';
+                        const articleSource = article.Source || article.source || 'N/A';
+                        const articleContent = article.Content || article.content || 'No content available.';
+                        const pubDate = article.PubDate ? new Date(article.PubDate).toLocaleString() : (article.pub_date ? new Date(article.pub_date).toLocaleString() : 'N/A');
+                        const createdAt = article.CreatedAt ? new Date(article.CreatedAt).toLocaleString() : (article.created_at ? new Date(article.created_at).toLocaleString() : 'N/A');
+                        const compositeScore = article.CompositeScore !== undefined ? article.CompositeScore : (article.composite_score !== undefined ? article.composite_score : null);
+                        const confidence = article.Confidence !== undefined ? article.Confidence : (article.confidence !== undefined ? article.confidence : null);
 
                         articlesHtml += `
 <article aria-label="News article" data-article-id="${articleId}">
     <header>
-        <h2><a href="${articleUrl}" target="_blank" rel="noopener noreferrer">${articleTitle}</a></h2>
+        <h2><a href="/article/${articleId}" target="_self">${articleTitle}</a></h2>
     </header>
     <section class="summary">
         <p>${articleContent}</p>
@@ -659,16 +703,20 @@
                 // Get the latest ensemble score (should be the first one)
                 const latestEnsemble = data.scores[0];
                 
-                // Parse sub_results from the ensemble metadata
+                // Parse sub_results from the ensemble metadata - handle different field name formats
                 let subResults = [];
                 let aggregation = {};
                 
                 if (latestEnsemble.sub_results && Array.isArray(latestEnsemble.sub_results)) {
                     subResults = latestEnsemble.sub_results;
+                } else if (latestEnsemble.SubResults && Array.isArray(latestEnsemble.SubResults)) {
+                    subResults = latestEnsemble.SubResults;
                 }
                 
                 if (latestEnsemble.aggregation) {
                     aggregation = latestEnsemble.aggregation;
+                } else if (latestEnsemble.Aggregation) {
+                    aggregation = latestEnsemble.Aggregation;
                 }
                 
                 // Generate HTML for ensemble details
@@ -886,8 +934,7 @@
             // Validate input
             const scoreValue = parseFloat(inputElement.value);
             if (isNaN(scoreValue) || scoreValue < -1 || scoreValue > 1) {
-                errorMessageElement.textContent = 'Please enter a valid score between -1 and 1';
-                errorMessageElement.style.display = 'block';
+                errorHandler.showError(errorMessageElement, 'Please enter a valid score between -1 and 1');
                 return;
             }
             
@@ -904,8 +951,8 @@
             })
             .then(resp => {
                 if (!resp.ok) {
-                    return resp.json().then(data => {
-                        throw new Error(data.error?.message || `HTTP error ${resp.status}`);
+                    return errorHandler.parseError(resp).then(message => {
+                        throw new Error(message);
                     });
                 }
                 return resp.json();
@@ -918,22 +965,13 @@
                 inputElement.value = '';
                 
                 // Show success message
-                errorMessageElement.textContent = 'Score updated successfully!';
-                errorMessageElement.style.color = 'green';
-                errorMessageElement.style.display = 'block';
-                
-                // Hide success message after 3 seconds
-                setTimeout(() => {
-                    errorMessageElement.style.display = 'none';
-                    errorMessageElement.style.color = 'red'; // Reset color
-                }, 3000);
+                errorHandler.showSuccess(errorMessageElement, 'Score updated successfully!');
                 
                 // Re-enable button
                 btn.disabled = false;
             })
             .catch(err => {
-                errorMessageElement.textContent = `Error: ${err.message}`;
-                errorMessageElement.style.display = 'block';
+                errorHandler.showError(errorMessageElement, `Error: ${err.message}`);
                 btn.disabled = false;
             });
         }
@@ -968,8 +1006,8 @@
             })
             .then(resp => {
                 if (!resp.ok) {
-                    return resp.json().then(data => {
-                        throw new Error(data.error?.message || `HTTP error ${resp.status}`);
+                    return errorHandler.parseError(resp).then(message => {
+                        throw new Error(message);
                     });
                 }
                 return resp.json();
@@ -1018,8 +1056,7 @@
                         } 
                         else if (progress.status === "Error") {
                             // Scoring failed
-                            errorMessage.textContent = "Error: " + (progress.error || "Unknown error occurred");
-                            errorMessage.style.display = 'block';
+                            errorHandler.showError(errorMessage, "Error: " + (progress.error || "Unknown error occurred"));
                             progressBar.style.backgroundColor = 'red';
                             btn.disabled = false;
                             btnSpinner.style.display = 'none';
@@ -1031,16 +1068,14 @@
                 };
                 
                 evtSource.onerror = function() {
-                    errorMessage.textContent = "Connection lost. Please try again.";
-                    errorMessage.style.display = 'block';
+                    errorHandler.showError(errorMessage, "Connection lost. Please try again.");
                     btn.disabled = false;
                     btnSpinner.style.display = 'none';
                     evtSource.close();
                 };
             })
             .catch(err => {
-                errorMessage.textContent = "Failed to start scoring: " + err.message;
-                errorMessage.style.display = 'block';
+                errorHandler.showError(errorMessage, "Failed to start scoring: " + err.message);
                 btn.disabled = false;
                 btnSpinner.style.display = 'none';
             });

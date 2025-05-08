@@ -3,24 +3,25 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
-var perspectives = []string{"left", "center", "right"}
+var perspectives = []string{LabelLeft, LabelCenter, LabelRight}
 
 // ScoreCalculator defines the interface for composite score calculation
 // Returns (score, confidence, error)
 type ScoreCalculator interface {
-	CalculateScore(scores []db.LLMScore) (float64, float64, error)
+	CalculateScore(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error)
 }
 
 // DefaultScoreCalculator implements ScoreCalculator using the new averaging logic
 // It preserves the -1.0 to +1.0 scale and averages confidences from model metadata
 // Missing perspectives are treated as 0 for both score and confidence
 type DefaultScoreCalculator struct {
-	Config *CompositeScoreConfig // Must be provided, not nil
+	// Config *CompositeScoreConfig // Config is now passed via method
 }
 
 // initializeMaps creates and initializes maps for scores and confidence values
@@ -35,21 +36,40 @@ func (c *DefaultScoreCalculator) initializeMaps() (map[string]*float64, map[stri
 }
 
 // getPerspective determines the perspective (left/center/right) for a given model
-func (c *DefaultScoreCalculator) getPerspective(model string) string {
-	perspective := MapModelToPerspective(model, c.Config)
+func (c *DefaultScoreCalculator) getPerspective(model string, cfg *CompositeScoreConfig) string {
+	perspective := MapModelToPerspective(model, cfg)
 	if perspective != "" {
-		return perspective
+		// Ensure mapped perspective is one of the known constants
+		switch perspective {
+		case LabelLeft, LabelCenter, LabelRight:
+			return perspective
+		default:
+			// If mapped perspective is not a known constant, log and fall through
+			log.Printf("[WARN] Mapped perspective '%s' for model '%s' is not a standard label. Falling back to default logic.", perspective, model)
+		}
 	}
 
 	model = strings.ToLower(model)
+	// Allow model names to directly match constants (e.g. "left", "center", "right" from config)
+	// or common variations.
 	switch model {
-	case LabelLeft:
-		return "left"
-	case LabelRight:
-		return "right"
-	case "center":
-		return "center"
+	case LabelLeft, "left_leaning", "liberal": // "left" is already LabelLeft
+		return LabelLeft
+	case LabelRight, "right_leaning", "conservative": // "right" is already LabelRight
+		return LabelRight
+	case LabelCenter, "centrist", "neutral": // "center" is already LabelCenter
+		return LabelCenter
 	default:
+		// Try matching based on contains, as a fallback
+		if strings.Contains(model, LabelLeft) {
+			return LabelLeft
+		}
+		if strings.Contains(model, LabelRight) {
+			return LabelRight
+		}
+		if strings.Contains(model, LabelCenter) {
+			return LabelCenter
+		}
 		return ""
 	}
 }
@@ -58,10 +78,11 @@ func (c *DefaultScoreCalculator) getPerspective(model string) string {
 func (c *DefaultScoreCalculator) extractConfidence(metadata string) float64 {
 	var meta map[string]interface{}
 	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
+		log.Printf("[ERROR][CONFIDENCE] Failed to parse metadata JSON: %v", err)
 		return 0.0
 	}
+
 	if conf, ok := meta["confidence"]; ok {
-		// Handle both float64 and integer confidence values
 		switch v := conf.(type) {
 		case float64:
 			return v
@@ -70,14 +91,17 @@ func (c *DefaultScoreCalculator) extractConfidence(metadata string) float64 {
 		case int64:
 			return float64(v)
 		default:
+			log.Printf("[ERROR][CONFIDENCE] Unknown confidence type %T, defaulting to 0.0", v)
 			return 0.0
 		}
 	}
+
 	return 0.0
 }
 
-func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, float64, error) {
-	if c.Config == nil {
+func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
+	if cfg == nil {
+		log.Printf("[ERROR][CONFIDENCE] Config is nil, returning error")
 		return 0, 0, fmt.Errorf("DefaultScoreCalculator: Config must not be nil")
 	}
 
@@ -85,13 +109,14 @@ func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore) (float64, 
 
 	// For each perspective, use the last provided score (and its confidence)
 	for _, s := range scores {
-		perspective := c.getPerspective(s.Model)
-		if perspective == "" || (perspective != "left" && perspective != "center" && perspective != "right") {
+		perspective := c.getPerspective(s.Model, cfg)
+
+		if perspective == "" || (perspective != LabelLeft && perspective != LabelCenter && perspective != LabelRight) {
 			continue
 		}
 
 		val := s.Score
-		if isInvalid(val) || val < c.Config.MinScore || val > c.Config.MaxScore {
+		if isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore {
 			// Set out of range scores to 0.0 per test expectations
 			val = 0.0
 		}

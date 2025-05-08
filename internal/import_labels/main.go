@@ -27,19 +27,22 @@ func main() {
 	flag.Parse()
 
 	if *filePath == "" {
-		log.Fatal("Please provide --file path to labeled dataset")
+		log.Printf("ERROR: Please provide --file path to labeled dataset")
+		os.Exit(1)
 	}
 
 	database, err := db.InitDB(*dbPath)
 	if err != nil {
-		log.Fatalf("Failed to open DB: %v", err)
+		log.Printf("ERROR: Failed to open DB: %v", err)
+		os.Exit(1)
 	}
 
 	f, err := os.Open(*filePath)
 	if err != nil {
-		log.Fatalf("Failed to open file: %v", err)
+		log.Printf("ERROR: Failed to open file: %v", err)
+		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var count int
 	switch *format {
@@ -48,10 +51,12 @@ func main() {
 	case "json":
 		count, err = importJSON(database, f, *source, *labeler, *confidence)
 	default:
-		log.Fatalf("Unsupported format: %s", *format)
+		log.Printf("ERROR: Unsupported format: %s", *format)
+		os.Exit(1)
 	}
 	if err != nil {
-		log.Fatalf("Import failed: %v", err)
+		log.Printf("ERROR: Import failed: %v", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("Imported %d labels from %s\n", count, *filePath)

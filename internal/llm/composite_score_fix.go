@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -17,140 +18,89 @@ func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 		return ""
 	}
 
+	// Normalize the model name by removing version suffix and whitespace
 	normalizedModelName := strings.ToLower(strings.TrimSpace(modelName))
+	if colonIndex := strings.Index(normalizedModelName, ":"); colonIndex != -1 {
+		normalizedModelName = normalizedModelName[:colonIndex]
+	}
 
 	// Look up the model in the configuration
 	for _, model := range cfg.Models {
-		if strings.ToLower(strings.TrimSpace(model.ModelName)) == normalizedModelName {
+		// Normalize the configured model name the same way
+		normalizedConfigModel := strings.ToLower(strings.TrimSpace(model.ModelName))
+		if colonIndex := strings.Index(normalizedConfigModel, ":"); colonIndex != -1 {
+			normalizedConfigModel = normalizedConfigModel[:colonIndex]
+		}
+
+		if normalizedConfigModel == normalizedModelName {
 			return strings.ToLower(model.Perspective)
 		}
 	}
 
 	// Fallback to legacy names
-	if normalizedModelName == "left" {
-		return "left"
-	} else if normalizedModelName == "center" {
-		return "center"
-	} else if normalizedModelName == "right" {
-		return "right"
+	if normalizedModelName == LabelLeft {
+		return LabelLeft
+	} else if normalizedModelName == LabelCenter {
+		return LabelCenter
+	} else if normalizedModelName == LabelRight {
+		return LabelRight
 	}
 
 	log.Printf("Warning: Model '%s' not found in composite score configuration", modelName)
 	return ""
 }
 
-// checkForAllZeroResponses detects if all LLM responses have zero scores and zero confidence
+// checkForAllZeroResponses detects if all non-ensemble LLM responses have zero confidence.
 func checkForAllZeroResponses(scores []db.LLMScore) (bool, error) {
-	if len(scores) == 0 {
-		return false, fmt.Errorf("no LLM scores provided")
-	}
+	allZeroConfidence := true // Assume true until proven otherwise
+	nonEnsembleCount := 0
 
-	allZeros := true
 	for _, score := range scores {
-		// Check if we have a non-zero score
-		if score.Score != 0.0 {
-			allZeros = false
-			break
+		// Skip ensemble scores
+		if strings.ToLower(score.Model) == "ensemble" {
+			continue
 		}
 
-		// Extract confidence from metadata
+		nonEnsembleCount++
+
+		// Check confidence from metadata
+		hasNonZeroConfidence := false
 		var metadata map[string]interface{}
-		if err := json.Unmarshal([]byte(score.Metadata), &metadata); err == nil {
-			if confidence, ok := metadata["confidence"].(float64); ok && confidence > 0.0 {
-				allZeros = false
-				break
+		if score.Metadata != "" {
+			if err := json.Unmarshal([]byte(score.Metadata), &metadata); err == nil {
+				if confidenceValue, ok := metadata["confidence"]; ok {
+					if confidenceFloat, ok := confidenceValue.(float64); ok && confidenceFloat > 0.0 {
+						hasNonZeroConfidence = true
+					}
+				}
 			}
+			// Malformed or missing metadata is treated as zero confidence
+		}
+
+		if hasNonZeroConfidence {
+			allZeroConfidence = false // Found one with non-zero confidence
+			break                     // No need to check further
 		}
 	}
 
-	if allZeros {
-		log.Printf("Critical warning: All %d LLM models returned empty responses or zero values", len(scores))
-		return true, fmt.Errorf("all LLMs returned empty or zero-confidence responses (count: %d)", len(scores))
+	if nonEnsembleCount == 0 {
+		return false, nil // No non-ensemble scores to check
+	}
+
+	if allZeroConfidence {
+		log.Printf("Critical warning: All %d non-ensemble LLM models returned zero confidence", nonEnsembleCount)
+		// Return the specific sentinel error variable, potentially wrapped if needed elsewhere,
+		// but the base error should be comparable with errors.Is
+		// Using the formatted error caused issues with errors.Is checks.
+		// Let's return the sentinel directly for reliable checks.
+		return true, ErrAllScoresZeroConfidence
 	}
 
 	return false, nil
 }
 
-// ComputeCompositeScoreWithConfidenceFixed is an improved version of ComputeCompositeScoreWithConfidence
-// that properly maps model names to their perspectives based on the configuration
-func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore) (float64, float64, error) {
-	// First check if we have all zero responses
-	if allZeros, err := checkForAllZeroResponses(scores); allZeros {
-		return 0, 0, err
-	}
-
-	// Use the global test config if available (for tests), otherwise load from file
-	var cfg *CompositeScoreConfig
-	var err error
-
-	if testModelConfig != nil {
-		cfg = testModelConfig
-	} else {
-		cfg, err = LoadCompositeScoreConfig()
-		if err != nil {
-			return 0, 0, fmt.Errorf("loading composite score config: %w", err)
-		}
-	}
-
-	// Map for left/center/right
-	scoreMap := map[string]float64{
-		"left":   cfg.DefaultMissing,
-		"center": cfg.DefaultMissing,
-		"right":  cfg.DefaultMissing,
-	}
-
-	validCount := 0
-	sum := 0.0
-	weightedSum := 0.0
-	weightTotal := 0.0
-	validModels := make(map[string]bool)
-
-	// Log the scores we're processing
-	log.Printf("ComputeCompositeScoreWithConfidenceFixed: Processing %d scores", len(scores))
-	for i, s := range scores {
-		log.Printf("Score[%d]: Model=%s, Score=%.2f", i, s.Model, s.Score)
-	}
-
-	// Process scores by perspective
-	perspectiveModels := mapModelsToPerspectives(scores, cfg)
-	processScoresByPerspective(perspectiveModels, cfg, scoreMap, &validCount, &validModels)
-
-	if validCount == 0 {
-		return 0, 0, fmt.Errorf("no valid model scores to compute composite score (input count: %d)", len(scores))
-	}
-
-	// Calculate weighted sums
-	for k, v := range scoreMap {
-		score := v
-		w := 1.0
-		if cfg.Formula == "weighted" {
-			if weight, ok := cfg.Weights[k]; ok {
-				w = weight
-			}
-		}
-		weightedSum += score * w
-		weightTotal += w
-		sum += score
-	}
-
-	// Calculate composite score
-	composite := calculateCompositeScore(cfg, scoreMap, sum, weightedSum, weightTotal)
-
-	// Calculate confidence using the proper calculation function
-	confidence := calculateConfidence(cfg, &validModels, scoreMap)
-
-	log.Printf("ComputeCompositeScoreWithConfidenceFixed: Final composite=%.2f, confidence=%.2f", composite, confidence)
-	return composite, confidence, nil
-}
-
-// processScoresByPerspective handles selecting the best score for each perspective
-func processScoresByPerspective(
-	perspectiveModels map[string][]db.LLMScore,
-	cfg *CompositeScoreConfig,
-	scoreMap map[string]float64,
-	validCount *int,
-	validModels *map[string]bool) {
-
+// processScoresByPerspective processes scores and updates maps based on the provided configuration
+func processScoresByPerspective(perspectiveModels map[string][]db.LLMScore, cfg *CompositeScoreConfig, scoreMap map[string]float64, validCount *int, validModels map[string]bool) {
 	// Use the best score from each perspective
 	for perspective, models := range perspectiveModels {
 		if len(models) == 0 {
@@ -163,43 +113,40 @@ func processScoresByPerspective(
 			log.Printf("  Model: %s, Score: %.2f, Metadata: %s", m.Model, m.Score, m.Metadata)
 		}
 
-		// Find the model with highest confidence
-		bestScore := findBestConfidenceScore(models)
-		log.Printf("Selected for %s: Model: %s, Score: %.2f", perspective, bestScore.Model, bestScore.Score)
+		// Sort models by created_at descending (or another criteria if needed)
+		sort.Slice(models, func(i, j int) bool {
+			return models[i].CreatedAt.After(models[j].CreatedAt)
+		})
 
-		// Use the best score for this perspective
-		val := bestScore.Score
-
-		// Only consider a score invalid if it's truly invalid (NaN, +/-Inf)
-		// or outside the configured range when specified
-		hasScoreRange := cfg.MinScore > -1e9 || cfg.MaxScore < 1e9
-		isOutsideRange := hasScoreRange && (val < cfg.MinScore || val > cfg.MaxScore)
-
-		if cfg.HandleInvalid == "ignore" && (isInvalid(val) || isOutsideRange) {
-			log.Printf("Ignoring invalid score %.2f for perspective %s", val, perspective)
-			continue
+		// Select the first (latest) valid score for this perspective
+		for _, s := range models {
+			if isInvalid(s.Score) {
+				if cfg.HandleInvalid == "ignore" {
+					continue
+				} else { // Default to default value
+					scoreMap[perspective] = cfg.DefaultMissing
+					(*validCount)++                 // Count this perspective as valid because we are using a default
+					validModels[perspective] = true // Mark as valid for averaging
+					break                           // Use default, don't look further for this perspective
+				}
+			} else {
+				scoreMap[perspective] = s.Score
+				(*validCount)++
+				validModels[perspective] = true // Mark perspective as valid
+				break                           // Use this score, don't look further
+			}
 		}
-
-		if isInvalid(val) || isOutsideRange {
-			val = cfg.DefaultMissing
-			log.Printf("Using default value %.2f for invalid score from perspective %s", val, perspective)
-		} else {
-			log.Printf("Using actual score %.2f for perspective %s from model %s", val, perspective, bestScore.Model)
-		}
-
-		log.Printf("Adding score %.2f for perspective %s from model %s", val, perspective, bestScore.Model)
-		scoreMap[perspective] = val
-		(*validCount)++
-		(*validModels)[perspective] = true
 	}
 }
 
-// mapModelsToPerspectives groups LLM scores by their corresponding perspectives
+// mapModelsToPerspectives groups scores by perspective based on the configuration
 func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) map[string][]db.LLMScore {
 	perspectiveModels := make(map[string][]db.LLMScore)
 	for _, s := range scores {
-		// Skip ensemble scores
+		// Handle ensemble scores specially - map to center perspective
 		if strings.ToLower(s.Model) == "ensemble" {
+			log.Printf("Mapping ensemble model (score %.2f) to perspective '%s'", s.Score, LabelCenter)
+			perspectiveModels[LabelCenter] = append(perspectiveModels[LabelCenter], s)
 			continue
 		}
 
@@ -208,18 +155,14 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 
 		// If mapping failed, try the old way (legacy model names)
 		if perspective == "" {
-			model := strings.ToLower(s.Model)
+			modelLower := strings.ToLower(s.Model)
 			// Direct check for legacy model names - these are the model names themselves
-			if model == "left" {
-				perspective = "left"
-			} else if model == "center" {
-				perspective = "center"
-			} else if model == "right" {
-				perspective = "right"
-			} else if model == LabelLeft {
-				perspective = "left"
-			} else if model == LabelRight {
-				perspective = "right"
+			if modelLower == LabelLeft {
+				perspective = LabelLeft
+			} else if modelLower == LabelCenter || modelLower == LabelNeutral {
+				perspective = LabelCenter
+			} else if modelLower == LabelRight {
+				perspective = LabelRight
 			} else {
 				// Skip unknown models
 				log.Printf("Skipping unknown model: %s", s.Model)
@@ -228,7 +171,7 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 		}
 
 		// Ensure perspective is one of the expected values
-		if perspective != "left" && perspective != "center" && perspective != "right" {
+		if perspective != LabelLeft && perspective != LabelCenter && perspective != LabelRight {
 			log.Printf("Skipping model with invalid perspective: %s -> %s", s.Model, perspective)
 			continue
 		}
@@ -246,106 +189,218 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 	return perspectiveModels
 }
 
-// findBestConfidenceScore selects the score with highest confidence from a group of models
-func findBestConfidenceScore(models []db.LLMScore) db.LLMScore {
-	if len(models) == 1 {
-		return models[0]
+// calculateCompositeScore calculates the final composite score based on the configuration and intermediate values
+func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64, sum float64, weightedSum float64, weightTotal float64, actualValidCount int, validModels map[string]bool) (float64, error) {
+	if actualValidCount == 0 {
+		return 0.0, ErrAllPerspectivesInvalid
 	}
 
-	bestScore := models[0]
-	bestConfidence := extractConfidence(bestScore.Metadata)
-	allSameConfidence := true
-
-	for _, model := range models[1:] {
-		modelConfidence := extractConfidence(model.Metadata)
-		if modelConfidence != bestConfidence {
-			allSameConfidence = false
+	// Check if all scores *that were included* are 0
+	allZeros := true
+	// No need to check validModels here again, as the loop calling this already filtered
+	for _, score := range scoreMap { // Iterate over potentially reduced map if we changed the loop above
+		// Need to adjust this loop if the sum/weightedSum calculation already filtered
+		if score != 0 {
+			allZeros = false
+			break
 		}
-		if modelConfidence > bestConfidence {
-			bestScore = model
-			bestConfidence = modelConfidence
-		} else if modelConfidence == bestConfidence {
-			if model.Score > bestScore.Score {
-				bestScore = model
+	}
+	if allZeros && actualValidCount > 0 { // Check count > 0 to avoid returning 0 for empty valid set
+		return 0.0, ErrAllPerspectivesInvalid
+	}
+
+	// If only one valid score, return it directly (avoids averaging with defaults)
+	if actualValidCount == 1 {
+		for p, score := range scoreMap {
+			if _, isValid := validModels[p]; isValid { // Still need this check to find the *one* valid score
+				// Apply bounds before returning
+				if score < cfg.MinScore {
+					return cfg.MinScore, nil
+				}
+				if score > cfg.MaxScore {
+					return cfg.MaxScore, nil
+				}
+				return score, nil
 			}
 		}
 	}
 
-	// If all confidences are equal, pick the highest score
-	if allSameConfidence {
-		maxScore := bestScore.Score
-		for _, model := range models {
-			if model.Score > maxScore {
-				bestScore = model
-				maxScore = model.Score
-			}
-		}
-	}
-
-	return bestScore
-}
-
-// extractConfidence gets the confidence value from model metadata, defaulting to 0.5
-func extractConfidence(metadata string) float64 {
-	defaultConfidence := 0.5
-
-	var metaMap map[string]interface{}
-	if err := json.Unmarshal([]byte(metadata), &metaMap); err != nil {
-		return defaultConfidence
-	}
-
-	if conf, ok := metaMap["confidence"].(float64); ok {
-		return conf
-	}
-
-	return defaultConfidence
-}
-
-// calculateCompositeScore computes the final score based on the configured formula
-func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64,
-	sum, weightedSum, weightTotal float64) float64 {
-
+	// Calculate composite score based on formula
 	var composite float64
 	switch cfg.Formula {
-	case "average":
-		composite = sum / 3.0
 	case "weighted":
 		if weightTotal > 0 {
 			composite = weightedSum / weightTotal
-		} else {
-			composite = 0.0
+		} else { // Fallback if weights are zero or missing
+			composite = sum / float64(actualValidCount)
 		}
-	case "min":
-		composite = minNonNil(scoreMap, cfg.DefaultMissing)
-	case "max":
-		composite = maxNonNil(scoreMap, cfg.DefaultMissing)
+	case "average":
+		composite = sum / float64(actualValidCount) // Use actualValidCount
 	default:
-		composite = sum / 3.0
+		composite = sum / float64(actualValidCount) // Use actualValidCount
 	}
 
-	return composite
+	// Ensure the score is within bounds
+	if composite < cfg.MinScore {
+		composite = cfg.MinScore
+	}
+	if composite > cfg.MaxScore {
+		composite = cfg.MaxScore
+	}
+
+	return composite, nil
 }
 
-// calculateConfidence determines the confidence level based on the configured method
-func calculateConfidence(cfg *CompositeScoreConfig, validModels *map[string]bool,
-	scoreMap map[string]float64) float64 {
+// calculateConfidence calculates the final confidence score based on the configuration and intermediate values
+func calculateConfidence(cfg *CompositeScoreConfig, validModels map[string]bool, scoreMap map[string]float64) float64 {
+	if cfg == nil {
+		log.Printf("[ERROR][CONFIDENCE] Config is nil in calculateConfidence")
+		return 0.0
+	}
+
+	// Count how many perspectives we have
+	perspectiveCount := 0
+	if _, ok := validModels[LabelLeft]; ok {
+		perspectiveCount++
+	}
+	if _, ok := validModels[LabelCenter]; ok {
+		perspectiveCount++
+	}
+	if _, ok := validModels[LabelRight]; ok {
+		perspectiveCount++
+	}
 
 	var confidence float64
 	switch cfg.ConfidenceMethod {
 	case "count_valid":
-		confidence = float64(len(*validModels)) / 3.0
+		confidence = float64(perspectiveCount) / 3.0
 	case "spread":
-		confidence = 1.0 - scoreSpread(scoreMap)
+		spread := scoreSpread(scoreMap)
+		confidence = 1.0 - spread
 	default:
-		confidence = float64(len(*validModels)) / 3.0
+		confidence = float64(perspectiveCount) / 3.0
 	}
 
-	if confidence < cfg.MinConfidence {
-		confidence = cfg.MinConfidence
-	}
-	if confidence > cfg.MaxConfidence {
-		confidence = cfg.MaxConfidence
+	// Only apply confidence limits if we don't have all perspectives
+	if perspectiveCount < 3 {
+		if confidence < cfg.MinConfidence {
+			confidence = cfg.MinConfidence
+		}
+		if confidence > cfg.MaxConfidence {
+			confidence = cfg.MaxConfidence
+		}
 	}
 
 	return confidence
+}
+
+// ComputeCompositeScoreWithConfidenceFixed calculates the composite score and confidence based on provided scores and configuration
+func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
+	// Check for empty scores array
+	if len(scores) == 0 {
+		return 0, 0, fmt.Errorf("no scores provided")
+	}
+
+	// First check if we have all zero responses
+	if allZeros, err := checkForAllZeroResponses(scores); allZeros {
+		log.Printf("[ERROR][CONFIDENCE] All scores are zero, returning error")
+		return 0, 0, err
+	}
+
+	// Use the provided config directly
+	if cfg == nil {
+		log.Printf("[ERROR][CONFIDENCE] Config is nil")
+		return 0, 0, fmt.Errorf("composite score config is nil")
+	}
+
+	// Map for left/center/right
+	scoreMap := map[string]float64{
+		LabelLeft:   cfg.DefaultMissing,
+		LabelCenter: cfg.DefaultMissing,
+		LabelRight:  cfg.DefaultMissing,
+	}
+
+	validCount := 0
+	sum := 0.0
+	weightedSum := 0.0
+	weightTotal := 0.0
+	validModels := make(map[string]bool)
+
+	// Process scores by perspective
+	perspectiveModels := mapModelsToPerspectives(scores, cfg)
+	processScoresByPerspective(perspectiveModels, cfg, scoreMap, &validCount, validModels)
+
+	// Check if no valid scores were found after processing
+	if validCount == 0 {
+		// Handle the case where only invalid scores existed and were ignored/defaulted
+		log.Printf("[WARN][CONFIDENCE] No valid model scores found after processing. Returning default score.")
+		return cfg.DefaultMissing, 0.0, fmt.Errorf("no valid scores found") // Return default and 0 confidence
+	}
+
+	// Check if we have only ensemble scores (This check might be redundant now with validCount check above)
+	// if validCount == 1 && validModels["center"] { ... } // Consider removing if validCount handles it
+
+	// Calculate sums based ONLY on valid models
+	sum = 0.0
+	weightedSum = 0.0
+	weightTotal = 0.0
+	actualValidCount := 0 // Use a new counter for the loop
+
+	for perspective, score := range scoreMap {
+		// Only include scores from perspectives that had valid models processed
+		// AND handle 'ignore_invalid' - skip perspectives that were marked invalid
+		// (scoreMap might hold default value if invalid score was encountered and not ignored)
+		if _, isValid := validModels[perspective]; isValid {
+			w := 1.0
+			if cfg.Formula == "weighted" {
+				if weight, ok := cfg.Weights[perspective]; ok {
+					w = weight
+				}
+			}
+			weightedSum += score * w
+			weightTotal += w
+			sum += score
+			actualValidCount++
+		}
+	}
+
+	// Handle division by zero if somehow actualValidCount is 0 despite validCount > 0
+	if actualValidCount == 0 {
+		log.Printf("[ERROR][CONFIDENCE] Logic error: validCount > 0 but actualValidCount is 0.")
+		return cfg.DefaultMissing, 0.0, fmt.Errorf("internal calculation error: no valid scores counted")
+	}
+
+	// Now calculate sums based on the final scoreMap values and validModels map
+	log.Printf("[DEBUG] Pre-Sum: actualValidCount=%d, len(validModels)=%d", actualValidCount, len(validModels))
+	log.Printf("[DEBUG] Pre-Sum: Score map: %v", scoreMap)
+	log.Printf("[DEBUG] Pre-Sum: Valid models map: %v", validModels)
+
+	for perspective, score := range scoreMap {
+		if _, isValid := validModels[perspective]; isValid { // Only sum scores from perspectives marked as valid
+			w := 1.0
+			if cfg.Formula == "weighted" {
+				if weight, ok := cfg.Weights[perspective]; ok {
+					w = weight
+				}
+			}
+			weightedSum += score * w
+			weightTotal += w
+			sum += score
+		}
+	}
+
+	log.Printf("[DEBUG] Pre-Calc: sum=%.4f, weightedSum=%.4f, weightTotal=%.4f, actualValidCount=%d",
+		sum, weightedSum, weightTotal, actualValidCount)
+
+	// Final calculation
+	compositeScore, calcErr := calculateCompositeScore(cfg, scoreMap, sum, weightedSum, weightTotal, actualValidCount, validModels)
+	if calcErr != nil {
+		log.Printf("[ERROR] Error in calculateCompositeScore: %v. actualValidCount=%d", calcErr, actualValidCount)
+		return 0.0, 0.0, calcErr
+	}
+
+	// Calculate confidence using the proper calculation function
+	confidence := calculateConfidence(cfg, validModels, scoreMap)
+
+	return compositeScore, confidence, nil
 }

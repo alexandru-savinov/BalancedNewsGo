@@ -31,9 +31,9 @@ type mockLLMService struct {
 	backupUsed      bool
 }
 
-func newMockLLMService(primaryKey, backupKey string, primaryFailRate, backupFailRate bool) *mockLLMService {
+func newMockLLMService(backupKey string, primaryFailRate, backupFailRate bool) *mockLLMService {
 	return &mockLLMService{
-		primaryKey:      primaryKey,
+		primaryKey:      "primary-key", // Hardcode as it's always the same in tests
 		backupKey:       backupKey,
 		primaryFailRate: primaryFailRate,
 		backupFailRate:  backupFailRate,
@@ -64,7 +64,7 @@ func (m *mockLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 // the service falls back to the secondary key
 func TestRateLimitFallback(t *testing.T) {
 	// Create a mock LLM service where primary key fails with rate limit but backup succeeds
-	mockService := newMockLLMService("primary-key", "backup-key", true, false)
+	mockService := newMockLLMService("backup-key", true, false)
 
 	// Test article and prompt
 	article := &db.Article{
@@ -93,7 +93,7 @@ func TestRateLimitFallback(t *testing.T) {
 // keys are rate-limited, ErrBothLLMKeysRateLimited is returned
 func TestBothKeysRateLimited(t *testing.T) {
 	// Create a mock LLM service where both keys fail with rate limit
-	mockService := newMockLLMService("primary-key", "backup-key", true, true)
+	mockService := newMockLLMService("backup-key", true, true)
 
 	// Test article and prompt
 	article := &db.Article{
@@ -121,7 +121,7 @@ func TestBothKeysRateLimited(t *testing.T) {
 // the secondary key is not used
 func TestPrimaryKeyWorking(t *testing.T) {
 	// Create a mock LLM service where primary key succeeds
-	mockService := newMockLLMService("primary-key", "backup-key", false, false)
+	mockService := newMockLLMService("backup-key", false, false)
 
 	// Test article and prompt
 	article := &db.Article{
@@ -149,7 +149,7 @@ func TestPrimaryKeyWorking(t *testing.T) {
 // TestNoBackupKey verifies behavior when primary key fails and no backup key is provided
 func TestNoBackupKey(t *testing.T) {
 	// Create a mock LLM service with no backup key where primary key fails
-	mockService := newMockLLMService("primary-key", "", true, false)
+	mockService := newMockLLMService("", true, false)
 
 	// Test article and prompt
 	article := &db.Article{
@@ -190,13 +190,13 @@ func TestHTTPLLMServiceRateLimiting(t *testing.T) {
 			primaryKeyCalled = true
 			// Primary key is rate limited
 			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte(`{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}`))
+			_, _ = w.Write([]byte(`{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}`))
 		} else if strings.Contains(authHeader, backupKey) {
 			backupKeyCalled = true
 			// Backup key works - return valid response that can be parsed by the real implementation
 			w.WriteHeader(http.StatusOK)
 			// Format matches what the real service expects
-			w.Write([]byte(`{
+			_, _ = w.Write([]byte(`{
 				"choices": [
 					{
 						"message": {
@@ -244,7 +244,7 @@ func TestBothHTTPKeysRateLimited(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Always return rate limited error
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}`))
+		_, _ = w.Write([]byte(`{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}`))
 	}))
 	defer server.Close()
 
@@ -275,7 +275,7 @@ func TestBothHTTPKeysRateLimited(t *testing.T) {
 // TestLLMClientRateLimitFallback tests the LLMClient's ScoreWithModel method with rate limiting fallback
 func TestLLMClientRateLimitFallback(t *testing.T) {
 	// Create a mock service for the LLMClient
-	mockService := newMockLLMService("primary-key", "backup-key", true, false)
+	mockService := newMockLLMService("backup-key", true, false)
 
 	// Create LLMClient with mock service
 	client := &LLMClient{
@@ -299,7 +299,7 @@ func TestLLMClientRateLimitFallback(t *testing.T) {
 // TestLLMClientBothKeysRateLimited tests the LLMClient with both keys rate limited
 func TestLLMClientBothKeysRateLimited(t *testing.T) {
 	// Create a mock service where both keys fail
-	mockService := newMockLLMService("primary-key", "backup-key", true, true)
+	mockService := newMockLLMService("backup-key", true, true)
 
 	// Create LLMClient with mock service
 	client := &LLMClient{

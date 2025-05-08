@@ -163,17 +163,56 @@ definitions:
         type: string
       created_at:
         type: string
+      escalated:
+        type: boolean
+      fail_count:
+        type: integer
       id:
         type: integer
+      last_attempt:
+        type: string
       pub_date:
         type: string
       score_source:
         type: string
       source:
         type: string
+      status:
+        type: string
       title:
         type: string
       url:
+        type: string
+    type: object
+  models.ProgressState:
+    description: Progress state for long-running operations
+    properties:
+      error:
+        description: Error message if failed
+        type: string
+      final_score:
+        description: Final score if completed
+        example: 0.25
+        type: number
+      last_updated:
+        description: Timestamp
+        example: 1609459200
+        type: integer
+      message:
+        description: User-friendly message
+        example: Processing article
+        type: string
+      percent:
+        description: Progress percentage
+        example: 75
+        type: integer
+      status:
+        description: Overall status
+        example: InProgress
+        type: string
+      step:
+        description: Current detailed step
+        example: Scoring
         type: string
     type: object
 info:
@@ -202,44 +241,33 @@ paths:
       summary: Get ensemble scoring details
       tags:
       - Analysis
-  /api/articles/{id}/summary:
-    get:
-      description: Retrieves the text summary for an article
-      parameters:
-      - description: Article ID
-        in: path
-        minimum: 1
-        name: id
-        required: true
-        type: integer
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/api.StandardResponse'
-        "404":
-          description: Summary not available
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Get article summary
-      tags:
-      - Summary
   /api/feeds/healthz:
     get:
-      description: Returns the health of configured RSS feed sources
+      consumes:
+      - application/json
+      description: Returns the health status of all configured RSS feeds
+      produces:
+      - application/json
       responses:
         "200":
-          description: OK
+          description: Feed health status mapping feed names to boolean status
           schema:
             additionalProperties:
               type: boolean
             type: object
-      summary: Get feed health status
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get RSS feed health status
       tags:
       - Feeds
   /api/llm/score-progress/{id}:
     get:
-      description: Server-Sent Events endpoint streaming scoring progress for an article
+      consumes:
+      - application/json
+      description: Server-Sent Events endpoint streaming real-time scoring progress
+        for an article
       parameters:
       - description: Article ID
         in: path
@@ -247,14 +275,20 @@ paths:
         name: id
         required: true
         type: integer
+      produces:
+      - text/event-stream
       responses:
         "200":
-          description: event-stream
+          description: event-stream containing progress updates
           schema:
-            type: string
+            $ref: '#/definitions/models.ProgressState'
+        "400":
+          description: Invalid article ID
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
       summary: Score progress SSE stream
       tags:
-      - Analysis
+      - LLM
   /api/manual-score/{id}:
     post:
       description: Updates an article's bias score manually
@@ -285,12 +319,28 @@ paths:
       - Analysis
   /api/refresh:
     post:
-      description: Initiates a manual RSS feed refresh job
+      consumes:
+      - application/json
+      description: Initiates a manual RSS feed refresh job to fetch new articles from
+        configured RSS sources
+      produces:
+      - application/json
       responses:
         "200":
-          description: Refresh started
+          description: Refresh started successfully
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            allOf:
+            - $ref: '#/definitions/api.StandardResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
       summary: Trigger RSS feed refresh
       tags:
       - Feeds

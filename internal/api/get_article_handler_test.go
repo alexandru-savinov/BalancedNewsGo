@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -22,7 +23,16 @@ func (m *MockArticleDB) GetArticleByID(ctx context.Context, id int64) (*db.Artic
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*db.Article), args.Error(1)
+	val, ok := args.Get(0).(*db.Article)
+	originalError := args.Error(1)
+	if !ok {
+		// log.Printf("WARN: MockArticleDB.GetArticleByID: type assertion to *db.Article failed for ID %d", id)
+		if originalError == nil {
+			return nil, fmt.Errorf("MockArticleDB.GetArticleByID: type assertion failed")
+		}
+		return nil, originalError
+	}
+	return val, originalError
 }
 
 func TestGetArticleHandler(t *testing.T) {

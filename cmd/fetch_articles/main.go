@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -12,13 +14,13 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 )
 
-func main() {
+func run() error {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found or error loading .env:", err)
 	}
 	conn, err := sqlx.Open("sqlite", "news.db")
 	if err != nil {
-		log.Fatalf("Failed to open DB: %v", err)
+		return fmt.Errorf("failed to open DB: %w", err)
 	}
 	defer func() {
 		if err := conn.Close(); err != nil {
@@ -26,7 +28,10 @@ func main() {
 		}
 	}()
 
-	llmClient := llm.NewLLMClient(conn)
+	llmClient, err := llm.NewLLMClient(conn)
+	if err != nil {
+		return fmt.Errorf("failed to initialize LLM Client: %w", err)
+	}
 
 	feedURLs := []string{
 		// Left-leaning
@@ -57,4 +62,12 @@ func main() {
 	collector.FetchAndStore()
 
 	log.Println("RSS fetch complete.")
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		log.Printf("ERROR: %v", err)
+		os.Exit(1)
+	}
 }

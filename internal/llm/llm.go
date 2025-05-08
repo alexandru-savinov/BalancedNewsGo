@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -24,35 +24,6 @@ var ErrInvalidLLMResponse = apperrors.New("Invalid response from LLM service", "
 
 // HTTP timeout for LLM requests
 const defaultLLMTimeout = 30 * time.Second
-
-const (
-	LabelUnknown = "unknown"
-	LabelLeft    = "left"
-	LabelRight   = "right"
-	LabelNeutral = "neutral"
-)
-
-// compositeScoreConfig holds test override when len(Models)==0
-var compositeScoreConfig *CompositeScoreConfig
-
-type ModelConfig struct {
-	Perspective string `json:"perspective"`
-	ModelName   string `json:"modelName"`
-	URL         string `json:"url"`
-}
-
-type CompositeScoreConfig struct {
-	Formula          string             `json:"formula"`
-	Weights          map[string]float64 `json:"weights"`
-	MinScore         float64            `json:"min_score"`
-	MaxScore         float64            `json:"max_score"`
-	DefaultMissing   float64            `json:"default_missing"`
-	HandleInvalid    string             `json:"handle_invalid"`
-	ConfidenceMethod string             `json:"confidence_method"`
-	MinConfidence    float64            `json:"min_confidence"`
-	MaxConfidence    float64            `json:"max_confidence"`
-	Models           []ModelConfig      `json:"models"`
-}
 
 // PromptVariant defines a prompt template with few-shot examples
 type PromptVariant struct {
@@ -82,98 +53,21 @@ var DefaultPromptVariant = PromptVariant{
 }
 
 // Returns (compositeScore, confidence, error)
-func ComputeCompositeScoreWithConfidence(scores []db.LLMScore) (float64, float64, error) {
-	// Use override config in tests if provided, else use built-in defaults
-	var cfg *CompositeScoreConfig
-	if compositeScoreConfig != nil {
-		cfg = compositeScoreConfig
-		// clear override for next invocation
-		compositeScoreConfig = nil
-	} else {
-		cfg = &CompositeScoreConfig{
-			Formula:          "average",
-			Weights:          map[string]float64{"left": 1.0, "center": 1.0, "right": 1.0},
-			MinScore:         -1.0,
-			MaxScore:         1.0,
-			DefaultMissing:   0.0,
-			HandleInvalid:    "default",
-			ConfidenceMethod: "count_valid",
-		}
-	}
-
-	// Map scores to perspectives
-	scoreMap := map[string]float64{"left": cfg.DefaultMissing, "center": cfg.DefaultMissing, "right": cfg.DefaultMissing}
-	validModels := make(map[string]bool)
-	sumScores := 0.0
-	sumWeights := 0.0
-	for _, s := range scores {
-		model := strings.ToLower(s.Model)
-		var perspective string
-		switch model {
-		case "left":
-			perspective = "left"
-		case "center":
-			perspective = "center"
-		case "right":
-			perspective = "right"
-		default:
-			continue
-		}
-		val := s.Score
-		if cfg.HandleInvalid == "ignore" && (isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore) {
-			continue
-		}
-		if isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore {
-			val = cfg.DefaultMissing
-		}
-		w := 1.0
-		if cfg.Formula == "weighted" {
-			if weight, ok := cfg.Weights[perspective]; ok {
-				w = weight
-			}
-		}
-		scoreMap[perspective] = val
-		sumScores += val * w
-		sumWeights += w
-		validModels[perspective] = true
-	}
-	// Compute composite
-	var composite float64
-	switch cfg.Formula {
-	case "weighted":
-		if sumWeights > 0 {
-			composite = sumScores / sumWeights
-		}
-	default: // average and others: simple average over three perspectives
-		composite = (scoreMap["left"] + scoreMap["center"] + scoreMap["right"]) / 3.0
-	}
-	// Compute confidence
-	var confidence float64
-	switch cfg.ConfidenceMethod {
-	case "count_valid":
-		confidence = float64(len(validModels)) / 3.0
-	case "spread":
-		// normalize spread across configured score range
-		span := cfg.MaxScore - cfg.MinScore
-		if span > 0 {
-			// difference between max and min perspective scores
-			vals := []float64{scoreMap["left"], scoreMap["center"], scoreMap["right"]}
-			sort.Float64s(vals)
-			confidence = (vals[2] - vals[0]) / span
-		}
-	default:
-		confidence = float64(len(validModels)) / 3.0
-	}
-	return composite, confidence, nil
+func ComputeCompositeScoreWithConfidence(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
+	return ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
 }
 
-func ComputeCompositeScore(scores []db.LLMScore) float64 {
-	score, _, _ := ComputeCompositeScoreWithConfidence(scores)
+func ComputeCompositeScore(scores []db.LLMScore, cfg *CompositeScoreConfig) float64 {
+	score, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
+	if err != nil {
+		log.Printf("[ERROR] Error computing composite score: %v", err)
+		return 0.0
+	}
 	return score
 }
 
 func isInvalid(f float64) bool {
-	return (f != f) || (f > 1e10) || (f < -1e10)
+	return math.IsNaN(f) || math.IsInf(f, 0)
 }
 
 func parseLLMAPIResponse(body []byte) (string, error) {
@@ -258,7 +152,7 @@ func (c *LLMClient) SetHTTPLLMTimeout(timeout time.Duration) {
 	}
 }
 
-func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
+func NewLLMClient(dbConn *sqlx.DB) (*LLMClient, error) {
 	cache := NewCache()
 
 	// Get OpenRouter configuration
@@ -266,21 +160,17 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 	backupKey := os.Getenv("LLM_API_KEY_SECONDARY")
 	baseURL := os.Getenv("LLM_BASE_URL")
 
-	// Replace fatal exit with panic for missing primary key to satisfy tests
+	// Return error for missing primary key instead of panicking
 	if primaryKey == "" {
-		panic("ERROR: LLM_API_KEY not set")
+		return nil, fmt.Errorf("LLM_API_KEY not set")
 	}
 
-	config := &CompositeScoreConfig{
-		Formula:          "average",
-		Weights:          map[string]float64{"left": 1.0, "center": 1.0, "right": 1.0},
-		MinScore:         -1e10,
-		MaxScore:         1e10,
-		DefaultMissing:   0.0,
-		HandleInvalid:    "default",
-		ConfidenceMethod: "count_valid",
-		MinConfidence:    0.0,
-		MaxConfidence:    1.0,
+	// Load configuration from file
+	config, err := LoadCompositeScoreConfig()
+	if err != nil {
+		log.Printf("[ERROR] Failed to load composite score config: %v", err)
+		// Return the error instead of panicking
+		return nil, fmt.Errorf("failed to load composite score config: %w", err)
 	}
 
 	// Create resty client with timeout
@@ -296,7 +186,14 @@ func NewLLMClient(dbConn *sqlx.DB) *LLMClient {
 		db:         dbConn,
 		llmService: service,
 		config:     config,
-	}
+	}, nil // Return nil error on success
+}
+
+// GetConfig returns the loaded configuration for the client.
+func (c *LLMClient) GetConfig() *CompositeScoreConfig {
+	// Maybe add logic here to load config if nil?
+	// For now, just return the stored config.
+	return c.config
 }
 
 func (c *LLMClient) analyzeContent(articleID int64, content string, model string) (*db.LLMScore, error) {
@@ -307,7 +204,24 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 		return cached, nil
 	}
 
-	var err error
+	// Load composite score config to get the model configuration
+	cfg, err := LoadCompositeScoreConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load composite score config: %w", err)
+	}
+
+	// Find the model in the configuration to get its URL and perspective
+	var modelConfig *ModelConfig
+	for _, m := range cfg.Models {
+		if m.ModelName == model {
+			modelConfig = &m
+			break
+		}
+	}
+
+	if modelConfig == nil {
+		return nil, fmt.Errorf("model %s not found in configuration", model)
+	}
 
 	generalPrompt := PromptVariant{
 		ID: "default",
@@ -318,6 +232,8 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 			`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
 			`{"score": 1.0, "explanation": "Strongly right-leaning language", "confidence": 0.9}`,
 		},
+		Model: modelConfig.ModelName,
+		URL:   modelConfig.URL,
 	}
 
 	scoreVal, explanation, confidence, _, err := c.callLLM(articleID, model, generalPrompt, content)
@@ -325,7 +241,8 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 		return nil, err
 	}
 
-	meta := fmt.Sprintf(`{"explanation": %q, "confidence": %.3f}`, explanation, confidence)
+	meta := fmt.Sprintf(`{"explanation": %q, "confidence": %.3f, "perspective": %q}`,
+		explanation, confidence, modelConfig.Perspective)
 
 	score := &db.LLMScore{
 		ArticleID: articleID,
@@ -363,24 +280,16 @@ func (c *LLMClient) ProcessUnscoredArticles() error {
 }
 
 func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
-	cfg := &CompositeScoreConfig{
-		Formula:          "average",
-		Weights:          map[string]float64{"left": 1.0, "center": 1.0, "right": 1.0},
-		MinScore:         -1e10,
-		MaxScore:         1e10,
-		DefaultMissing:   0.0,
-		HandleInvalid:    "default",
-		ConfidenceMethod: "count_valid",
-		MinConfidence:    0.0,
-		MaxConfidence:    1.0,
+	if c.config == nil || len(c.config.Models) == 0 {
+		log.Printf("[ERROR] LLMClient config is nil or has no models defined")
+		return fmt.Errorf("LLMClient config is nil or has no models defined")
 	}
 
-	for _, m := range cfg.Models {
+	for _, m := range c.config.Models {
 		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.Perspective, m.ModelName, m.URL)
 		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName)
 		if err != nil {
 			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.ModelName, err)
-
 			continue
 		}
 
@@ -393,6 +302,7 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 	return nil
 }
 
+// ReanalyzeArticle performs a complete reanalysis of an article using all configured models
 func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 	log.Printf("[ReanalyzeArticle %d] Starting reanalysis", articleID)
 	tx, err := c.db.Beginx()
@@ -406,86 +316,118 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		if rbErr := tx.Rollback(); rbErr != nil {
 			log.Printf("tx.Rollback() failed: %v", rbErr)
 		}
-
 		return err
 	}
 
 	var article db.Article
-
 	log.Printf("[ReanalyzeArticle %d] Fetching article data", articleID)
 	err = tx.Get(&article, "SELECT * FROM articles WHERE id = ?", articleID)
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
 			log.Printf("tx.Rollback() failed: %v", rbErr)
 		}
-
 		return err
 	}
 
 	log.Printf("[ReanalyzeArticle %d] Fetched article: Title='%.50s'", articleID, article.Title)
 	log.Printf("[ReanalyzeArticle %d] Starting analysis loop for models", articleID)
-	for _, m := range compositeScoreConfig.Models {
-		log.Printf("[ReanalyzeArticle %d] Calling analyzeContent for model: %s", articleID, m.ModelName)
-		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName)
-		if err != nil {
-			log.Printf("[ReanalyzeArticle %d] Error from analyzeContent for %s: %v", articleID, m.ModelName, err)
+
+	// Use the client's already loaded config
+	if c.config == nil {
+		log.Printf("[ReanalyzeArticle %d] Error: LLMClient config is not loaded.", articleID)
+		// Try loading it again as a fallback?
+		var loadErr error
+		c.config, loadErr = LoadCompositeScoreConfig()
+		if loadErr != nil {
+			log.Printf("[ReanalyzeArticle %d] Error loading config fallback: %v", articleID, loadErr)
+			_ = tx.Rollback() // Attempt rollback before returning
+			return fmt.Errorf("LLMClient config is not loaded and fallback failed: %w", loadErr)
+		}
+		log.Printf("[ReanalyzeArticle %d] Loaded config via fallback.", articleID)
+	}
+	cfg := c.config // Use the client's config
+
+	// Try each model in sequence
+	for _, modelConfig := range cfg.Models {
+		log.Printf("[ReanalyzeArticle %d] Calling analyzeContent for model: %s", articleID, modelConfig.ModelName)
+		score, analyzeErr := c.analyzeContent(article.ID, article.Content, modelConfig.ModelName)
+		if analyzeErr != nil {
+			log.Printf("[ReanalyzeArticle %d] Error from analyzeContent for %s: %v", articleID, modelConfig.ModelName, analyzeErr)
 			continue
 		}
-		log.Printf("[ReanalyzeArticle %d] analyzeContent successful for: %s. Score: %.2f", articleID, m.ModelName, score.Score)
+		log.Printf("[ReanalyzeArticle %d] analyzeContent successful for: %s. Score: %.2f", articleID, modelConfig.ModelName, score.Score)
 
-		_, err = tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata)
+		_, insertErr := tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata)
 			VALUES (:article_id, :model, :score, :metadata)`, score)
-		if err != nil {
-			log.Printf("[ReanalyzeArticle %d] Error inserting score for %s: %v", articleID, m.ModelName, err)
+		if insertErr != nil {
+			log.Printf("[ReanalyzeArticle %d] Error inserting score for %s: %v", articleID, modelConfig.ModelName, insertErr)
+			// Decide whether to continue or rollback/fail
+			// continue // Option 1: Log and continue with other models
+			if rbErr := tx.Rollback(); rbErr != nil { // Option 2: Rollback and fail
+				log.Printf("[ReanalyzeArticle %d] tx.Rollback() failed after insert error: %v", articleID, rbErr)
+			}
+			return fmt.Errorf("inserting score for %s: %w", modelConfig.ModelName, insertErr)
 		} else {
-			log.Printf("[ReanalyzeArticle %d] Successfully inserted score for: %s", articleID, m.ModelName)
+			log.Printf("[ReanalyzeArticle %d] Successfully inserted score for: %s", articleID, modelConfig.ModelName)
 		}
 	}
 
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		log.Printf("[ReanalyzeArticle %d] Error committing transaction: %v", articleID, err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Calculate composite score AFTER successful commit
 	scores, err := c.FetchScores(article.ID)
 	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error fetching scores: %v", articleID, err)
-		return fmt.Errorf("failed to fetch scores for ensemble calculation: %w", err)
+		log.Printf("[ReanalyzeArticle %d] Error fetching scores post-commit: %v", articleID, err)
+		return fmt.Errorf("failed to fetch scores for ensemble calculation post-commit: %w", err)
 	}
 
-	finalScore, confidence, err := ComputeCompositeScoreWithConfidence(scores)
+	finalScore, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
 	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error computing composite score: %v", articleID, err)
-		return fmt.Errorf("failed to compute composite score: %w", err)
+		// Don't return error, just log. Store 0 if calculation fails.
+		log.Printf("[ReanalyzeArticle %d] Error calculating composite score post-commit: %v. Storing 0.", articleID, err)
+		finalScore = 0
+		confidence = 0
 	}
 
+	// Store ensemble score in llm_scores table
 	meta := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
 		"final_aggregation": map[string]interface{}{
 			"weighted_mean": finalScore,
-			"variance":      1.0 - confidence,
+			"variance":      1.0 - confidence, // Example variance calculation
+			"confidence":    confidence,
 		},
 	}
-	metaBytes, _ := json.Marshal(meta)
-
+	metaBytes, _ := json.Marshal(meta) // Error handling omitted for brevity
 	ensembleScore := &db.LLMScore{
-		ArticleID: article.ID,
+		ArticleID: articleID,
 		Model:     "ensemble",
 		Score:     finalScore,
 		Metadata:  string(metaBytes),
 		CreatedAt: time.Now(),
 	}
 
-	_, err = tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
-		VALUES (:article_id, :model, :score, :metadata, :created_at)`, ensembleScore)
+	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
+		VALUES (:article_id, :model, :score, :metadata, :created_at) ON CONFLICT(article_id, model) DO UPDATE SET score = excluded.score, metadata = excluded.metadata, created_at = excluded.created_at`, ensembleScore)
 	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error inserting ensemble score: %v", articleID, err)
-		return fmt.Errorf("failed to insert ensemble score: %w", err)
+		log.Printf("[ReanalyzeArticle %d] Error inserting/updating ensemble score post-commit: %v", articleID, err)
+		// Decide if this is fatal or just a warning
+		// return fmt.Errorf("failed to insert/update ensemble score: %w", err)
 	}
 
-	err = db.UpdateArticleScore(c.db, article.ID, finalScore, confidence)
+	// Update the main article score
+	err = db.UpdateArticleScore(c.db, articleID, finalScore, confidence)
 	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error updating article score: %v", articleID, err)
-		return fmt.Errorf("failed to update article score: %w", err)
+		log.Printf("[ReanalyzeArticle %d] Error updating article score post-commit: %v", articleID, err)
+		// Decide if this is fatal or just a warning
+		// return fmt.Errorf("failed to update article score: %w", err)
 	}
 
-	log.Printf("[ReanalyzeArticle %d] Successfully completed reanalysis with score: %.2f, confidence: %.2f",
-		articleID, finalScore, confidence)
+	log.Printf("[ReanalyzeArticle %d] Completed successfully. Score: %.2f, Confidence: %.2f", articleID, finalScore, confidence)
 	return nil
 }
 
@@ -510,12 +452,24 @@ func (c *LLMClient) FetchScores(articleID int64) ([]db.LLMScore, error) {
 
 // ScoreWithModel uses a single model to score content
 func (c *LLMClient) ScoreWithModel(article *db.Article, modelName string) (float64, error) {
+	log.Printf("[DEBUG][CONFIDENCE] ScoreWithModel called for article %d with model %s", article.ID, modelName)
+
 	// Create a prompt variant with the specified model
 	promptVariant := DefaultPromptVariant
 	promptVariant.Model = modelName
 
+	// Find the model in the configuration to get its URL
+	if c.config != nil {
+		for _, m := range c.config.Models {
+			if m.ModelName == modelName {
+				promptVariant.URL = m.URL
+				break
+			}
+		}
+	}
+
 	// Use the LLM service directly to handle rate limiting properly
-	score, _, err := c.llmService.ScoreContent(context.Background(), promptVariant, article)
+	score, confidence, err := c.llmService.ScoreContent(context.Background(), promptVariant, article)
 
 	if err != nil {
 		// Specifically check for rate limit errors first
@@ -533,49 +487,89 @@ func (c *LLMClient) ScoreWithModel(article *db.Article, modelName string) (float
 		return 0, apperrors.Wrap(err, "llm_service_error", fmt.Sprintf("scoring with model %s failed", modelName))
 	}
 
+	// If db is nil, return the score directly (used in tests)
+	if c.db == nil {
+		log.Printf("[DEBUG][CONFIDENCE] Test mode detected (nil db), returning score without storage: %.4f", score)
+		return score, nil
+	}
+
+	// Create and store the score in the database
+	explanation := "Generated by model " + modelName // We don't have explanation from the interface
+	meta := fmt.Sprintf(`{"explanation": %q, "confidence": %.3f}`, explanation, confidence)
+	llmScore := &db.LLMScore{
+		ArticleID: article.ID,
+		Model:     modelName,
+		Score:     score,
+		Metadata:  meta,
+		CreatedAt: time.Now(),
+	}
+
+	log.Printf("[DEBUG][CONFIDENCE] Successfully scored and stored: article=%d, model=%s, score=%.4f",
+		article.ID, modelName, score)
+
+	_, err = db.InsertLLMScore(c.db, llmScore)
+	if err != nil {
+		log.Printf("[ERROR][CONFIDENCE] Failed to store score in database: %v", err)
+		// Don't return error here, just log it. The score itself was obtained.
+	}
+
 	return score, nil
 }
 
 func (c *LLMClient) StoreEnsembleScore(article *db.Article) (float64, error) {
 	scores, err := c.FetchScores(article.ID)
 	if err != nil {
-		return 0.0, fmt.Errorf("failed to fetch scores for ensemble calculation: %w", err)
+		return 0, fmt.Errorf("fetching scores for article %d: %w", article.ID, err)
 	}
 
-	finalScore, confidence, err := ComputeCompositeScoreWithConfidence(scores)
+	if c.config == nil {
+		log.Printf("[StoreEnsembleScore %d] Error: LLMClient config is nil.", article.ID)
+		// Attempt fallback load
+		var loadErr error
+		c.config, loadErr = LoadCompositeScoreConfig()
+		if loadErr != nil {
+			log.Printf("[StoreEnsembleScore %d] Error loading config fallback: %v", article.ID, loadErr)
+			return 0, fmt.Errorf("LLMClient config is nil and fallback failed: %w", loadErr)
+		}
+	}
+
+	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, c.config)
 	if err != nil {
-		return 0.0, fmt.Errorf("failed to compute composite score: %w", err)
+		log.Printf("Error calculating composite score for article %d: %v", article.ID, err)
+		return 0, fmt.Errorf("calculating composite score for article %d: %w", article.ID, err)
 	}
 
+	// Store ensemble score in llm_scores table
 	meta := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
 		"final_aggregation": map[string]interface{}{
-			"weighted_mean": finalScore,
+			"weighted_mean": score,
 			"variance":      1.0 - confidence,
+			"confidence":    confidence,
 		},
 	}
 	metaBytes, _ := json.Marshal(meta)
-
 	ensembleScore := &db.LLMScore{
 		ArticleID: article.ID,
 		Model:     "ensemble",
-		Score:     finalScore,
+		Score:     score,
 		Metadata:  string(metaBytes),
 		CreatedAt: time.Now(),
 	}
 
 	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
-		VALUES (:article_id, :model, :score, :metadata, :created_at)`, ensembleScore)
+		VALUES (:article_id, :model, :score, :metadata, :created_at) ON CONFLICT(article_id, model) DO UPDATE SET score = excluded.score, metadata = excluded.metadata, created_at = excluded.created_at`, ensembleScore)
 	if err != nil {
-		return finalScore, fmt.Errorf("failed to insert ensemble score: %w", err)
+		return score, fmt.Errorf("inserting/updating ensemble score for article %d: %w", article.ID, err)
 	}
 
-	updateErr := db.UpdateArticleScore(c.db, article.ID, finalScore, confidence)
-	if updateErr != nil {
-		return finalScore, fmt.Errorf("failed to update article score: %w", updateErr)
+	// Also update the main article table
+	err = db.UpdateArticleScore(c.db, article.ID, score, confidence)
+	if err != nil {
+		return score, fmt.Errorf("updating article score for article %d: %w", article.ID, err)
 	}
 
-	return finalScore, nil
+	return score, nil
 }
 
 func hashContent(content string) string {

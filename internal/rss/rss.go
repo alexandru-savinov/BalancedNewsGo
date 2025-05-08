@@ -12,6 +12,13 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+// Define the CollectorInterface
+// CollectorInterface defines the methods that an RSS collector must implement.
+type CollectorInterface interface {
+	ManualRefresh()
+	CheckFeedHealth() map[string]bool
+}
+
 func detectPartisanCues(text string) []string {
 	cues := []string{
 		"radical left", "far-left", "far right", "fake news", "patriotic", "woke", "social justice",
@@ -201,6 +208,23 @@ func isValidItem(item *gofeed.Item) bool {
 	}
 
 	if item.Link == "" || item.Title == "" {
+		return false
+	}
+
+	// Check for non-empty content using the same logic as extractContent
+	content := ""
+	if item.Content != "" {
+		content = item.Content
+	} else if ext, ok := item.Extensions["content"]; ok {
+		if encoded, ok := ext["encoded"]; ok && len(encoded) > 0 {
+			if encoded[0].Value != "" {
+				content = encoded[0].Value
+			}
+		}
+	} else if item.Description != "" {
+		content = item.Description
+	}
+	if strings.TrimSpace(content) == "" {
 		return false
 	}
 

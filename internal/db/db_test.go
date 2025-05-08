@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setupTestDB(t *testing.T) (*sqlx.DB, *DBInstance) {
+func setupTestDB(t *testing.T) *sqlx.DB {
 	// Use in-memory SQLite database for tests to avoid file locking issues
 	dbInstance, err := New(":memory:")
 	assert.NoError(t, err)
@@ -25,6 +25,10 @@ func setupTestDB(t *testing.T) (*sqlx.DB, *DBInstance) {
 			title TEXT NOT NULL,
 			content TEXT NOT NULL,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			status TEXT DEFAULT 'pending',
+			fail_count INTEGER DEFAULT 0,
+			last_attempt DATETIME,
+			escalated BOOLEAN DEFAULT 0,
 			composite_score REAL,
 			confidence REAL,
 			score_source TEXT
@@ -75,11 +79,11 @@ func setupTestDB(t *testing.T) (*sqlx.DB, *DBInstance) {
 		}
 	})
 
-	return dbInstance.DB, dbInstance
+	return dbInstance.DB
 }
 
 func TestInsertDuplicateArticle(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	url := "https://example.com/test-article-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	article1 := &Article{
@@ -110,7 +114,7 @@ func TestInsertDuplicateArticle(t *testing.T) {
 }
 
 func TestArticlePagination(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	_, err := FetchArticles(dbConn, "test", "", 10, 0)
 	if err != nil {
@@ -119,7 +123,7 @@ func TestArticlePagination(t *testing.T) {
 }
 
 func TestInsertAndFetchLLMScore(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	article := &Article{
 		Source:  "Test Source",
@@ -158,7 +162,7 @@ func TestInsertAndFetchLLMScore(t *testing.T) {
 }
 
 func TestArticleWithNullFields(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	// Create an article with null score_source
 	article := &Article{
@@ -203,7 +207,7 @@ func TestArticleWithNullFields(t *testing.T) {
 }
 
 func TestTransactionRollback(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	tx, err := dbConn.Beginx()
 	if err != nil {
@@ -241,7 +245,7 @@ func TestTransactionRollback(t *testing.T) {
 }
 
 func TestConcurrentInserts(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 
 	// SQLite has limitations with concurrent writes
 	// Instead of using goroutines, we'll simulate concurrency with sequential writes
@@ -278,7 +282,7 @@ func TestConcurrentInserts(t *testing.T) {
 }
 
 func TestInsertAndFetchArticle(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	article := &Article{
 		Source:    "test",
 		PubDate:   time.Now().UTC(),
@@ -298,7 +302,7 @@ func TestInsertAndFetchArticle(t *testing.T) {
 }
 
 func TestArticleExistsByURL(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	exists, err := ArticleExistsByURL(dbConn, "http://nope")
 	assert.NoError(t, err)
 	assert.False(t, exists)
@@ -313,7 +317,7 @@ func TestArticleExistsByURL(t *testing.T) {
 }
 
 func TestInsertAndFetchLLMScores(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	// insert article first
 	article := &Article{Source: "src", PubDate: time.Now(), URL: "u2", Title: "t2", Content: "c2", CreatedAt: time.Now()}
 	artID, err := InsertArticle(dbConn, article)
@@ -331,7 +335,7 @@ func TestInsertAndFetchLLMScores(t *testing.T) {
 }
 
 func TestUpdateArticleScoreAndFetchConfidence(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	// insert article
 	article := &Article{Source: "src", PubDate: time.Now(), URL: "u3", Title: "t3", Content: "c3", CreatedAt: time.Now()}
 	artID, err := InsertArticle(dbConn, article)
@@ -346,7 +350,7 @@ func TestUpdateArticleScoreAndFetchConfidence(t *testing.T) {
 }
 
 func TestFetchLatestEnsembleScore(t *testing.T) {
-	dbConn, _ := setupTestDB(t)
+	dbConn := setupTestDB(t)
 	// insert article
 	article := &Article{Source: "s", PubDate: time.Now(), URL: "u4", Title: "t4", Content: "c4", CreatedAt: time.Now()}
 	artID, err := InsertArticle(dbConn, article)
@@ -380,4 +384,76 @@ func TestWithTransaction(t *testing.T) {
 
 	// For now, we'll consider transaction isolation covered by TestTransactionRollback
 	// which tests that rolled-back changes aren't visible, implying proper isolation
+}
+
+func TestArticleWithNewFields(t *testing.T) {
+	dbConn := setupTestDB(t)
+
+	// Create test data
+	status := "processing"
+	failCount := 3
+	lastAttempt := time.Now().UTC().Truncate(time.Second)
+	escalated := true
+
+	// Create an article with all the new fields populated
+	article := &Article{
+		Source:      "test-new-fields",
+		PubDate:     time.Now().UTC(),
+		URL:         "http://example.com/test-new-fields",
+		Title:       "Test New Fields",
+		Content:     "Testing newly added fields in the Article struct",
+		CreatedAt:   time.Now().UTC(),
+		Status:      &status,
+		FailCount:   &failCount,
+		LastAttempt: &lastAttempt,
+		Escalated:   &escalated,
+	}
+
+	// Insert the article into the database
+	id, err := InsertArticle(dbConn, article)
+	assert.NoError(t, err)
+	assert.Greater(t, id, int64(0))
+
+	// Retrieve the article from the database
+	fetched, err := FetchArticleByID(dbConn, id)
+	assert.NoError(t, err)
+	assert.NotNil(t, fetched)
+
+	// Verify URL, Title (basic fields)
+	assert.Equal(t, article.URL, fetched.URL)
+	assert.Equal(t, article.Title, fetched.Title)
+
+	// Verify the new fields
+	assert.NotNil(t, fetched.Status, "Status field should not be nil")
+	assert.Equal(t, status, *fetched.Status)
+
+	assert.NotNil(t, fetched.FailCount, "FailCount field should not be nil")
+	assert.Equal(t, failCount, *fetched.FailCount)
+
+	assert.NotNil(t, fetched.LastAttempt, "LastAttempt field should not be nil")
+	assert.Equal(t, lastAttempt.Unix(), fetched.LastAttempt.Unix())
+
+	assert.NotNil(t, fetched.Escalated, "Escalated field should not be nil")
+	assert.Equal(t, escalated, *fetched.Escalated)
+
+	// Test SQL write for these fields specifically
+	_, err = dbConn.Exec(`
+		UPDATE articles SET 
+			status = 'failed', 
+			fail_count = 5, 
+			last_attempt = ?, 
+			escalated = 1
+		WHERE id = ?
+	`, time.Now(), id)
+	assert.NoError(t, err)
+
+	// Fetch the updated article
+	updated, err := FetchArticleByID(dbConn, id)
+	assert.NoError(t, err)
+
+	// Verify the updated values
+	assert.Equal(t, "failed", *updated.Status)
+	assert.Equal(t, 5, *updated.FailCount)
+	assert.NotNil(t, updated.LastAttempt)
+	assert.Equal(t, true, *updated.Escalated)
 }

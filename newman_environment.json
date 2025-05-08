@@ -1,0 +1,24 @@
+{
+  "id": "newsbalancer-env",
+  "name": "NewsBalancer Environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "articleId",
+      "value": "4445",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "scoringArticleId",
+      "value": "4446",
+      "type": "default",
+      "enabled": true
+    }
+  ]
+}

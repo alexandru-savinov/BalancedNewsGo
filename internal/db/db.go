@@ -23,16 +23,20 @@ var (
 
 // Article represents a news article with bias information
 type Article struct {
-	ID             int64     `db:"id" json:"id"`
-	Source         string    `db:"source" json:"source"`
-	PubDate        time.Time `db:"pub_date" json:"pub_date"`
-	URL            string    `db:"url" json:"url"`
-	Title          string    `db:"title" json:"title"`
-	Content        string    `db:"content" json:"content"`
-	CreatedAt      time.Time `db:"created_at" json:"created_at"`
-	CompositeScore *float64  `db:"composite_score" json:"composite_score,omitempty"`
-	Confidence     *float64  `db:"confidence" json:"confidence,omitempty"`
-	ScoreSource    *string   `db:"score_source" json:"score_source,omitempty"`
+	ID             int64      `db:"id" json:"id"`
+	Source         string     `db:"source" json:"source"`
+	PubDate        time.Time  `db:"pub_date" json:"pub_date"`
+	URL            string     `db:"url" json:"url"`
+	Title          string     `db:"title" json:"title"`
+	Content        string     `db:"content" json:"content"`
+	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
+	Status         *string    `db:"status" json:"status,omitempty"`
+	FailCount      *int       `db:"fail_count" json:"fail_count,omitempty"`
+	LastAttempt    *time.Time `db:"last_attempt" json:"last_attempt,omitempty"`
+	Escalated      *bool      `db:"escalated" json:"escalated,omitempty"`
+	CompositeScore *float64   `db:"composite_score" json:"composite_score,omitempty"`
+	Confidence     *float64   `db:"confidence" json:"confidence,omitempty"`
+	ScoreSource    *string    `db:"score_source" json:"score_source,omitempty"`
 }
 
 // LLMScore represents a political bias score from an LLM model
@@ -237,8 +241,8 @@ func handleError(err error, msg string) error {
 	switch {
 	case err == sql.ErrNoRows:
 		return apperrors.New("not_found", msg)
-	case strings.Contains(errMsg, "UNIQUE constraint"):
-		return apperrors.New("conflict", msg)
+	case strings.Contains(errMsg, "UNIQUE constraint") || strings.Contains(errMsg, "unique constraint"):
+		return ErrDuplicateURL
 	case strings.Contains(errMsg, "FOREIGN KEY constraint"):
 		return apperrors.New("foreign_key_violation", msg)
 	default:
@@ -336,16 +340,77 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
 	return exists, nil
 }
 
-// InsertArticle creates a new article record
+// InsertArticle creates a new article record within a transaction to ensure atomicity of the duplicate check and insert.
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
-	result, err := db.NamedExec(`
-        INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source)
-        VALUES (:source, :pub_date, :url, :title, :content, :created_at, :composite_score, :confidence, :score_source)`,
+	tx, err := db.Beginx()
+	if err != nil {
+		return 0, handleError(err, "failed to begin transaction for article insert")
+	}
+	// Ensure transaction is rolled back in case of error
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback() // Rollback on panic
+			panic(p)          // Re-panic
+		} else if err != nil {
+			_ = tx.Rollback() // Rollback on error
+		}
+	}()
+
+	// 1. Prepare article fields with defaults if not set
+	if article.CreatedAt.IsZero() {
+		article.CreatedAt = time.Now()
+	}
+	if article.Status == nil {
+		defaultStatus := "pending" // Ideally, use a defined constant here later
+		article.Status = &defaultStatus
+	}
+	if article.FailCount == nil {
+		defaultFailCount := 0
+		article.FailCount = &defaultFailCount
+	}
+	if article.Escalated == nil {
+		defaultEscalated := false
+		article.Escalated = &defaultEscalated
+	}
+
+	// 2. Check if URL exists within the transaction
+	var exists bool
+	err = tx.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", article.URL)
+	if err != nil && err != sql.ErrNoRows { // Allow ErrNoRows here, should return exists=false
+		return 0, handleError(err, "failed to check article URL existence in transaction")
+	}
+	if exists {
+		err = ErrDuplicateURL // Explicitly set the error to be returned
+		return 0, err
+	}
+
+	// 3. Insert the article if it doesn't exist
+	result, err := tx.NamedExec(`
+        INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source,
+                              status, fail_count, last_attempt, escalated)
+        VALUES (:source, :pub_date, :url, :title, :content, :created_at, :composite_score, :confidence, :score_source,
+                :status, :fail_count, :last_attempt, :escalated)`,
 		article)
 	if err != nil {
+		log.Printf("[ERROR] Failed to insert article in transaction: %v", err)
+		// handleError will check for UNIQUE constraint error here again just in case of race conditions outside the explicit check
 		return 0, handleError(err, "failed to insert article")
 	}
-	return result.LastInsertId()
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		log.Printf("[ERROR] Failed to retrieve last insert ID: %v", err)
+		return 0, handleError(err, "failed to get inserted article ID")
+	}
+
+	// 4. Commit the transaction
+	err = tx.Commit()
+	if err != nil {
+		return 0, handleError(err, "failed to commit transaction for article insert")
+	}
+
+	log.Printf("[INFO] Article inserted successfully with ID: %d", id)
+	return id, nil
 }
 
 // InsertLLMScore creates a new LLM score record
@@ -401,6 +466,12 @@ func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset
 
 // FetchArticleByID retrieves a single article by ID
 func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
+	log.Printf("[DEBUG] FetchArticleByID called with id: %d", id)
+	if db == nil {
+		log.Printf("[ERROR] Database connection is nil")
+		return nil, errors.New("database connection is nil")
+	}
+
 	var article Article
 
 	// Add retry logic with backoff for recently created articles
@@ -409,23 +480,23 @@ func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 
 	var err error
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		log.Printf("[DEBUG] Attempt %d to fetch article with id: %d", attempt+1, id)
 		err = db.Get(&article, "SELECT * FROM articles WHERE id = ?", id)
 		if err == nil {
 			// Article found, return it
+			log.Printf("[INFO] Article fetched successfully: %+v", article)
 			return &article, nil
 		}
 
 		if err != sql.ErrNoRows {
 			// For errors other than "no rows", log the specific error
-			log.Printf("[ERROR] FetchArticleByID %d failed (attempt %d): %v", id, attempt+1, err)
+			log.Printf("[ERROR] FetchArticleByID failed (attempt %d): %v", attempt+1, err)
 			// Don't retry for database errors
 			break
 		}
 
-		log.Printf("[INFO] FetchArticleByID %d: article not found, retrying after %v (attempt %d of %d)", id, retryDelay, attempt+1, maxRetries)
+		log.Printf("[INFO] FetchArticleByID: article not found, retrying after %v (attempt %d of %d)", retryDelay, attempt+1, maxRetries)
 		// Only for "no rows" error, wait and retry
-		// This helps with timing issues when an article was just created
-		// but the transaction hasn't fully committed yet
 		if attempt < maxRetries-1 {
 			time.Sleep(retryDelay)
 			retryDelay *= 2 // Exponential backoff
@@ -434,10 +505,10 @@ func FetchArticleByID(db *sqlx.DB, id int64) (*Article, error) {
 
 	// Handle the final error
 	if err == sql.ErrNoRows {
-		log.Printf("[WARN] FetchArticleByID %d: article not found after %d attempts", id, maxRetries)
+		log.Printf("[WARN] FetchArticleByID: article not found after %d attempts", maxRetries)
 		return nil, ErrArticleNotFound
 	}
-	log.Printf("[ERROR] FetchArticleByID %d failed with database error: %v", id, err)
+	log.Printf("[ERROR] FetchArticleByID failed with database error: %v", err)
 	return nil, handleError(err, "failed to fetch article")
 }
 
@@ -466,14 +537,32 @@ func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence 
 
 // UpdateArticleScoreLLM updates the composite score for an article, specifically from LLM rescoring
 func UpdateArticleScoreLLM(exec sqlx.ExtContext, articleID int64, score float64, confidence float64) error {
-	_, err := exec.ExecContext(context.Background(), `
+	log.Printf("[DEBUG][CONFIDENCE] UpdateArticleScoreLLM called with articleID=%d, score=%.4f, confidence=%.4f",
+		articleID, score, confidence)
+
+	result, err := exec.ExecContext(context.Background(), `
         UPDATE articles 
         SET composite_score = ?, confidence = ?, score_source = 'llm'
         WHERE id = ?`,
 		score, confidence, articleID)
+
 	if err != nil {
+		log.Printf("[ERROR][CONFIDENCE] Failed to update article score in database: %v", err)
 		return handleError(err, "failed to update article score (LLM)")
 	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("[ERROR][CONFIDENCE] Error getting rows affected: %v", err)
+	} else {
+		log.Printf("[DEBUG][CONFIDENCE] UpdateArticleScoreLLM affected %d rows for articleID=%d",
+			rowsAffected, articleID)
+
+		if rowsAffected == 0 {
+			log.Printf("[WARN][CONFIDENCE] No rows updated for articleID=%d - article may not exist", articleID)
+		}
+	}
+
 	return nil
 }
 
@@ -497,7 +586,9 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 
 	// Verify database connection is working
 	if err = db.Ping(); err != nil {
-		db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Error closing DB after ping failure: %v", closeErr)
+		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -506,6 +597,116 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Hour)
 
+	// Set busy_timeout to help with concurrent access
+	_, err = db.Exec("PRAGMA busy_timeout = 5000") // 5 seconds
+	if err != nil {
+		log.Printf("Failed to set busy_timeout: %v", err)
+		// Not fatal, but log it
+	}
+
+	// !! IMPORTANT !! Commenting out unconditional drop for integration testing
+	/*
+		// Drop existing tables to ensure fresh schema for testing/debugging
+		dropSchema := `
+		DROP TABLE IF EXISTS articles;
+		DROP TABLE IF EXISTS llm_scores;
+		DROP TABLE IF EXISTS feedback;
+		DROP TABLE IF EXISTS labels;
+		`
+		_, err = db.Exec(dropSchema)
+		if err != nil {
+			log.Printf("Failed to drop existing tables: %v", err)
+			// Not fatal, but log it
+		}
+	*/
+
+	// Define the database schema
+	schema := `
+	CREATE TABLE IF NOT EXISTS articles (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		source TEXT NOT NULL,
+		pub_date TIMESTAMP NOT NULL,
+		url TEXT NOT NULL UNIQUE,
+		title TEXT NOT NULL,
+		content TEXT NOT NULL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		status TEXT DEFAULT 'pending',
+		fail_count INTEGER DEFAULT 0,
+		last_attempt DATETIME,
+		escalated BOOLEAN DEFAULT 0,
+		composite_score REAL,
+		confidence REAL,
+		score_source TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS llm_scores (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL,
+		model TEXT NOT NULL,
+		score REAL NOT NULL,
+		metadata TEXT,
+		version TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (article_id) REFERENCES articles (id)
+	);
+
+	CREATE TABLE IF NOT EXISTS feedback (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL,
+		user_id TEXT,
+		feedback_text TEXT,
+		category TEXT,
+		ensemble_output_id INTEGER,
+		source TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (article_id) REFERENCES articles (id)
+	);
+
+	CREATE TABLE IF NOT EXISTS labels (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		data TEXT NOT NULL,
+		label TEXT NOT NULL,
+		source TEXT NOT NULL,
+		date_labeled TIMESTAMP NOT NULL,
+		labeler TEXT NOT NULL,
+		confidence REAL,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+
+	// Initialize database schema
+	_, err = db.Exec(schema)
+	if err != nil {
+		log.Printf("Failed to initialize DB schema: %v", err)
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Error closing DB after schema init failure: %v", closeErr)
+		}
+		return nil, err
+	}
+
 	// Return the database connection
 	return db, nil
+}
+
+// UpdateArticleStatus updates the status of a specific article.
+func UpdateArticleStatus(exec sqlx.ExtContext, articleID int64, status string) error {
+	query := `UPDATE articles SET status = ? WHERE id = ?`
+	result, err := exec.ExecContext(context.Background(), query, status, articleID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to update article status for ID %d to '%s': %v", articleID, status, err)
+		return handleError(err, fmt.Sprintf("failed to update article status for ID %d", articleID))
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("[WARN] Could not determine rows affected when updating status for article ID %d: %v", articleID, err)
+		// Not returning error here as the update might have succeeded.
+	} else if rowsAffected == 0 {
+		log.Printf("[WARN] UpdateArticleStatus: No rows affected when updating status for article ID %d to '%s'. Article may not exist.", articleID, status)
+		// Potentially return ErrArticleNotFound or a similar specific error if this is unexpected.
+		// For now, just logging as the main operation (exec) didn't error.
+	}
+
+	log.Printf("[INFO] Updated status for article ID %d to '%s'", articleID, status)
+	return nil
 }

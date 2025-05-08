@@ -32,7 +32,13 @@ func (c *Cache) Get(contentHash, model string) (*db.LLMScore, bool) {
 
 	// Convert stored JSON string back to LLMScore
 	var score db.LLMScore
-	if err := json.Unmarshal([]byte(v.(string)), &score); err != nil {
+	s, okAssert := v.(string)
+	if !okAssert {
+		// Optionally log an error here, e.g., log.Printf("Cache item for key %s was not a string", makeKey(contentHash, model))
+		return nil, false
+	}
+	if err := json.Unmarshal([]byte(s), &score); err != nil {
+		// Optionally log an error here, e.g., log.Printf("Failed to unmarshal cache item for key %s: %v", makeKey(contentHash, model), err)
 		return nil, false
 	}
 	return &score, true

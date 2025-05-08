@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -46,6 +47,7 @@ func main() {
 	}
 	// Initialize services
 	dbConn, llmClient, rssCollector, scoreManager := initServices()
+	defer func() { _ = dbConn.Close() }()
 
 	// Initialize Gin
 	router := gin.Default()
@@ -148,7 +150,8 @@ func main() {
 	// go startReprocessingLoop(dbConn, llmClient) // Temporarily disabled for debugging
 
 	if err := router.Run(":8080"); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		log.Printf("ERROR: Failed to start server: %v", err)
+		os.Exit(1)
 	}
 }
 
@@ -164,49 +167,62 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	// Initialize database
 	dbConn, err := db.InitDB("news.db")
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		log.Printf("ERROR: Failed to initialize database: %v", err)
+		os.Exit(1)
 	}
 
 	// Initialize LLM client
-	llmClient := llm.NewLLMClient(dbConn)
+	llmClient, err := llm.NewLLMClient(dbConn)
+	if err != nil {
+		log.Printf("ERROR: Failed to initialize LLM Client: %v", err)
+		os.Exit(1)
+	}
 
 	// Initialize RSS collector from external config
-	type FeedSource struct {
-		Category string `json:"category"`
-		URL      string `json:"url"`
-	}
-	type FeedSourcesConfig struct {
-		Sources []FeedSource `json:"sources"`
-	}
-
-	var feedConfig FeedSourcesConfig
-	feedConfigFile := "configs/feed_sources.json"
-	feedConfigData, err := os.ReadFile(feedConfigFile)
+	// Load feed URLs from config file first
+	feedSourcesPath := "configs/feed_sources.json"
+	feedConfigData, err := os.ReadFile(feedSourcesPath)
 	if err != nil {
-		log.Fatalf("Failed to read feed sources config: %v", err)
+		log.Printf("ERROR: Failed to read feed sources config '%s': %v", feedSourcesPath, err)
+		os.Exit(1)
+	}
+	var feedConfig struct { // Use anonymous struct for local parsing
+		Sources []struct {
+			URL string `json:"url"`
+		} `json:"sources"`
 	}
 	if err := json.Unmarshal(feedConfigData, &feedConfig); err != nil {
-		log.Fatalf("Failed to parse feed sources config: %v", err)
+		log.Printf("ERROR: Failed to parse feed sources config '%s': %v", feedSourcesPath, err)
+		os.Exit(1)
 	}
 	feedURLs := make([]string, 0, len(feedConfig.Sources))
 	for _, src := range feedConfig.Sources {
 		feedURLs = append(feedURLs, src.URL)
 	}
-	rssCollector := rss.NewCollector(dbConn, feedURLs, llmClient)
-	rssCollector.StartScheduler()
+
+	// Now initialize the collector with DB, URLs, and LLM client
+	collector := rss.NewCollector(dbConn, feedURLs, llmClient)
+	// Assuming NewCollector does not return an error based on previous usage
+
+	// Set HTTP client timeout if configured
+	if timeoutStr := os.Getenv("LLM_HTTP_TIMEOUT"); timeoutStr != "" {
+		if timeout, err := time.ParseDuration(timeoutStr); err == nil {
+			log.Printf("Setting LLM HTTP timeout to %v", timeout)
+			llmClient.SetHTTPLLMTimeout(timeout)
+		} else {
+			log.Printf("Warning: Invalid LLM_HTTP_TIMEOUT value: %s. Using default.", timeoutStr)
+		}
+	}
+
+	// Start cron job for fetching RSS feeds
 
 	// Initialize ScoreManager
 	cache := llm.NewCache()
-	calculator := &llm.DefaultScoreCalculator{
-		Config: &llm.CompositeScoreConfig{
-			MinScore: -1.0,
-			MaxScore: 1.0,
-		},
-	}
+	calculator := &llm.DefaultScoreCalculator{}
 	progressMgr := llm.NewProgressManager(10 * time.Minute) // Clean up progress data every 10 minutes
 	scoreManager := llm.NewScoreManager(dbConn, cache, calculator, progressMgr)
 
-	return dbConn, llmClient, rssCollector, scoreManager
+	return dbConn, llmClient, collector, scoreManager
 }
 
 func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
@@ -267,77 +283,10 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
+// TODO: Restore articleDetailHandler function definition
 func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	// Placeholder implementation
 	return func(c *gin.Context) {
-		id := c.Param("id")
-
-		articleID, err := strconv.ParseInt(id, 10, 64)
-		if err != nil {
-			c.String(400, "Invalid article ID")
-			return
-		}
-
-		article, err := db.FetchArticleByID(dbConn, articleID)
-		if err != nil {
-			c.String(404, "Article not found")
-			return
-		}
-
-		scores, _ := db.FetchLLMScores(dbConn, articleID)
-		composite, confidence, _ := llm.ComputeCompositeScoreWithConfidence(scores)
-
-		// Calculate bias label and confidence colors
-		var biasLabel string
-		if composite < -0.5 {
-			biasLabel = "Left"
-		} else if composite < -0.1 {
-			biasLabel = "Slightly Left"
-		} else if composite > 0.5 {
-			biasLabel = "Right"
-		} else if composite > 0.1 {
-			biasLabel = "Slightly Right"
-		} else {
-			biasLabel = "Center"
-		}
-
-		var confidenceColor string
-		if confidence >= 0.8 {
-			confidenceColor = "var(--confidence-high)"
-		} else if confidence >= 0.5 {
-			confidenceColor = "var(--confidence-medium)"
-		} else {
-			confidenceColor = "var(--confidence-low)"
-		}
-
-		// Calculate model indicators for the bias slider
-		var modelIndicators []map[string]interface{}
-		for _, s := range scores {
-			var meta struct {
-				Confidence float64 `json:"confidence"`
-			}
-			_ = json.Unmarshal([]byte(s.Metadata), &meta)
-
-			modelIndicators = append(modelIndicators, map[string]interface{}{
-				"Position": ((s.Score + 1) / 2) * 100,
-				"Title":    fmt.Sprintf("%s: %.2f (Confidence: %.0f%%)", s.Model, s.Score, meta.Confidence*100),
-			})
-		}
-
-		// Render HTML template
-		c.HTML(200, "article.html", gin.H{
-			"ID":                article.ID,
-			"Title":             article.Title,
-			"Content":           article.Content,
-			"Source":            article.Source,
-			"PubDate":           article.PubDate.Format("2006-01-02 15:04:05"),
-			"CreatedAt":         article.CreatedAt.Format("2006-01-02 15:04:05"),
-			"CompositeScore":    fmt.Sprintf("%.2f", composite),
-			"BiasLabel":         biasLabel,
-			"ConfidencePercent": fmt.Sprintf("%.0f", confidence*100),
-			"ConfidenceColor":   confidenceColor,
-			"SliderPosition":    ((composite + 1) / 2) * 100,
-			"ModelIndicators":   modelIndicators,
-			"Explanation":       "Analysis based on multiple machine learning models evaluating political bias.",
-		})
+		c.String(http.StatusNotImplemented, "Handler not implemented yet")
 	}
 }

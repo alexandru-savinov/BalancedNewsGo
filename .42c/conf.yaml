@@ -1,3 +1,0 @@
-apis:
-  internal/api/OpenAPI.yml:
-    alias: api-title

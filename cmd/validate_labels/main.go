@@ -277,7 +277,11 @@ func saveFlaggedCases(cases []FlaggedCase, prefix string) {
 		log.Printf("Failed to create %s file: %v", prefix, err)
 		return
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("Failed to close %s file: %v", prefix, err)
+		}
+	}()
 
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
@@ -316,7 +320,11 @@ func saveMetrics(metrics Metrics) {
 		log.Printf("Failed to create metrics log file: %v", err)
 		return
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.Printf("Failed to close metrics log file: %v", err)
+		}
+	}()
 
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")

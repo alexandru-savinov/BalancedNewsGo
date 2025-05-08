@@ -48,32 +48,31 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/articles/{id}/summary": {
+        "/api/feeds/healthz": {
             "get": {
-                "description": "Retrieves the text summary for an article",
+                "description": "Returns the health status of all configured RSS feeds",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
-                    "Summary"
+                    "Feeds"
                 ],
-                "summary": "Get article summary",
-                "parameters": [
-                    {
-                        "minimum": 1,
-                        "type": "integer",
-                        "description": "Article ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
+                "summary": "Get RSS feed health status",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Feed health status mapping feed names to boolean status",
                         "schema": {
-                            "$ref": "#/definitions/api.StandardResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
                         }
                     },
-                    "404": {
-                        "description": "Summary not available",
+                    "500": {
+                        "description": "Server error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
@@ -81,31 +80,17 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/feeds/healthz": {
-            "get": {
-                "description": "Returns the health of configured RSS feed sources",
-                "tags": [
-                    "Feeds"
-                ],
-                "summary": "Get feed health status",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "boolean"
-                            }
-                        }
-                    }
-                }
-            }
-        },
         "/api/llm/score-progress/{id}": {
             "get": {
-                "description": "Server-Sent Events endpoint streaming scoring progress for an article",
+                "description": "Server-Sent Events endpoint streaming real-time scoring progress for an article",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
                 "tags": [
-                    "Analysis"
+                    "LLM"
                 ],
                 "summary": "Score progress SSE stream",
                 "parameters": [
@@ -120,9 +105,15 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "event-stream",
+                        "description": "event-stream containing progress updates",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/models.ProgressState"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid article ID",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -172,16 +163,43 @@ const docTemplate = `{
         },
         "/api/refresh": {
             "post": {
-                "description": "Initiates a manual RSS feed refresh job",
+                "description": "Initiates a manual RSS feed refresh job to fetch new articles from configured RSS sources",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "Feeds"
                 ],
                 "summary": "Trigger RSS feed refresh",
                 "responses": {
                     "200": {
-                        "description": "Refresh started",
+                        "description": "Refresh started successfully",
                         "schema": {
-                            "$ref": "#/definitions/api.StandardResponse"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/api.StandardResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -808,8 +826,17 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "escalated": {
+                    "type": "boolean"
+                },
+                "fail_count": {
+                    "type": "integer"
+                },
                 "id": {
                     "type": "integer"
+                },
+                "last_attempt": {
+                    "type": "string"
                 },
                 "pub_date": {
                     "type": "string"
@@ -820,11 +847,54 @@ const docTemplate = `{
                 "source": {
                     "type": "string"
                 },
+                "status": {
+                    "type": "string"
+                },
                 "title": {
                     "type": "string"
                 },
                 "url": {
                     "type": "string"
+                }
+            }
+        },
+        "models.ProgressState": {
+            "description": "Progress state for long-running operations",
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error message if failed",
+                    "type": "string"
+                },
+                "final_score": {
+                    "description": "Final score if completed",
+                    "type": "number",
+                    "example": 0.25
+                },
+                "last_updated": {
+                    "description": "Timestamp",
+                    "type": "integer",
+                    "example": 1609459200
+                },
+                "message": {
+                    "description": "User-friendly message",
+                    "type": "string",
+                    "example": "Processing article"
+                },
+                "percent": {
+                    "description": "Progress percentage",
+                    "type": "integer",
+                    "example": 75
+                },
+                "status": {
+                    "description": "Overall status",
+                    "type": "string",
+                    "example": "InProgress"
+                },
+                "step": {
+                    "description": "Current detailed step",
+                    "type": "string",
+                    "example": "Scoring"
                 }
             }
         }

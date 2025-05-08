@@ -2,7 +2,6 @@ package llm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -253,29 +252,7 @@ func TestErrorRetryLogic(t *testing.T) {
 	assert.Contains(t, err.Error(), "llm_service_error")
 }
 
-// Mock retry service is no longer needed as we're testing different retry behavior
-// that works with the actual implementation
-type mockRetryService struct {
-	failuresLeft int
-	maxFailures  int
-	onAttempt    func()
-}
-
-func (m *mockRetryService) ScoreContent(ctx context.Context, pv PromptVariant, art *db.Article) (float64, float64, error) {
-	if m.onAttempt != nil {
-		m.onAttempt()
-	}
-
-	if m.failuresLeft < m.maxFailures {
-		m.failuresLeft++
-		return 0, 0, errors.New("temporary failure, please retry")
-	}
-
-	// Success after failing max times
-	return 0.5, 0.9, nil
-}
-
-// TestCompletelyEmptyResponse tests handling of completely empty LLM responses
+// TestCompletelyEmptyResponse tests handling of a completely empty response from API
 func TestCompletelyEmptyResponse(t *testing.T) {
 	// Response with empty JSON object in content
 	raw := `{"choices":[{"message":{"content":"{}"}}]}`

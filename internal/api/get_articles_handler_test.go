@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,7 +26,16 @@ func (m *MockArticlesDB) FetchArticles(ctx context.Context, source, leaning stri
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]*db.Article), args.Error(1)
+	val, ok := args.Get(0).([]*db.Article)
+	originalError := args.Error(1)
+	if !ok {
+		// log.Printf("WARN: MockArticlesDB.FetchArticles: type assertion to []*db.Article failed")
+		if originalError == nil {
+			return nil, fmt.Errorf("MockArticlesDB.FetchArticles: type assertion failed")
+		}
+		return nil, originalError
+	}
+	return val, originalError
 }
 
 func (m *MockArticlesDB) ArticleExistsByURL(ctx context.Context, url string) (bool, error) {
@@ -63,7 +73,7 @@ func setupArticlesTestRouter(mockDB *MockArticlesDB) *gin.Engine {
 	return router
 }
 
-func TestGetArticlesHandlerSuccess(t *testing.T) {
+func TestGetArticlesHandlerSuccessWithMock(t *testing.T) {
 	ctx := context.Background()
 	mockDB := &MockArticlesDB{}
 	mockDB.On("FetchArticles", ctx, "", "", 20, 0).Return([]*db.Article{{ID: 1}}, nil)

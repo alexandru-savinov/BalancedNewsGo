@@ -15,7 +15,7 @@ func TestScoreBoundaryValidation(t *testing.T) {
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &llm.DefaultScoreCalculator{Config: cfg}
+	calc := &llm.DefaultScoreCalculator{}
 
 	// Test structure definition
 	type boundaryTest struct {
@@ -26,7 +26,8 @@ func TestScoreBoundaryValidation(t *testing.T) {
 		expectError   bool
 	}
 
-	var tests []boundaryTest
+	// Preallocate slice with estimated capacity
+	tests := make([]boundaryTest, 0, 25)
 
 	// Exact boundary tests
 	tests = append(tests, boundaryTest{
@@ -86,7 +87,7 @@ func TestScoreBoundaryValidation(t *testing.T) {
 	// Run all tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			score, conf, err := calc.CalculateScore(tt.scores)
+			score, conf, err := calc.CalculateScore(tt.scores, cfg)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -107,11 +108,63 @@ func BenchmarkScoreCalculation(b *testing.B) {
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &llm.DefaultScoreCalculator{Config: cfg}
+	calc := &llm.DefaultScoreCalculator{}
 	scores := GenerateScoreSet(-0.8, 0.9)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = calc.CalculateScore(scores)
+		_, _, _ = calc.CalculateScore(scores, cfg)
+	}
+}
+
+func TestScoreBoundaries(t *testing.T) {
+	cfg := &llm.CompositeScoreConfig{
+		MinScore: -1.0,
+		MaxScore: 1.0,
+		// Add other fields if needed
+		Formula: "average", DefaultMissing: 0.0, Models: []llm.ModelConfig{{Perspective: "left", ModelName: "left"}}, ConfidenceMethod: "count_valid",
+	}
+	calc := &llm.DefaultScoreCalculator{}
+
+	testCases := []struct {
+		name          string
+		inputScores   []db.LLMScore
+		expectedScore float64
+	}{
+		// ... test cases ...
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			score, _, err := calc.CalculateScore(tc.inputScores, cfg) // Pass cfg
+			assert.NoError(t, err)
+			assert.InDelta(t, tc.expectedScore, score, 0.001)
+		})
+	}
+}
+
+func TestScoreBoundariesWithDifferentConfig(t *testing.T) {
+	cfg := &llm.CompositeScoreConfig{
+		MinScore: 0.0,
+		MaxScore: 10.0,
+		// Add other fields if needed
+		Formula: "average", DefaultMissing: 0.0, Models: []llm.ModelConfig{{Perspective: "left", ModelName: "left"}}, ConfidenceMethod: "count_valid",
+	}
+	calc := &llm.DefaultScoreCalculator{}
+
+	testCases := []struct {
+		name          string
+		inputScores   []db.LLMScore
+		expectedScore float64
+	}{
+		// ... test cases ...
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			score, _, err := calc.CalculateScore(tc.inputScores, cfg) // Pass cfg
+			assert.NoError(t, err)
+			assert.InDelta(t, tc.expectedScore, score, 0.001)
+		})
 	}
 }

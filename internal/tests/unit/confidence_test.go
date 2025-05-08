@@ -1,7 +1,6 @@
 package unit
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -9,39 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type testScoreCalculator struct {
-	*llm.DefaultScoreCalculator
-}
-
-// extractConfidence extracts confidence value from score metadata
-func (c *testScoreCalculator) extractConfidence(metadata string) float64 {
-	var meta map[string]interface{}
-	if err := json.Unmarshal([]byte(metadata), &meta); err != nil {
-		return 0.0
-	}
-
-	if conf, ok := meta["confidence"]; ok {
-		switch v := conf.(type) {
-		case float64:
-			return v
-		case int:
-			return float64(v)
-		case int64:
-			return float64(v)
-		default:
-			return 0.0
-		}
-	}
-	return 0.0
-}
-
 func TestExtractConfidence(t *testing.T) {
 	cfg := &llm.CompositeScoreConfig{
 		MinScore:       -1.0,
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &testScoreCalculator{&llm.DefaultScoreCalculator{Config: cfg}}
+	// Initialize calculator without config
+	calc := &llm.DefaultScoreCalculator{}
 
 	tests := []struct {
 		name         string
@@ -194,7 +168,7 @@ func TestExtractConfidence(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, conf, err := calc.CalculateScore(tt.scores)
+			_, conf, err := calc.CalculateScore(tt.scores, cfg)
 			assert.NoError(t, err)
 			assert.InDelta(t, tt.expectedConf, conf, 0.001, tt.description)
 		})
@@ -207,13 +181,13 @@ func TestConfidenceCalculationWithLimitedPerspectives(t *testing.T) {
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &llm.DefaultScoreCalculator{Config: cfg}
+	calc := &llm.DefaultScoreCalculator{}
 
 	scores := []db.LLMScore{
 		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.85}`},
 	}
 
-	_, conf, err := calc.CalculateScore(scores)
+	_, conf, err := calc.CalculateScore(scores, cfg)
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.85, conf, 0.001, "Confidence should be 0.85 with just left perspective")
 
@@ -222,7 +196,7 @@ func TestConfidenceCalculationWithLimitedPerspectives(t *testing.T) {
 		{Model: "center", Score: 0.1, Metadata: `{"confidence": 0.75}`},
 	}
 
-	_, conf, err = calc.CalculateScore(scores)
+	_, conf, err = calc.CalculateScore(scores, cfg)
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.8, conf, 0.001, "Confidence should be average of available perspectives")
 }
@@ -233,14 +207,14 @@ func TestConfidenceInheritance(t *testing.T) {
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &llm.DefaultScoreCalculator{Config: cfg}
+	calc := &llm.DefaultScoreCalculator{}
 
 	scores := []db.LLMScore{
 		{Model: "left", Score: 0.3, Metadata: `{"confidence": 0.6}`},
 		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
 	}
 
-	_, conf, err := calc.CalculateScore(scores)
+	_, conf, err := calc.CalculateScore(scores, cfg)
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.9, conf, 0.001, "Should use confidence from latest left score")
 
@@ -249,19 +223,19 @@ func TestConfidenceInheritance(t *testing.T) {
 		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
 	}
 
-	_, conf, err = calc.CalculateScore(scores)
+	_, conf, err = calc.CalculateScore(scores, cfg)
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.9, conf, 0.001, "Should use confidence from latest model for same perspective")
 }
 
 func TestConfidenceCalculationWithNilConfig(t *testing.T) {
-	calc := &llm.DefaultScoreCalculator{Config: nil}
+	calc := &llm.DefaultScoreCalculator{}
 
 	scores := []db.LLMScore{
 		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.85}`},
 	}
 
-	_, _, err := calc.CalculateScore(scores)
+	_, _, err := calc.CalculateScore(scores, nil)
 	assert.Error(t, err, "Should return error when Config is nil")
 	assert.Contains(t, err.Error(), "Config must not be nil", "Error message should mention nil Config")
 }
@@ -272,14 +246,14 @@ func TestConfidenceCalculationWithExtremeValues(t *testing.T) {
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &llm.DefaultScoreCalculator{Config: cfg}
+	calc := &llm.DefaultScoreCalculator{}
 
 	scores := []db.LLMScore{
 		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.0000001}`},
 		{Model: "right", Score: -0.5, Metadata: `{"confidence": 0.0000002}`},
 	}
 
-	_, conf, err := calc.CalculateScore(scores)
+	_, conf, err := calc.CalculateScore(scores, cfg)
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.00000015, conf, 0.0000001, "Should handle extremely small confidence values")
 
@@ -292,7 +266,35 @@ func TestConfidenceCalculationWithExtremeValues(t *testing.T) {
 		}
 	}
 
-	_, conf, err = calc.CalculateScore(largeScores)
+	_, conf, err = calc.CalculateScore(largeScores, cfg)
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.9, conf, 0.001, "Should handle large number of scores")
+}
+
+func TestZeroScoreWithNonZeroConfidence(t *testing.T) {
+	cfg := &llm.CompositeScoreConfig{
+		MinScore:       -1.0,
+		MaxScore:       1.0,
+		DefaultMissing: 0.0,
+	}
+	calc := &llm.DefaultScoreCalculator{}
+
+	scores := []db.LLMScore{
+		{Model: "left", Score: 0.0, Metadata: `{"confidence": 0.85}`},
+		{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.75}`},
+		{Model: "right", Score: 0.0, Metadata: `{"confidence": 0.90}`},
+	}
+
+	score, conf, err := calc.CalculateScore(scores, cfg)
+	assert.NoError(t, err)
+	assert.Equal(t, 0.0, score, "Score should be 0.0 when all scores are zero")
+	assert.InDelta(t, 0.833, conf, 0.001, "Confidence should be average of non-zero confidences")
+}
+
+func TestCalculateConfidence_NilConfig(t *testing.T) {
+	calc := &llm.DefaultScoreCalculator{}
+	scores := []db.LLMScore{{Model: "left", Score: 0.5}}
+	_, _, err := calc.CalculateScore(scores, nil) // Pass nil config
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Config must not be nil")
 }

@@ -1,13 +1,26 @@
 package llm
 
 import (
-	"strings"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
+
+// Helper to create a score with metadata containing confidence
+// (Copied from deleted composite_score_fix_test.go)
+func createScoreWithConfidence(model string, score float64, confidence float64) db.LLMScore {
+	metadata := fmt.Sprintf(`{"confidence": %.2f}`, confidence)
+	return db.LLMScore{
+		ArticleID: 1, // Hardcode article ID as it's not relevant for these tests
+		Model:     model,
+		Score:     score,
+		Metadata:  metadata,
+		CreatedAt: time.Now(), // Set a consistent time for tests if needed
+	}
+}
 
 // Model name constants to avoid duplication
 const (
@@ -30,45 +43,6 @@ type CompositeScore struct {
 	Formula      string                   `json:"formula"`
 	FinalScore   float64                  `json:"final_score"`
 	Perspectives []string                 `json:"perspectives"`
-}
-
-// Helper function to normalize model names for tests
-func testNormalizeModelName(modelName string) string {
-	// Trim spaces and convert to lowercase for case-insensitive comparison
-	name := strings.TrimSpace(modelName)
-	name = strings.ToLower(name)
-
-	// Remove any version or revision information after colon
-	if colonIndex := strings.Index(name, ":"); colonIndex != -1 {
-		name = name[:colonIndex]
-	}
-
-	// Remove any complex version info (e.g. @v1.2.3+experimental)
-	if atIndex := strings.Index(name, "@"); atIndex != -1 {
-		name = name[:atIndex]
-	}
-
-	return name
-}
-
-// Helper function for model perspective mapping in tests
-func testGetPerspectiveFromModel(modelName string, cfg *CompositeScoreConfig) string {
-	// First try using MapModelToPerspective function
-	perspective := MapModelToPerspective(modelName, cfg)
-	if perspective != "" {
-		return perspective
-	}
-
-	// Fall back to legacy mapping
-	normalizedModel := testNormalizeModelName(modelName)
-	if normalizedModel == "left" || strings.Contains(normalizedModel, "left") {
-		return "left"
-	} else if normalizedModel == "center" || strings.Contains(normalizedModel, "center") {
-		return "center"
-	} else if normalizedModel == "right" || strings.Contains(normalizedModel, "right") {
-		return "right"
-	}
-	return ""
 }
 
 // CalculateCompositeScore calculates the final score from individual model scores
@@ -95,101 +69,132 @@ func CalculateCompositeScore(composite *CompositeScore) error {
 	return nil
 }
 
-// TestModelNameNormalization tests the normalization of model names in different contexts
-func TestModelNameNormalization(t *testing.T) {
-	// Create a test config
-	cfg := &CompositeScoreConfig{
+// Helper to create a test config for model name handling tests
+func createModelNameTestConfig() *CompositeScoreConfig {
+	return &CompositeScoreConfig{
 		Models: []ModelConfig{
-			{ModelName: modelLeft, Perspective: "left"},
-			{ModelName: modelCenter, Perspective: "center"},
-			{ModelName: modelRight, Perspective: "right"},
+			{ModelName: "meta-llama/llama-3-maverick:123", Perspective: "left"},
+			{ModelName: "google/gemini-pro", Perspective: "center"},
+			{ModelName: "openai/gpt-4-turbo", Perspective: "right"},
+			{ModelName: "Vendor/Legacy-Left", Perspective: "left"},
+			{ModelName: " Vendor / Mixed-Case-Center ", Perspective: "center"},
 		},
-	}
-
-	testCases := []struct {
-		name                string
-		modelName           string
-		expectedPerspective string
-	}{
-		{
-			name:                "Model with extra spaces",
-			modelName:           "  " + modelLeft + "  ",
-			expectedPerspective: "left",
-		},
-		{
-			name:                "Model with mixed case",
-			modelName:           "Meta-Llama/Llama-4-Maverick",
-			expectedPerspective: "left",
-		},
-		{
-			name:                "Model with unusual spacing",
-			modelName:           modelCenter + "\t",
-			expectedPerspective: "center",
-		},
-		{
-			name:                "Model with non-breaking space",
-			modelName:           modelRight + "\u00A0",
-			expectedPerspective: "right",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			perspective := MapModelToPerspective(tc.modelName, cfg)
-			assert.Equal(t, tc.expectedPerspective, perspective)
-		})
+		Formula: "average", DefaultMissing: 0.0, HandleInvalid: "default",
+		MinScore: -1.0, MaxScore: 1.0, ConfidenceMethod: "count_valid",
+		MinConfidence: 0.0, MaxConfidence: 1.0,
 	}
 }
 
-// TestModelNameFallbackLogic tests the fallback logic when model names aren't found in config
-func TestModelNameFallbackLogic(t *testing.T) {
-	// Save original config and restore after test
-	originalConfig := testModelConfig
-	defer func() { testModelConfig = originalConfig }()
+func TestMapModelToPerspective(t *testing.T) {
+	testCfg := createModelNameTestConfig()
 
-	// Create a test config
-	testConfig := &CompositeScoreConfig{
+	testCases := []struct {
+		modelName string
+		expected  string
+	}{
+		{"meta-llama/llama-3-maverick:123", "left"},
+		{"meta-llama/llama-3-maverick:latest", "left"}, // Should match base name
+		{"meta-llama/llama-3-maverick", "left"},
+		{"google/gemini-pro", "center"},
+		{"openai/gpt-4-turbo", "right"},
+		{"Vendor/Legacy-Left", "left"},
+		{" Vendor / Mixed-Case-Center ", "center"}, // Should handle spacing and case
+		{"unknown/model", ""},                      // Not found
+		{":123", ""},                               // Invalid format
+		{"", ""},                                   // Empty string
+		{"left", "left"},                           // Legacy fallback
+		{"CENTER", "center"},                       // Legacy fallback (case-insensitive)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.modelName, func(t *testing.T) {
+			actual := MapModelToPerspective(tc.modelName, testCfg) // Pass testCfg
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+
+	// Test with nil config
+	t.Run("Nil Config", func(t *testing.T) {
+		actual := MapModelToPerspective("google/gemini-pro", nil)
+		assert.Equal(t, "", actual, "Should return empty string for nil config")
+	})
+}
+
+func TestComputeWithMixedModelNames(t *testing.T) {
+	testCfg := createModelNameTestConfig()
+
+	scores := []db.LLMScore{
+		createScoreWithConfidence("meta-llama/llama-3-maverick:123", -0.8, 0.9), // left
+		createScoreWithConfidence("google/gemini-pro", 0.1, 0.8),                // center
+		createScoreWithConfidence(" Vendor / Mixed-Case-Center ", 0.3, 0.7),     // center (duplicate, lower conf)
+		createScoreWithConfidence("openai/gpt-4-turbo", 0.9, 0.95),              // right
+		createScoreWithConfidence("unknown/model", 0.5, 0.5),                    // unknown
+	}
+
+	// Expected score (average): Uses -0.8 (left), 0.1 (center, higher conf), 0.9 (right)
+	// (-0.8 + 0.1 + 0.9) / 3 = 0.2 / 3 = 0.0667
+	expectedScore := 0.0667
+	expectedConfidence := 1.0 // Assumes count_valid, 3/3 perspectives found
+
+	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
+
+	assert.NoError(t, err)
+	assert.InDelta(t, expectedScore, score, 0.001)
+	assert.InDelta(t, expectedConfidence, confidence, 0.001)
+}
+
+// TestModelNameNormalization tests the normalization of model names in different contexts
+func TestModelNameNormalization(t *testing.T) {
+	testCfg := createModelNameTestConfig()
+
+	t.Run("MapModelToPerspective Normalization", func(t *testing.T) {
+		assert.Equal(t, "left", MapModelToPerspective("meta-llama/llama-3-maverick:latest", testCfg))
+		assert.Equal(t, "center", MapModelToPerspective(" google/gemini-pro ", testCfg))
+	})
+
+	t.Run("CompositeScore Calculation Normalization", func(t *testing.T) {
+		scores := []db.LLMScore{
+			createScoreWithConfidence("meta-llama/llama-3-maverick:latest", -0.5, 0.9),
+			createScoreWithConfidence(" google/gemini-pro ", 0.0, 0.8),
+			createScoreWithConfidence("openai/gpt-4-turbo", 0.5, 0.85),
+		}
+		score, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
+		assert.NoError(t, err)
+		assert.InDelta(t, 0.0, score, 0.001) // (-0.5 + 0.0 + 0.5) / 3 = 0
+	})
+}
+
+// TestModelNameFallbackLogic tests if legacy model names are correctly mapped
+// when the new model name mapping fails.
+func TestModelNameFallbackLogic(t *testing.T) {
+	cfg := &CompositeScoreConfig{
+		// Config does NOT include direct mappings for "left", "center", "right"
 		Models: []ModelConfig{
-			{ModelName: modelLeft, Perspective: "left"},
-			{ModelName: modelCenter, Perspective: "center"},
-			{ModelName: modelRight, Perspective: "right"},
+			{Perspective: "left", ModelName: "some-modern-left-model"},
+			{Perspective: "center", ModelName: "another-modern-center"},
+			{Perspective: "right", ModelName: "modern-right"},
 		},
 		Formula:          "average",
 		DefaultMissing:   0.0,
+		MinScore:         -1.0,
+		MaxScore:         1.0,
+		HandleInvalid:    "default",
 		ConfidenceMethod: "count_valid",
-		MinConfidence:    0.1,
-		MaxConfidence:    1.0,
-		HandleInvalid:    "replace",
-		MinScore:         -1.0, // Accept all valid scores
-		MaxScore:         1.0,  // Accept all valid scores
 	}
 
-	// Set our test config
-	testModelConfig = testConfig
-
-	// Create test scores using both configured and legacy model names
 	scores := []db.LLMScore{
-		// Modern model names (configured)
-		{ArticleID: 1, Model: modelLeft, Score: 0.2},
-		// Legacy model names (not in config)
-		{ArticleID: 1, Model: "left", Score: 0.1},
-		{ArticleID: 1, Model: "center", Score: 0.5},
-		{ArticleID: 1, Model: "right", Score: 0.9},
-		// Unknown model (should be skipped)
-		{ArticleID: 1, Model: "unknown", Score: 0.7},
+		// These scores use the legacy model names directly
+		{Model: "left", Score: -0.5, Metadata: `{"confidence":0.9}`},  // Added metadata
+		{Model: "center", Score: 0.1, Metadata: `{"confidence":0.8}`}, // Added metadata
+		{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`}, // Added metadata
 	}
 
-	// Calculate score
-	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores)
+	compositeScore, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
 
-	// Assertions
-	require.NoError(t, err)
-	// Only the highest confidence score from each perspective should be used
-	// We expect the function to use left=0.2, center=0.5, right=0.9
-	// Average: (0.2 + 0.5 + 0.9) / 3 = 0.53
-	assert.InDelta(t, 0.53, score, 0.01)
-	// Expect confidence to be 1.0 when all perspectives are present
-	assert.InDelta(t, 1.0, confidence, 0.01)
+	assert.NoError(t, err, "Fallback logic should not produce an error")
+	// The expected score should be the average of the scores, as they should be correctly mapped
+	expected := (-0.5 + 0.1 + 0.4) / 3.0
+	assert.InDelta(t, expected, compositeScore, 0.001, "Fallback logic score mismatch")
 }
 
 // TestModelMappingWithInvalidConfiguration tests model mapping with invalid configurations

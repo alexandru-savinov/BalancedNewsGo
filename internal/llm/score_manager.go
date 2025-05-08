@@ -1,9 +1,9 @@
 package llm
 
 import (
-	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -30,121 +30,118 @@ func NewScoreManager(db *sqlx.DB, cache *Cache, calculator ScoreCalculator, prog
 	}
 }
 
-// UpdateArticleScore handles atomic update of score and confidence
+// UpdateArticleScore computes and stores a composite score for an article based on LLM scores
 func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
-	if sm.calculator == nil {
-		return 0, 0, fmt.Errorf("ScoreManager: calculator is nil")
-	}
-	if sm.db == nil {
-		return 0, 0, fmt.Errorf("ScoreManager: db is nil")
-	}
-	if cfg == nil {
-		return 0, 0, fmt.Errorf("ScoreManager: config is nil")
+	// First, check if all responses have zero confidence
+	if allZeros, errZeroConf := checkForAllZeroResponses(scores); allZeros {
+		log.Printf("[ERROR] ArticleID %d: All LLMs returned zero confidence - this is a serious error: %v", articleID, errZeroConf)
+		// Set an error progress state
+		sm.SetProgress(articleID, &models.ProgressState{
+			Step:        "Error",
+			Message:     "All LLMs returned zero confidence - scoring failed",
+			Status:      "Error",
+			Error:       fmt.Sprintf("All LLMs returned zero confidence - this indicates a serious issue with the LLM responses: %v", errZeroConf),
+			LastUpdated: time.Now().Unix(),
+		})
+		// Persist final status to DB
+		if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedZeroConf); dbErr != nil {
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after zero confidence error: %v", articleID, models.ArticleStatusFailedZeroConf, dbErr)
+		}
+		// Return the error without modifying the score
+		return 0, 0, fmt.Errorf("all LLMs returned zero confidence - this indicates a serious issue with the LLM responses: %w", errZeroConf)
 	}
 
-	// Progress: Start
+	// Use the score calculator to compute the score and confidence, passing the config
+	cfg.ArticleIDForDebug = articleID // Set the ID for logging within calculation
+	compositeScore, confidence, errCalc := sm.calculator.CalculateScore(scores, cfg)
+	cfg.ArticleIDForDebug = 0 // Reset after use (optional, good practice)
+	if errCalc != nil {
+		// Check for the specific "all invalid" error
+		if errors.Is(errCalc, ErrAllPerspectivesInvalid) {
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: %v. Score will not be updated.", articleID, errCalc)
+			// Update progress to reflect the error state
+			errorState := models.ProgressState{
+				Step:        "Error",
+				Message:     errCalc.Error(),
+				Status:      "Error",
+				Percent:     100,
+				LastUpdated: time.Now().Unix(),
+			}
+			if sm.progressMgr != nil {
+				sm.progressMgr.SetProgress(articleID, &errorState)
+			}
+			// Persist final status to DB
+			if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedAllInvalid); dbErr != nil {
+				log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after all invalid error: %v", articleID, models.ArticleStatusFailedAllInvalid, dbErr)
+			} else {
+				log.Printf("[DEBUG] ScoreManager: ArticleID %d: Successfully updated status to %s.", articleID, models.ArticleStatusFailedAllInvalid)
+			}
+			// IMPORTANT: Do NOT proceed to update the DB score. Return the error.
+			log.Printf("[DEBUG] ScoreManager: ArticleID %d: Returning ErrAllPerspectivesInvalid error now.", articleID)
+			return 0, 0, errCalc
+		} else {
+			// Handle other, unexpected errors from CalculateScore
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: Unexpected error calculating score: %v. Score will not be updated.", articleID, errCalc)
+			// Update progress similarly
+			errorState := models.ProgressState{
+				Step:        "Error",
+				Message:     fmt.Sprintf("Internal error calculating score: %v", errCalc),
+				Status:      "Error",
+				Percent:     100,
+				LastUpdated: time.Now().Unix(),
+			}
+			if sm.progressMgr != nil {
+				sm.progressMgr.SetProgress(articleID, &errorState)
+			}
+			// Persist final status to DB
+			if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedError); dbErr != nil {
+				log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after calculation error: %v", articleID, models.ArticleStatusFailedError, dbErr)
+			}
+			return 0, 0, errCalc
+		}
+	}
+
+	// Update the article score in the database
+	errDbUpdate := db.UpdateArticleScoreLLM(sm.db, articleID, compositeScore, confidence)
+	if errDbUpdate != nil {
+		log.Printf("[ERROR] Failed to update article score: %v", errDbUpdate)
+		sm.SetProgress(articleID, &models.ProgressState{
+			Step:        "Error",
+			Message:     "Failed to update article score in database",
+			Status:      "Error",
+			Error:       errDbUpdate.Error(),
+			LastUpdated: time.Now().Unix(),
+		})
+		// Persist final status to DB even if score update failed
+		if dbStatusErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedError); dbStatusErr != nil {
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after DB score update error: %v", articleID, models.ArticleStatusFailedError, dbStatusErr)
+		}
+		return 0, 0, fmt.Errorf("failed to store score: %w", errDbUpdate)
+	}
+
+	// If score update was successful, also update status to Scored
+	if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusScored); dbErr != nil {
+		log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after successful score update: %v", articleID, models.ArticleStatusScored, dbErr)
+		// Note: The main operation (score update) succeeded, so we don't return this error, just log it.
+	}
+
+	// Invalidate cache
+	sm.InvalidateScoreCache(articleID)
+
+	// Update progress
+	successState := models.ProgressState{
+		Step:        "Complete",
+		Message:     "Analysis complete.",
+		Status:      "Success",
+		Percent:     100,
+		FinalScore:  &compositeScore,
+		LastUpdated: time.Now().Unix(),
+	}
 	if sm.progressMgr != nil {
-		ps := &models.ProgressState{Step: "Start", Message: "Starting scoring", Percent: 0, Status: "InProgress", LastUpdated: time.Now().Unix()}
-		sm.progressMgr.SetProgress(articleID, ps)
+		sm.progressMgr.SetProgress(articleID, &successState)
 	}
-
-	tx, err := sm.db.BeginTxx(context.Background(), nil)
-	if err != nil {
-		if sm.progressMgr != nil {
-			ps := &models.ProgressState{Step: "DB Transaction", Message: "Failed to start DB transaction", Percent: 0, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
-			sm.progressMgr.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if p := recover(); p != nil {
-			tx.Rollback()
-		}
-	}()
-
-	// Progress: Calculating
-	if sm.progressMgr != nil {
-		ps := &models.ProgressState{Step: "Calculating", Message: "Calculating score", Percent: 20, Status: "InProgress", LastUpdated: time.Now().Unix()}
-		sm.progressMgr.SetProgress(articleID, ps)
-	}
-
-	score, confidence, calcErr := sm.calculator.CalculateScore(scores)
-	if calcErr != nil {
-		tx.Rollback()
-		if sm.progressMgr != nil {
-			ps := &models.ProgressState{Step: "Calculation", Message: "Score calculation failed", Percent: 20, Status: "Error", Error: calcErr.Error(), LastUpdated: time.Now().Unix()}
-			sm.progressMgr.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("score calculation failed: %w", calcErr)
-	}
-
-	// Progress: Storing ensemble score
-	if sm.progressMgr != nil {
-		ps := &models.ProgressState{Step: "Storing", Message: "Storing ensemble score", Percent: 60, Status: "InProgress", LastUpdated: time.Now().Unix()}
-		sm.progressMgr.SetProgress(articleID, ps)
-	}
-
-	meta := map[string]interface{}{
-		"timestamp":   time.Now().Format(time.RFC3339),
-		"aggregation": "ensemble",
-		"confidence":  confidence,
-	}
-	metaBytes, _ := json.Marshal(meta)
-	ensembleScore := &db.LLMScore{
-		ArticleID: articleID,
-		Model:     "ensemble",
-		Score:     score,
-		Metadata:  string(metaBytes),
-		CreatedAt: time.Now(),
-	}
-	_, err = db.InsertLLMScore(tx, ensembleScore)
-	if err != nil {
-		tx.Rollback()
-		if sm.progressMgr != nil {
-			ps := &models.ProgressState{Step: "DB Insert", Message: "Failed to insert ensemble score", Percent: 70, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
-			sm.progressMgr.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("failed to insert ensemble score: %w", err)
-	}
-
-	// Progress: Updating article
-	if sm.progressMgr != nil {
-		ps := &models.ProgressState{Step: "Updating", Message: "Updating article score", Percent: 80, Status: "InProgress", LastUpdated: time.Now().Unix()}
-		sm.progressMgr.SetProgress(articleID, ps)
-	}
-
-	err = db.UpdateArticleScoreLLM(tx, articleID, score, confidence)
-	if err != nil {
-		tx.Rollback()
-		if sm.progressMgr != nil {
-			ps := &models.ProgressState{Step: "DB Update", Message: "Failed to update article", Percent: 90, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
-			sm.progressMgr.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("failed to update article: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		if sm.progressMgr != nil {
-			ps := &models.ProgressState{Step: "DB Commit", Message: "Failed to commit transaction", Percent: 95, Status: "Error", Error: err.Error(), LastUpdated: time.Now().Unix()}
-			sm.progressMgr.SetProgress(articleID, ps)
-		}
-		return 0, 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	// Progress: Invalidate cache
-	if sm.cache != nil {
-		sm.cache.Delete(fmt.Sprintf("article:%d", articleID))
-		sm.cache.Delete(fmt.Sprintf("ensemble:%d", articleID))
-		sm.cache.Delete(fmt.Sprintf("bias:%d", articleID))
-	}
-
-	// Progress: Success
-	if sm.progressMgr != nil {
-		ps := &models.ProgressState{Step: "Complete", Message: "Scoring complete", Percent: 100, Status: "Success", FinalScore: &score, LastUpdated: time.Now().Unix()}
-		sm.progressMgr.SetProgress(articleID, ps)
-	}
-
-	return score, confidence, nil
+	log.Printf("[INFO] ScoreManager: ArticleID %d: Score updated successfully, status set to %s.", articleID, models.ArticleStatusScored)
+	return compositeScore, confidence, nil
 }
 
 // InvalidateScoreCache invalidates all score-related caches for an article
@@ -163,9 +160,19 @@ func (sm *ScoreManager) InvalidateScoreCache(articleID int64) {
 	}
 }
 
-// TrackProgress is a stub for progress tracking
+// TrackProgress registers progress tracking for an article
 func (sm *ScoreManager) TrackProgress(articleID int64, step, status string) {
-	// TODO: Implement progress tracking
+	if sm.progressMgr != nil {
+		// Create an initial progress state with parameters
+		initialState := &models.ProgressState{
+			Step:        step,
+			Message:     fmt.Sprintf("Progress update: %s", step),
+			Percent:     0,
+			Status:      status,
+			LastUpdated: time.Now().Unix(),
+		}
+		sm.progressMgr.SetProgress(articleID, initialState)
+	}
 }
 
 // SetProgress proxies to ProgressManager

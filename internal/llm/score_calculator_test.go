@@ -13,7 +13,8 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &DefaultScoreCalculator{Config: cfg}
+	// Initialize calculator without config
+	calc := &DefaultScoreCalculator{}
 
 	tests := []struct {
 		name          string
@@ -171,14 +172,16 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var currentCfg *CompositeScoreConfig
 			if tt.name == "nil config" {
-				calc = &DefaultScoreCalculator{Config: nil}
+				currentCfg = nil // Pass nil for the nil config test
 			} else {
 				// Reset to valid config for other tests
-				calc = &DefaultScoreCalculator{Config: cfg}
+				currentCfg = cfg
 			}
 
-			score, conf, err := calc.CalculateScore(tt.scores)
+			// Pass the appropriate config
+			score, conf, err := calc.CalculateScore(tt.scores, currentCfg)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -198,7 +201,8 @@ func TestDefaultScoreCalculator_GetPerspective(t *testing.T) {
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
 	}
-	calc := &DefaultScoreCalculator{Config: cfg}
+	// Initialize calculator without config
+	calc := &DefaultScoreCalculator{}
 
 	tests := []struct {
 		name          string
@@ -219,14 +223,16 @@ func TestDefaultScoreCalculator_GetPerspective(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := calc.getPerspective(tt.model)
+			// Pass cfg to getPerspective
+			result := calc.getPerspective(tt.model, cfg)
 			assert.Equal(t, tt.expectedValue, result)
 		})
 	}
 }
 
 func TestDefaultScoreCalculator_ExtractConfidence(t *testing.T) {
-	calc := &DefaultScoreCalculator{Config: &CompositeScoreConfig{}}
+	// Initialize calculator without config
+	calc := &DefaultScoreCalculator{}
 
 	tests := []struct {
 		name          string
@@ -252,7 +258,8 @@ func TestDefaultScoreCalculator_ExtractConfidence(t *testing.T) {
 }
 
 func TestDefaultScoreCalculator_InitializeMaps(t *testing.T) {
-	calc := &DefaultScoreCalculator{Config: &CompositeScoreConfig{}}
+	// Initialize calculator without config
+	calc := &DefaultScoreCalculator{}
 
 	scoreMap, confMap := calc.initializeMaps()
 

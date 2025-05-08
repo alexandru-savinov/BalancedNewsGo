@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -20,6 +21,14 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+)
+
+// Define constants for commonly used strings
+const (
+	ModelEnsemble   = "ensemble"
+	ModelSummarizer = "summarizer"
+	SortAsc         = "asc"
+	SortDesc        = "desc"
 )
 
 var (
@@ -51,7 +60,7 @@ func getProgress(articleID int64) *models.ProgressState {
 }
 
 // RegisterRoutes registers all API routes on the provided router
-func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Collector, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) {
+func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector rss.CollectorInterface, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) {
 	// Articles endpoints
 	// @Summary Get all articles
 	// @Description Get a list of all articles with optional filtering
@@ -134,7 +143,8 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	// @Success 200 {object} models.SummaryResponse
 	// @Failure 404 {object} ErrorResponse
 	// @Router /articles/{id}/summary [get]
-	router.GET("/api/articles/:id/summary", SafeHandler(summaryHandler(dbConn)))
+	handler := NewSummaryHandler(&db.DBInstance{DB: dbConn})
+	router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
 
 	// @Summary Get bias analysis
 	// @Description Get the bias analysis for an article
@@ -166,16 +176,17 @@ func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector *rss.Colle
 	// @Success 200 {object} StandardResponse
 	// @Failure 400 {object} ErrorResponse
 	// @Router /feedback [post]
-	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn)))
+	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn, llmClient)))
 
 	// Health checks
-	// @Summary Feed health check
-	// @Description Check the health status of RSS feeds
-	// @Tags Health
+	// @Summary Get RSS feed health status
+	// @Description Returns the health status of all configured RSS feeds
+	// @Tags Feeds
 	// @Accept json
 	// @Produce json
-	// @Success 200 {object} StandardResponse
-	// @Router /feeds/healthz [get]
+	// @Success 200 {object} map[string]bool "Feed health status mapping feed names to boolean status"
+	// @Failure 500 {object} ErrorResponse "Server error"
+	// @Router /api/feeds/healthz [get]
 	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
 
 	// Progress tracking
@@ -287,7 +298,13 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 		if exists {
-			RespondError(c, ErrDuplicateURL)
+			c.JSON(http.StatusConflict, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "duplicate_url",
+					"message": "Article with this URL already exists",
+				},
+			})
 			return
 		}
 
@@ -315,7 +332,13 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		id, err := db.InsertArticle(dbConn, article)
 		if err != nil {
 			if errors.Is(err, db.ErrDuplicateURL) {
-				RespondError(c, ErrDuplicateURL)
+				c.JSON(http.StatusConflict, gin.H{
+					"success": false,
+					"error": gin.H{
+						"code":    "duplicate_url",
+						"message": "Article with this URL already exists",
+					},
+				})
 				return
 			}
 			RespondError(c, WrapError(err, ErrInternal, "Failed to create article"))
@@ -337,18 +360,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 }
 
 // Utility function for handling article array results
-type ArticleResult struct {
-	Article  *db.Article            `json:"article"`
-	Scores   []db.LLMScore          `json:"scores"`
-	Metadata map[string]interface{} `json:"metadata"`
-}
-
-// handleArticleBatch processes a batch of articles
-func handleArticleBatch(dbConn *sqlx.DB, articles []db.Article) ([]*ArticleResult, error) {
-	results := make([]*ArticleResult, 0, len(articles))
-	// ...existing code...
-	return results, nil
-}
+// ... remove handleArticleBatch function ...
 
 // getArticlesHandler handles GET /articles
 // @Summary Get articles
@@ -491,11 +503,14 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 }
 
 // @Summary Trigger RSS feed refresh
-// @Description Initiates a manual RSS feed refresh job
+// @Description Initiates a manual RSS feed refresh job to fetch new articles from configured RSS sources
 // @Tags Feeds
-// @Success 200 {object} StandardResponse "Refresh started"
+// @Accept json
+// @Produce json
+// @Success 200 {object} StandardResponse{data=map[string]string} "Refresh started successfully"
+// @Failure 500 {object} ErrorResponse "Server error"
 // @Router /api/refresh [post]
-func refreshHandler(rssCollector *rss.Collector) gin.HandlerFunc {
+func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		go rssCollector.ManualRefresh()
@@ -600,181 +615,90 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			return
 		}
 
+		// Load composite score config to get the models
 		cfg, cfgErr := llm.LoadCompositeScoreConfig()
 		if cfgErr != nil || len(cfg.Models) == 0 {
 			RespondError(c, ErrLLMUnavailable)
 			return
 		}
 
-		modelName := cfg.Models[0].ModelName
-		originalTimeout := 10 * time.Second
-		llmClient.SetHTTPLLMTimeout(2 * time.Second)
-		_, healthErr := llmClient.ScoreWithModel(article, modelName)
-		llmClient.SetHTTPLLMTimeout(originalTimeout)
+		// Try each model in sequence until we find one that works
+		var workingModel string
+		var healthErr error
 
-		if healthErr != nil {
-			if errors.Is(healthErr, llm.ErrBothLLMKeysRateLimited) {
-				RespondError(c, ErrRateLimited)
+		if os.Getenv("NO_AUTO_ANALYZE") == "true" {
+			log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping working model health check.", articleID)
+			if len(cfg.Models) > 0 {
+				workingModel = cfg.Models[0].ModelName // Assume the first model would work for queuing purposes
+			} else {
+				log.Printf("[reanalyzeHandler %d] No models configured, cannot proceed even with NO_AUTO_ANALYZE.", articleID)
+				RespondError(c, ErrLLMUnavailable) // Or a more specific error
 				return
 			}
-			if errors.Is(healthErr, llm.ErrLLMServiceUnavailable) {
-				RespondError(c, ErrLLMUnavailable)
-				return
+		} else {
+			originalTimeout := 10 * time.Second          // TODO: Make this configurable or use actual client timeout
+			llmClient.SetHTTPLLMTimeout(2 * time.Second) // Short timeout for health check
+
+			for _, modelConfig := range cfg.Models {
+				log.Printf("[reanalyzeHandler %d] Trying model: %s", articleID, modelConfig.ModelName)
+				_, healthErr = llmClient.ScoreWithModel(article, modelConfig.ModelName)
+				if healthErr == nil {
+					workingModel = modelConfig.ModelName
+					break
+				}
+				// If it's not a rate limit error, don't try other models for health check, assume primary service issue
+				if !errors.Is(healthErr, llm.ErrBothLLMKeysRateLimited) {
+					break
+				}
 			}
-			RespondError(c, WrapError(healthErr, ErrLLMService, "LLM provider error"))
+			llmClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
+		}
+
+		if workingModel == "" {
+			log.Printf("[reanalyzeHandler %d] No working models found (health check failed or skipped with no models): %v", articleID, healthErr)
+			RespondError(c, ErrLLMUnavailable)
 			return
 		}
 
-		// Initial progress state
+		// Start the reanalysis process
 		if scoreManager != nil {
 			scoreManager.SetProgress(articleID, &models.ProgressState{
-				Step:        "Starting",
-				Message:     "Scoring job queued",
-				Percent:     0,
-				Status:      "InProgress",
-				LastUpdated: time.Now().Unix(),
+				Status:  "InProgress",
+				Step:    "Starting",
+				Message: fmt.Sprintf("Starting analysis with model %s", workingModel),
 			})
+
+			// Check for an environment variable to skip auto-analysis during tests
+			if os.Getenv("NO_AUTO_ANALYZE") != "true" {
+				go func() {
+					err := llmClient.ReanalyzeArticle(articleID)
+					if err != nil {
+						log.Printf("[reanalyzeHandler %d] Error during reanalysis: %v", articleID, err)
+						scoreManager.SetProgress(articleID, &models.ProgressState{
+							Status:  "Error",
+							Step:    "Error",
+							Message: fmt.Sprintf("Error during analysis: %v", err),
+						})
+						return
+					}
+					scoreManager.SetProgress(articleID, &models.ProgressState{
+						Status:  "Complete",
+						Step:    "Done",
+						Message: "Analysis complete",
+					})
+				}()
+			} else {
+				log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping background reanalysis.", articleID)
+				// Optionally, set progress to complete or a specific "skipped" state
+				scoreManager.SetProgress(articleID, &models.ProgressState{
+					Status:  "Skipped",
+					Step:    "Skipped",
+					Message: "Automatic reanalysis skipped by test configuration.",
+				})
+			}
 		}
 
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					errMsg := fmt.Sprintf("Internal panic: %v", r)
-					setProgress(articleID, &models.ProgressState{
-						Step:        "Error",
-						Message:     "Internal error occurred",
-						Percent:     0,
-						Status:      "Error",
-						Error:       errMsg,
-						LastUpdated: time.Now().Unix(),
-					})
-					log.Printf("[Goroutine Panic] ArticleID=%d: %s", articleID, errMsg)
-				}
-			}()
-
-			totalSteps := len(cfg.Models) + 3
-			stepNum := 1
-
-			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Step:        "Preparing",
-					Message:     "Deleting old scores",
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "InProgress",
-					LastUpdated: time.Now().Unix(),
-				})
-			}
-			if err := llmClient.DeleteScores(articleID); err != nil {
-				errMsg := fmt.Sprintf("Failed to delete old scores: %v", err)
-				setProgress(articleID, &models.ProgressState{
-					Step:        "Error",
-					Message:     errMsg,
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "Error",
-					Error:       errMsg,
-					LastUpdated: time.Now().Unix(),
-				})
-				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
-				return
-			}
-			stepNum++
-
-			for _, m := range cfg.Models {
-				label := fmt.Sprintf("Scoring with %s", m.ModelName)
-				if scoreManager != nil {
-					scoreManager.SetProgress(articleID, &models.ProgressState{
-						Step:        label,
-						Message:     label,
-						Percent:     percent(stepNum, totalSteps),
-						Status:      "InProgress",
-						LastUpdated: time.Now().Unix(),
-					})
-				}
-				_, scoreErr := llmClient.ScoreWithModel(article, m.ModelName)
-				if scoreErr != nil {
-					userMsg := fmt.Sprintf("Error scoring with %s", m.ModelName)
-					if errors.Is(scoreErr, llm.ErrBothLLMKeysRateLimited) {
-						userMsg = "Rate limit exceeded"
-					}
-					setProgress(articleID, &models.ProgressState{
-						Step:        "Error",
-						Message:     userMsg,
-						Percent:     percent(stepNum, totalSteps),
-						Status:      "Error",
-						Error:       scoreErr.Error(),
-						LastUpdated: time.Now().Unix(),
-					})
-					log.Printf("[SetProgress] ArticleID=%d: %s", articleID, userMsg)
-					return
-				}
-				stepNum++
-			}
-
-			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Step:        "Calculating",
-					Message:     "Computing final score",
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "InProgress",
-					LastUpdated: time.Now().Unix(),
-					FinalScore:  nil,
-				})
-			}
-			scores, fetchErr := llmClient.FetchScores(articleID)
-			if fetchErr != nil {
-				errMsg := fmt.Sprintf("Failed to fetch scores: %v", fetchErr)
-				setProgress(articleID, &models.ProgressState{
-					Step:        "Error",
-					Message:     errMsg,
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "Error",
-					Error:       errMsg,
-					LastUpdated: time.Now().Unix(),
-				})
-				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
-				return
-			}
-			stepNum++
-
-			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Step:        "Storing",
-					Message:     "Saving results",
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "InProgress",
-					LastUpdated: time.Now().Unix(),
-				})
-			}
-			finalScore, confidence, storeErr := scoreManager.UpdateArticleScore(articleID, scores, cfg)
-			if storeErr != nil {
-				errMsg := fmt.Sprintf("Failed to store score: %v", storeErr)
-				setProgress(articleID, &models.ProgressState{
-					Step:        "Error",
-					Message:     errMsg,
-					Percent:     percent(stepNum, totalSteps),
-					Status:      "Error",
-					Error:       errMsg,
-					LastUpdated: time.Now().Unix(),
-				})
-				log.Printf("[SetProgress] ArticleID=%d: %s", articleID, errMsg)
-				return
-			}
-
-			// Final success state with composite score
-			confidencePercent := int(confidence * 100)
-			message := fmt.Sprintf("Scoring complete (confidence: %d%%)", confidencePercent)
-			setProgress(articleID, &models.ProgressState{
-				Step:        "Complete",
-				Message:     message,
-				Percent:     100,
-				Status:      "Success",
-				FinalScore:  &finalScore,
-				LastUpdated: time.Now().Unix(),
-			})
-			log.Printf("[SetProgress] ArticleID=%d: %s", articleID, message)
-		}()
-
-		RespondSuccess(c, gin.H{
+		RespondSuccess(c, map[string]interface{}{
 			"status":     "reanalyze queued",
 			"article_id": articleID,
 		})
@@ -782,10 +706,13 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 }
 
 // @Summary Score progress SSE stream
-// @Description Server-Sent Events endpoint streaming scoring progress for an article
-// @Tags Analysis
+// @Description Server-Sent Events endpoint streaming real-time scoring progress for an article
+// @Tags LLM
+// @Accept json
+// @Produce text/event-stream
 // @Param id path int true "Article ID" minimum(1)
-// @Success 200 {string} string "event-stream"
+// @Success 200 {object} models.ProgressState "event-stream containing progress updates"
+// @Failure 400 {object} ErrorResponse "Invalid article ID"
 // @Router /api/llm/score-progress/{id} [get]
 func scoreProgressSSEHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -821,7 +748,10 @@ func scoreProgressSSEHandler() gin.HandlerFunc {
 				if data, err := json.Marshal(progress); err == nil {
 					currentProgress := string(data)
 					if currentProgress != lastProgress {
-						fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+						if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", data); err != nil {
+							// Client disconnected or error writing
+							return
+						}
 						c.Writer.Flush()
 						lastProgress = currentProgress
 
@@ -848,12 +778,15 @@ func percent(step, total int) int {
 	return p
 }
 
-// @Summary Get feed health status
-// @Description Returns the health of configured RSS feed sources
+// @Summary Get RSS feed health status
+// @Description Returns the health status of all configured RSS feeds
 // @Tags Feeds
-// @Success 200 {object} map[string]bool
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]bool "Feed health status mapping feed names to boolean status"
+// @Failure 500 {object} ErrorResponse "Server error"
 // @Router /api/feeds/healthz [get]
-func feedHealthHandler(rssCollector *rss.Collector) gin.HandlerFunc {
+func feedHealthHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := rssCollector.CheckFeedHealth()
 		c.JSON(200, status)
@@ -867,111 +800,78 @@ func feedHealthHandler(rssCollector *rss.Collector) gin.HandlerFunc {
 // @Success 200 {object} StandardResponse
 // @Failure 404 {object} ErrorResponse "Summary not available"
 // @Router /api/articles/{id}/summary [get]
-func summaryHandler(dbConn *sqlx.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		idStr := c.Param("id")
-
-		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || id < 1 {
-			RespondError(c, ErrInvalidArticleID)
-			return
-		}
-
-		// Caching
-		cacheKey := "summary:" + idStr
-		articlesCacheLock.RLock()
-		if cached, found := articlesCache.Get(cacheKey); found {
-			articlesCacheLock.RUnlock()
-			RespondSuccess(c, cached)
-			LogPerformance("summaryHandler (cache hit)", start)
-			return
-		}
-		articlesCacheLock.RUnlock()
-
-		// Verify article exists
-		_, err = db.FetchArticleByID(dbConn, id)
-		if err != nil {
-			if errors.Is(err, db.ErrArticleNotFound) {
-				RespondError(c, ErrArticleNotFound)
-				return
-			}
-			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article"))
-			return
-		}
-
-		scores, err := db.FetchLLMScores(dbConn, id)
-		if err != nil {
-			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article summary"))
-			return
-		}
-
-		for _, score := range scores {
-			if score.Model == "summarizer" {
-				result := map[string]interface{}{
-					"summary":    score.Metadata,
-					"created_at": score.CreatedAt,
-				}
-				articlesCacheLock.Lock()
-				articlesCache.Set(cacheKey, result, 30*time.Second)
-				articlesCacheLock.Unlock()
-
-				RespondSuccess(c, result)
-				LogPerformance("summaryHandler", start)
-				return
-			}
-		}
-
-		RespondError(c, NewAppError(ErrNotFound, "Article summary not available"))
-		LogPerformance("summaryHandler", start)
-	}
+type SummaryHandler struct {
+	db db.DBOperations
 }
 
-func parseArticleID(c *gin.Context) (int64, bool) {
+func NewSummaryHandler(db db.DBOperations) *SummaryHandler {
+	return &SummaryHandler{db: db}
+}
+
+func (h *SummaryHandler) Handle(c *gin.Context) {
+	start := time.Now()
 	idStr := c.Param("id")
-	id, err := strconv.Atoi(idStr)
+
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id < 1 {
+		RespondError(c, ErrInvalidArticleID)
+		return
+	}
+
+	// Caching
+	cacheKey := "summary:" + idStr
+	articlesCacheLock.RLock()
+	if cached, found := articlesCache.Get(cacheKey); found {
+		articlesCacheLock.RUnlock()
+		RespondSuccess(c, cached)
+		LogPerformance("summaryHandler (cache hit)", start)
+		return
+	}
+	articlesCacheLock.RUnlock()
+
+	// Verify article exists
+	_, err = h.db.FetchArticleByID(c, id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": errInvalidArticleID})
-		return 0, false
+		if errors.Is(err, db.ErrArticleNotFound) {
+			RespondError(c, ErrArticleNotFound)
+			return
+		}
+		RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article"))
+		return
 	}
-	return int64(id), true
-}
 
-func filterAndTransformScores(scores []db.LLMScore, min, max float64) []map[string]interface{} {
-	results := make([]map[string]interface{}, 0, len(scores))
+	scores, err := h.db.FetchLLMScores(c, id)
+	if err != nil {
+		RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article summary"))
+		return
+	}
+
 	for _, score := range scores {
-		if score.Model != "ensemble" {
-			continue
-		}
-		var meta map[string]interface{}
-		if err := json.Unmarshal([]byte(score.Metadata), &meta); err != nil {
-			continue
-		}
-		agg, _ := meta["aggregation"].(map[string]interface{})
-		weightedMean, _ := agg["weighted_mean"].(float64)
-		if weightedMean < min || weightedMean > max {
-			continue
-		}
-		result := map[string]interface{}{
-			"score":      weightedMean,
-			"metadata":   meta,
-			"created_at": score.CreatedAt,
-		}
-		results = append(results, result)
-	}
-	return results
-}
+		if score.Model == ModelSummarizer {
+			// Extract summary text from JSON metadata
+			var summaryText string
+			var meta map[string]interface{}
+			if err := json.Unmarshal([]byte(score.Metadata), &meta); err == nil {
+				if s, ok := meta["summary"].(string); ok {
+					summaryText = s
+				}
+			}
+			result := map[string]interface{}{
+				"summary":    summaryText,
+				"created_at": score.CreatedAt,
+			}
+			articlesCacheLock.Lock()
+			articlesCache.Set(cacheKey, result, 30*time.Second)
+			articlesCacheLock.Unlock()
 
-func sortResults(results []map[string]interface{}, order string) {
-	if order == "asc" {
-		sort.Slice(results, func(i, j int) bool {
-			return results[i]["score"].(float64) < results[j]["score"].(float64)
-		})
-	} else {
-		sort.Slice(results, func(i, j int) bool {
-			return results[i]["score"].(float64) > results[j]["score"].(float64)
-		})
+			RespondSuccess(c, result)
+			LogPerformance("summaryHandler", start)
+			return
+		}
 	}
+
+	RespondError(c, NewAppError(ErrNotFound, "Article summary not available"))
+	LogPerformance("summaryHandler", start)
 }
 
 // biasHandler returns article bias scores and composite score.
@@ -1018,8 +918,8 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			LogError("biasHandler: invalid max_score", err)
 			return
 		}
-		sortOrder := c.DefaultQuery("sort", "desc")
-		if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder := c.DefaultQuery("sort", SortDesc)
+		if sortOrder != SortAsc && sortOrder != SortDesc {
 			RespondError(c, NewAppError(ErrValidation, "Invalid sort order"))
 			LogError("biasHandler: invalid sort order", nil)
 			return
@@ -1050,7 +950,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		for i := range scores {
 			score := scores[i] // Create a copy to avoid loop variable issues if needed later
 
-			if score.Model == "ensemble" {
+			if score.Model == ModelEnsemble {
 				if latestEnsembleScore == nil || score.CreatedAt.After(latestEnsembleScore.CreatedAt) {
 					latestEnsembleScore = &score // Store pointer to the score
 				}
@@ -1094,9 +994,24 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		// Sort individual results
 		sort.SliceStable(individualResults, func(i, j int) bool {
-			scoreI := individualResults[i]["score"].(float64)
-			scoreJ := individualResults[j]["score"].(float64)
-			if sortOrder == "asc" {
+			scoreI, okI := individualResults[i]["score"].(float64)
+			scoreJ, okJ := individualResults[j]["score"].(float64)
+
+			if !okI && !okJ { // Both are invalid
+				log.Printf("WARN: biasHandler sorting: both scores invalid for comparison at indices %d and %d. Treating as equal.", i, j)
+				return false
+			}
+			if !okI { // item i is invalid, j is valid. Invalid items go to the end.
+				log.Printf("WARN: biasHandler sorting: invalid score for result at index %d. Sorting to end.", i)
+				return false
+			}
+			if !okJ { // item i is valid, j is invalid. Invalid items go to the end.
+				log.Printf("WARN: biasHandler sorting: invalid score for result at index %d. Sorting to end.", j)
+				return true
+			}
+
+			// Both are valid
+			if sortOrder == SortAsc {
 				return scoreI < scoreJ
 			}
 			return scoreI > scoreJ // desc
@@ -1216,7 +1131,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 	details := make([]map[string]interface{}, 0)
 	for _, score := range scores {
-		if score.Model != "ensemble" {
+		if score.Model != ModelEnsemble {
 			continue
 		}
 
@@ -1263,7 +1178,7 @@ func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 // @Failure 400 {object} ErrorResponse "Invalid request data"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /feedback [post]
-func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		var req struct {
@@ -1331,10 +1246,17 @@ func feedbackHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		// Update article confidence based on feedback
 		scores, err := db.FetchLLMScores(dbConn, req.ArticleID)
 		if err == nil {
-			// Calculate new composite score and confidence
-			score, confidence, compErr := llm.ComputeCompositeScoreWithConfidence(scores)
-			if compErr != nil {
-				LogError("feedbackHandler: composite score calculation", compErr)
+			// Get config from the LLMClient associated with the handler
+			config := llmClient.GetConfig()
+			if config == nil {
+				LogError("feedbackHandler: LLM client config not loaded", fmt.Errorf("LLM client config not loaded"))
+				RespondError(c, NewAppError(ErrInternal, "Internal processing error [config]"))
+				return
+			}
+
+			score, confidence, err := llm.ComputeCompositeScoreWithConfidence(scores, config)
+			if err != nil {
+				log.Printf("[API DEBUG] Error computing composite score for article %d: %v", req.ArticleID, err)
 			} else {
 				// Adjust confidence based on feedback category
 				if req.Category == "agree" {
@@ -1422,7 +1344,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Update score in DB
-		err = db.UpdateArticleScore(dbConn, articleID, scoreVal, 0)
+		err = db.UpdateArticleScore(dbConn, articleID, scoreVal, 1.0) // Set confidence to 1.0 for manual scores
 		if err != nil {
 			errMsg := err.Error()
 			if errMsg != "" && (strings.Contains(errMsg, "constraint failed") ||

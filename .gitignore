@@ -42,3 +42,6 @@ playwright-tests/
 frontend/
 cypress.config.js
 playwright.config.tsnews.db*
+
+# Junk / Archived Development Files
+junk/

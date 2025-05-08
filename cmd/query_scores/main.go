@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -19,7 +20,8 @@ type LLMScore struct {
 func main() {
 	db, err := sqlx.Open("sqlite", "news.db")
 	if err != nil {
-		log.Fatalf("Failed to open DB: %v", err)
+		log.Printf("ERROR: Failed to open DB: %v", err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -30,7 +32,8 @@ func main() {
 	var scores []LLMScore
 	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata FROM llm_scores WHERE article_id = ?", 681)
 	if err != nil {
-		log.Fatalf("Failed to fetch scores: %v", err)
+		log.Printf("ERROR: Failed to fetch scores: %v", err)
+		os.Exit(1)
 	}
 
 	for _, s := range scores {
