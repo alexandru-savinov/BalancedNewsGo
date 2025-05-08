@@ -25,33 +25,6 @@ var ErrInvalidLLMResponse = apperrors.New("Invalid response from LLM service", "
 // HTTP timeout for LLM requests
 const defaultLLMTimeout = 30 * time.Second
 
-const (
-	LabelUnknown = "unknown"
-	LabelLeft    = "left"
-	LabelRight   = "right"
-	LabelNeutral = "neutral"
-	LabelCenter  = "center"
-)
-
-type ModelConfig struct {
-	Perspective string `json:"perspective"`
-	ModelName   string `json:"modelName"`
-	URL         string `json:"url"`
-}
-
-type CompositeScoreConfig struct {
-	Formula          string             `json:"formula"`
-	Weights          map[string]float64 `json:"weights"`
-	MinScore         float64            `json:"min_score"`
-	MaxScore         float64            `json:"max_score"`
-	DefaultMissing   float64            `json:"default_missing"`
-	HandleInvalid    string             `json:"handle_invalid"`
-	ConfidenceMethod string             `json:"confidence_method"`
-	MinConfidence    float64            `json:"min_confidence"`
-	MaxConfidence    float64            `json:"max_confidence"`
-	Models           []ModelConfig      `json:"models"`
-}
-
 // PromptVariant defines a prompt template with few-shot examples
 type PromptVariant struct {
 	ID       string

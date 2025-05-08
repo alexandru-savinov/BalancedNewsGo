@@ -26,7 +26,7 @@
   "default_missing": 0.0,
   "min_confidence": 0.1,
   "max_confidence": 0.95,
-  "handle_invalid": "default",
+  "handle_invalid": "ignore",
   "weights": {
     "left": 1.0,
     "center": 1.0,

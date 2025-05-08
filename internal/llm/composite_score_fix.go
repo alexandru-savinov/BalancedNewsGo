@@ -130,7 +130,6 @@ func processScoresByPerspective(perspectiveModels map[string][]db.LLMScore, cfg 
 					break                           // Use default, don't look further for this perspective
 				}
 			} else {
-				// Valid score found
 				scoreMap[perspective] = s.Score
 				(*validCount)++
 				validModels[perspective] = true // Mark perspective as valid
@@ -371,9 +370,32 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *Composi
 		return cfg.DefaultMissing, 0.0, fmt.Errorf("internal calculation error: no valid scores counted")
 	}
 
-	// Calculate composite score using the new actualValidCount if needed
+	// Now calculate sums based on the final scoreMap values and validModels map
+	log.Printf("[DEBUG] Pre-Sum: actualValidCount=%d, len(validModels)=%d", actualValidCount, len(validModels))
+	log.Printf("[DEBUG] Pre-Sum: Score map: %v", scoreMap)
+	log.Printf("[DEBUG] Pre-Sum: Valid models map: %v", validModels)
+
+	for perspective, score := range scoreMap {
+		if _, isValid := validModels[perspective]; isValid { // Only sum scores from perspectives marked as valid
+			w := 1.0
+			if cfg.Formula == "weighted" {
+				if weight, ok := cfg.Weights[perspective]; ok {
+					w = weight
+				}
+			}
+			weightedSum += score * w
+			weightTotal += w
+			sum += score
+		}
+	}
+
+	log.Printf("[DEBUG] Pre-Calc: sum=%.4f, weightedSum=%.4f, weightTotal=%.4f, actualValidCount=%d",
+		sum, weightedSum, weightTotal, actualValidCount)
+
+	// Final calculation
 	compositeScore, calcErr := calculateCompositeScore(cfg, scoreMap, sum, weightedSum, weightTotal, actualValidCount, validModels)
 	if calcErr != nil {
+		log.Printf("[ERROR] Error in calculateCompositeScore: %v. actualValidCount=%d", calcErr, actualValidCount)
 		return 0.0, 0.0, calcErr
 	}
 

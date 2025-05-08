@@ -356,7 +356,24 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 		}
 	}()
 
-	// 1. Check if URL exists within the transaction
+	// 1. Prepare article fields with defaults if not set
+	if article.CreatedAt.IsZero() {
+		article.CreatedAt = time.Now()
+	}
+	if article.Status == nil {
+		defaultStatus := "pending" // Ideally, use a defined constant here later
+		article.Status = &defaultStatus
+	}
+	if article.FailCount == nil {
+		defaultFailCount := 0
+		article.FailCount = &defaultFailCount
+	}
+	if article.Escalated == nil {
+		defaultEscalated := false
+		article.Escalated = &defaultEscalated
+	}
+
+	// 2. Check if URL exists within the transaction
 	var exists bool
 	err = tx.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", article.URL)
 	if err != nil && err != sql.ErrNoRows { // Allow ErrNoRows here, should return exists=false
@@ -367,7 +384,7 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 		return 0, err
 	}
 
-	// 2. Insert the article if it doesn't exist
+	// 3. Insert the article if it doesn't exist
 	result, err := tx.NamedExec(`
         INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source,
                               status, fail_count, last_attempt, escalated)
@@ -386,7 +403,7 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 		return 0, handleError(err, "failed to get inserted article ID")
 	}
 
-	// 3. Commit the transaction
+	// 4. Commit the transaction
 	err = tx.Commit()
 	if err != nil {
 		return 0, handleError(err, "failed to commit transaction for article insert")
@@ -587,18 +604,21 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		// Not fatal, but log it
 	}
 
-	// Drop existing tables to ensure fresh schema for testing/debugging
-	dropSchema := `
-	DROP TABLE IF EXISTS articles;
-	DROP TABLE IF EXISTS llm_scores;
-	DROP TABLE IF EXISTS feedback;
-	DROP TABLE IF EXISTS labels;
-	`
-	_, err = db.Exec(dropSchema)
-	if err != nil {
-		log.Printf("Failed to drop existing tables: %v", err)
-		// Not fatal, but log it
-	}
+	// !! IMPORTANT !! Commenting out unconditional drop for integration testing
+	/*
+		// Drop existing tables to ensure fresh schema for testing/debugging
+		dropSchema := `
+		DROP TABLE IF EXISTS articles;
+		DROP TABLE IF EXISTS llm_scores;
+		DROP TABLE IF EXISTS feedback;
+		DROP TABLE IF EXISTS labels;
+		`
+		_, err = db.Exec(dropSchema)
+		if err != nil {
+			log.Printf("Failed to drop existing tables: %v", err)
+			// Not fatal, but log it
+		}
+	*/
 
 	// Define the database schema
 	schema := `
@@ -666,4 +686,27 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 
 	// Return the database connection
 	return db, nil
+}
+
+// UpdateArticleStatus updates the status of a specific article.
+func UpdateArticleStatus(exec sqlx.ExtContext, articleID int64, status string) error {
+	query := `UPDATE articles SET status = ? WHERE id = ?`
+	result, err := exec.ExecContext(context.Background(), query, status, articleID)
+	if err != nil {
+		log.Printf("[ERROR] Failed to update article status for ID %d to '%s': %v", articleID, status, err)
+		return handleError(err, fmt.Sprintf("failed to update article status for ID %d", articleID))
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("[WARN] Could not determine rows affected when updating status for article ID %d: %v", articleID, err)
+		// Not returning error here as the update might have succeeded.
+	} else if rowsAffected == 0 {
+		log.Printf("[WARN] UpdateArticleStatus: No rows affected when updating status for article ID %d to '%s'. Article may not exist.", articleID, status)
+		// Potentially return ErrArticleNotFound or a similar specific error if this is unexpected.
+		// For now, just logging as the main operation (exec) didn't error.
+	}
+
+	log.Printf("[INFO] Updated status for article ID %d to '%s'", articleID, status)
+	return nil
 }
