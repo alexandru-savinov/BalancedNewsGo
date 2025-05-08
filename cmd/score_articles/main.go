@@ -111,40 +111,31 @@ func main() {
 					log.Printf("[Worker %d] Analyzing article ID %d (%s) for individual LLM scores...", workerID, article.ID, article.Title)
 					var scoresGeneratedForThisArticle int
 
-					// TEMPORARY TEST CONDITION: Skip Stage 1 for specific test IDs for error scenarios
-					// These IDs (currently hardcoded for where IDs typically start after reset) will be updated based on setup script output.
-					// Check against the IDs that will be used for ErrAllPerspectivesInvalid and ErrAllScoresZeroConfidence.
-					// We will get these IDs from the setup script output in the next step, typically they are sequential.
-					// For now, let's assume they might be 7 and 8 as in the previous run, but this is a placeholder.
 					// Placeholder IDs: const idForInvalidTest = 7; const idForZeroConfTest = 8;
 					// Actual IDs will be confirmed after running run_integration_setup_s3 again.
 					// We will need to be vigilant and potentially re-apply this edit with correct IDs if they change.
 
-					if article.ID == 25 || article.ID == 26 { // UPDATED IDs for AllInvalid (B=25) and ZeroConf (C=26) tests
-						log.Printf("[Worker %d] TEST SKIP: Skipping Stage 1 LLM analysis for article ID %d to preserve seeded error condition scores.", workerID, article.ID)
-					} else {
-						for _, modelCfg := range llmModelsForAnalysis {
-							start := time.Now()
-							// Inner func for error handling and stats
-							analysisErr := func() error {
-								llmScoreResponse, errAn := llmClient.AnalyzeContent(article.ID, article.Content, modelCfg.ModelName, modelCfg.URL)
-								apiStats.AddCall(time.Since(start), errAn)
-								if errAn != nil {
-									log.Printf("[Worker %d] Error analyzing article %d with model %s: %v", workerID, article.ID, modelCfg.ModelName, errAn)
-									return errAn
-								}
-								_, errIns := db.InsertLLMScore(conn, llmScoreResponse)
-								if errIns != nil {
-									log.Printf("[Worker %d] Error inserting LLM score for article %d model %s: %v", workerID, article.ID, modelCfg.ModelName, errIns)
-									return errIns
-								}
-								return nil
-							}()
-							if analysisErr == nil {
-								scoresGeneratedForThisArticle++
+					for _, modelCfg := range llmModelsForAnalysis {
+						start := time.Now()
+						// Inner func for error handling and stats
+						analysisErr := func() error {
+							llmScoreResponse, errAn := llmClient.AnalyzeContent(article.ID, article.Content, modelCfg.ModelName, modelCfg.URL)
+							apiStats.AddCall(time.Since(start), errAn)
+							if errAn != nil {
+								log.Printf("[Worker %d] Error analyzing article %d with model %s: %v", workerID, article.ID, modelCfg.ModelName, errAn)
+								return errAn
 							}
-						} // End models loop
-					} // End of else block for non-skipped articles
+							_, errIns := db.InsertLLMScore(conn, llmScoreResponse)
+							if errIns != nil {
+								log.Printf("[Worker %d] Error inserting LLM score for article %d model %s: %v", workerID, article.ID, modelCfg.ModelName, errIns)
+								return errIns
+							}
+							return nil
+						}()
+						if analysisErr == nil {
+							scoresGeneratedForThisArticle++
+						}
+					} // End models loop
 
 					log.Printf("[Worker %d] Finished LLM analysis for article ID %d. Generated %d individual scores (skipped if test ID).", workerID, article.ID, scoresGeneratedForThisArticle)
 					// Safely update global counter (though could be done after wg.Wait for simplicity if only counting total LLM scores)
