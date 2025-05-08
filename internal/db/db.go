@@ -509,3 +509,24 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 	// Return the database connection
 	return db, nil
 }
+
+// UpdateArticleStatusFailed updates the article's status to a failed state
+// and nullifies the composite_score and confidence.
+// This is used when an article processing fails in a way that scoring is not possible.
+func UpdateArticleStatusFailed(ctx context.Context, exec sqlx.ExtContext, articleID int64, status string) error {
+	query := `UPDATE articles
+SET status = $1, composite_score = NULL, confidence = NULL, score_source = 'error'
+WHERE id = $2`
+	result, err := exec.ExecContext(ctx, query, status, articleID)
+	if err != nil {
+		return fmt.Errorf("failed to update article status to failed: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		// Log error but don't fail the operation if rows affected cannot be checked
+		log.Printf("Error checking rows affected after updating article status to failed: %v", err)
+	} else if rowsAffected == 0 {
+		return ErrArticleNotFound
+	}
+	return nil
+}

@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -8,7 +10,22 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 )
+
+// setupInMemoryDB is a helper function to create an in-memory SQLite database for tests.
+func setupInMemoryDB(t *testing.T) *sqlx.DB {
+	t.Helper()
+	db, err := sqlx.Open("sqlite", ":memory:?_foreign_keys=on&_busy_timeout=5000")
+	require.NoError(t, err, "Failed to open in-memory database")
+	require.NotNil(t, db, "DB connection should not be nil")
+
+	err = db.Ping()
+	require.NoError(t, err, "Failed to ping in-memory database")
+
+	return db
+}
 
 func setupTestDB(t *testing.T) (*sqlx.DB, *DBInstance) {
 	// Use in-memory SQLite database for tests to avoid file locking issues
@@ -380,4 +397,79 @@ func TestWithTransaction(t *testing.T) {
 
 	// For now, we'll consider transaction isolation covered by TestTransactionRollback
 	// which tests that rolled-back changes aren't visible, implying proper isolation
+}
+
+func TestUpdateArticleStatusFailed(t *testing.T) {
+	ctx := context.Background()
+	db := setupInMemoryDB(t)
+	defer db.Close()
+
+	// Create articles table with status
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE articles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source TEXT,
+			pub_date DATETIME,
+			url TEXT UNIQUE,
+			title TEXT,
+			content TEXT,
+			created_at DATETIME,
+			composite_score REAL,
+			confidence REAL,
+			score_source TEXT,
+			status TEXT
+		);
+	`)
+	assert.NoError(t, err, "Failed to create articles table")
+
+	// Insert a test article
+	initialScore := 0.5
+	initialConfidence := 0.9
+	initialScoreSource := "llm"
+	initialStatus := "scored"
+	currentTime := time.Now()
+
+	res, err := db.ExecContext(ctx, `
+		INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "test_source", currentTime, "http://example.com/test-status-failed-unique-again", "Test Title Status Failed", "Test Content", currentTime, initialScore, initialConfidence, initialScoreSource, initialStatus)
+	assert.NoError(t, err, "Failed to insert test article")
+
+	articleID, err := res.LastInsertId()
+	assert.NoError(t, err, "Failed to get last insert ID")
+
+	// Call the function to test
+	targetStatus := "failed_all_invalid"
+	err = UpdateArticleStatusFailed(ctx, db, articleID, targetStatus)
+	assert.NoError(t, err, "UpdateArticleStatusFailed returned an error")
+
+	// Verify the article's status and scores
+	type TestArticleForStatusUpdate struct {
+		ID             int64    `db:"id"`
+		CompositeScore *float64 `db:"composite_score"`
+		Confidence     *float64 `db:"confidence"`
+		ScoreSource    *string  `db:"score_source"`
+		Status         *string  `db:"status"`
+	}
+	var updatedArticle TestArticleForStatusUpdate
+	err = db.GetContext(ctx, &updatedArticle, "SELECT id, composite_score, confidence, score_source, status FROM articles WHERE id = ?", articleID)
+	assert.NoError(t, err, "Failed to fetch updated article")
+
+	assert.Equal(t, articleID, updatedArticle.ID)
+	assert.NotNil(t, updatedArticle.Status, "Status should not be nil after update")
+	if updatedArticle.Status != nil { // Safe dereference
+		assert.Equal(t, targetStatus, *updatedArticle.Status, "Status was not updated correctly")
+	}
+	assert.Nil(t, updatedArticle.CompositeScore, "CompositeScore should be NULL")
+	assert.Nil(t, updatedArticle.Confidence, "Confidence should be NULL")
+	assert.NotNil(t, updatedArticle.ScoreSource, "ScoreSource should not be nil after update to error state")
+	if updatedArticle.ScoreSource != nil { // Safe dereference
+		assert.Equal(t, "error", *updatedArticle.ScoreSource, "ScoreSource was not updated to 'error'")
+	}
+
+	// Test with a non-existent article ID
+	nonExistentArticleID := int64(99999)
+	err = UpdateArticleStatusFailed(ctx, db, nonExistentArticleID, targetStatus)
+	assert.Error(t, err, "UpdateArticleStatusFailed should return an error for non-existent article ID")
+	assert.True(t, errors.Is(err, ErrArticleNotFound), "Error should be ErrArticleNotFound for non-existent article ID")
 }

@@ -3,7 +3,9 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -75,6 +77,19 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 			ps := &models.ProgressState{Step: "Calculation", Message: "Score calculation failed", Percent: 20, Status: "Error", Error: calcErr.Error(), LastUpdated: time.Now().Unix()}
 			sm.progressMgr.SetProgress(articleID, ps)
 		}
+
+		if errors.Is(calcErr, ErrAllPerspectivesInvalid) {
+			log.Printf("Article ID %d: All perspectives invalid, updating status to failed_all_invalid and nullifying score.", articleID)
+			if statusUpdateErr := db.UpdateArticleStatusFailed(context.Background(), sm.db, articleID, ArticleStatusFailedAllInvalid); statusUpdateErr != nil {
+				log.Printf("Failed to update article status to %s for article ID %d: %v", ArticleStatusFailedAllInvalid, articleID, statusUpdateErr)
+			}
+		} else if errors.Is(calcErr, ErrAllScoresZeroConfidence) {
+			log.Printf("Article ID %d: All scores zero confidence, updating status to failed_zero_confidence and nullifying score.", articleID)
+			if statusUpdateErr := db.UpdateArticleStatusFailed(context.Background(), sm.db, articleID, ArticleStatusFailedZeroConfidence); statusUpdateErr != nil {
+				log.Printf("Failed to update article status to %s for article ID %d: %v", ArticleStatusFailedZeroConfidence, articleID, statusUpdateErr)
+			}
+		}
+
 		return 0, 0, fmt.Errorf("score calculation failed: %w", calcErr)
 	}
 
