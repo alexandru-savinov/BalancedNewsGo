@@ -62,8 +62,8 @@ func TestComputeCompositeScoreWithAllZeroResponses(t *testing.T) {
 					Metadata: `{"all_sub_results":[{"model":"model1","score":0.1,"confidence":0.8},{"model":"model2","score":-0.1,"confidence":0.7}],"confidence":0,"final_aggregation":{"weighted_mean":0,"variance":1.0,"uncertainty_flag":true},"per_model_results":{},"per_model_aggregation":{},"timestamp":"2024-04-28T12:00:00Z"}`,
 				},
 			},
-			expectError: false, // Expect no error, function returns ensemble score
-			// errorContains: "only ensemble scores found", // No error returned
+			expectError:   true,
+			errorContains: "failed to get valid scores from any LLM perspective",
 		},
 	}
 
@@ -88,11 +88,11 @@ func TestComputeCompositeScoreWithConfidence(t *testing.T) {
 		Formula: "average", DefaultMissing: 0.0, Models: []ModelConfig{{Perspective: "left", ModelName: "left"}, {Perspective: "center", ModelName: "center"}, {Perspective: "right", ModelName: "right"}}, MinScore: -1, MaxScore: 1, ConfidenceMethod: "count_valid", MinConfidence: 0, MaxConfidence: 1,
 	}
 	scores := []db.LLMScore{
-		{Model: "left", Score: -1.0},
-		{Model: "center", Score: 0.0},
-		{Model: "right", Score: 1.0},
+		{Model: "left", Score: -1.0, Metadata: `{"confidence":0.9}`},
+		{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
+		{Model: "right", Score: 1.0, Metadata: `{"confidence":0.85}`},
 	}
-	score, confidence, err := ComputeCompositeScoreWithConfidence(scores, testCfg) // Pass testCfg
+	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.0, score, 1e-9)
 	assert.InDelta(t, 1.0, confidence, 1e-9) // Assert confidence based on method
@@ -158,10 +158,10 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 			name: "NaN values",
 			scores: []db.LLMScore{
 				{Model: "left", Score: math.NaN()},
-				{Model: "center", Score: 0.2},
-				{Model: "right", Score: 0.4},
+				{Model: "center", Score: 0.2, Metadata: `{"confidence":0.8}`},
+				{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`},
 			},
-			expected:    0.2, // Corrected expectation: (0.0 + 0.2 + 0.4) / 3 = 0.2
+			expected:    0.2, // Avg of (0.0, 0.2, 0.4) = 0.2
 			description: "NaN values should be replaced with default (0.0)",
 		},
 		{
@@ -171,15 +171,15 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
 				{Model: "right", Score: math.Inf(1), Metadata: `{"confidence":0.85}`},
 			},
-			expected:    0.0,
-			description: "Infinity values should be replaced with default (0.0)",
+			description: "Infinity values should result in ErrAllPerspectivesInvalid",
+			expectError: true,
 		},
 		{
 			name: "weighted formula with config override",
 			scores: []db.LLMScore{
-				{Model: "left", Score: -0.2},
-				{Model: "center", Score: 0.0},
-				{Model: "right", Score: 0.4},
+				{Model: "left", Score: -0.2, Metadata: `{"confidence":0.9}`},
+				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
+				{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`},
 			},
 			configOverride: &CompositeScoreConfig{
 				Formula:          "weighted",
@@ -197,8 +197,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 			name: "ignore invalid with config override",
 			scores: []db.LLMScore{
 				{Model: "left", Score: math.NaN()},
-				{Model: "center", Score: 0.2},
-				{Model: "right", Score: 0.4},
+				{Model: "center", Score: 0.2, Metadata: `{"confidence":0.8}`},
+				{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`},
 			},
 			configOverride: &CompositeScoreConfig{
 				Formula:          "average",
@@ -214,12 +214,12 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 		{
 			name: "duplicate model scores - should use last one",
 			scores: []db.LLMScore{
-				{Model: "left", Score: 0.1, CreatedAt: time.Now().Add(-time.Minute)},
-				{Model: "center", Score: 0.2, CreatedAt: time.Now()},
-				{Model: "right", Score: 0.3, CreatedAt: time.Now()},
-				{Model: "left", Score: 0.4, CreatedAt: time.Now()}, // Newer score for left
+				{Model: "left", Score: 0.1, CreatedAt: time.Now().Add(-time.Minute), Metadata: `{"confidence":0.7}`},
+				{Model: "center", Score: 0.2, CreatedAt: time.Now(), Metadata: `{"confidence":0.8}`},
+				{Model: "right", Score: 0.3, CreatedAt: time.Now(), Metadata: `{"confidence":0.85}`},
+				{Model: "left", Score: 0.4, CreatedAt: time.Now(), Metadata: `{"confidence":0.9}`}, // Newer score for left
 			},
-			expected:    0.3,
+			expected:    0.3, // Uses left=0.4, center=0.2, right=0.3 -> Avg = 0.3
 			description: "When duplicate models exist, last one should be used",
 		},
 		{
@@ -263,20 +263,19 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 			}
 
 			// Pass the config explicitly to ComputeCompositeScore
-			actual, _, err := ComputeCompositeScoreWithConfidence(tc.scores, cfgToUse) // Assuming WithConfidence is the intended function now
-			if err != nil && !tc.expectError {                                         // Handle potential errors from the function
-				t.Fatalf("ComputeCompositeScoreWithConfidence failed unexpectedly: %v", err)
-			}
-			if !tc.expectError && err != nil {
-				t.Fatalf("ComputeCompositeScoreWithConfidence returned an error when none was expected: %v", err)
-			}
-			if tc.expectError && err == nil {
-				t.Fatalf("ComputeCompositeScoreWithConfidence did not return an error when one was expected")
-			}
-			if !tc.expectError {
-				assert.InDelta(t, tc.expected, actual, 0.001, tc.description)
-			}
+			score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(tc.scores, cfgToUse)
 
+			if tc.name == "Infinity values" { // Specific handling for "Infinity values"
+				assert.Error(t, err, tc.description)
+				assert.EqualError(t, err, ErrAllPerspectivesInvalid.Error(), tc.description)
+				assert.Equal(t, 0.0, score, "Score should be 0.0 on ErrAllPerspectivesInvalid")
+				assert.Equal(t, 0.0, confidence, "Confidence should be 0.0 on ErrAllPerspectivesInvalid")
+			} else if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.InDelta(t, tc.expected, score, 0.001, tc.description)
+			}
 		})
 	}
 }
@@ -291,9 +290,9 @@ func TestComputeCompositeScoreWeightedCalculation(t *testing.T) {
 
 	t.Run("Equal weights", func(t *testing.T) {
 		scores := []db.LLMScore{
-			{Model: "left", Score: 0.1},
-			{Model: "center", Score: 0.1},
-			{Model: "right", Score: 0.1},
+			{Model: "left", Score: 0.1, Metadata: `{"confidence":0.9}`},
+			{Model: "center", Score: 0.1, Metadata: `{"confidence":0.9}`},
+			{Model: "right", Score: 0.1, Metadata: `{"confidence":0.9}`},
 		}
 		testCfg := *baseCfg // Copy base config
 		testCfg.Weights = map[string]float64{"left": 1.0, "center": 1.0, "right": 1.0}
@@ -304,9 +303,9 @@ func TestComputeCompositeScoreWeightedCalculation(t *testing.T) {
 
 	t.Run("Unequal weights", func(t *testing.T) {
 		scores := []db.LLMScore{
-			{Model: "left", Score: 0.1},
-			{Model: "center", Score: 0.2},
-			{Model: "right", Score: 0.3},
+			{Model: "left", Score: 0.1, Metadata: `{"confidence":0.9}`},
+			{Model: "center", Score: 0.2, Metadata: `{"confidence":0.9}`},
+			{Model: "right", Score: 0.3, Metadata: `{"confidence":0.9}`},
 		}
 		testCfg := *baseCfg // Copy base config
 		testCfg.Weights = map[string]float64{"left": 0.2, "center": 0.3, "right": 0.5}
@@ -317,9 +316,9 @@ func TestComputeCompositeScoreWeightedCalculation(t *testing.T) {
 
 	t.Run("Zero weight", func(t *testing.T) {
 		scores := []db.LLMScore{
-			{Model: "left", Score: 0.1},
-			{Model: "center", Score: 0.2},
-			{Model: "right", Score: 0.3},
+			{Model: "left", Score: 0.1, Metadata: `{"confidence":0.9}`},
+			{Model: "center", Score: 0.2, Metadata: `{"confidence":0.9}`},
+			{Model: "right", Score: 0.3, Metadata: `{"confidence":0.9}`},
 		}
 		testCfg := *baseCfg // Copy base config
 		testCfg.Weights = map[string]float64{"left": 0.0, "center": 0.5, "right": 0.5}

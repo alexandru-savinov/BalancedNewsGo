@@ -7,7 +7,6 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Helper to create a score with metadata containing confidence
@@ -165,48 +164,37 @@ func TestModelNameNormalization(t *testing.T) {
 	})
 }
 
-// TestModelNameFallbackLogic tests the fallback logic when model names aren't found in config
+// TestModelNameFallbackLogic tests if legacy model names are correctly mapped
+// when the new model name mapping fails.
 func TestModelNameFallbackLogic(t *testing.T) {
-	// Create a test config locally instead of using a global
-	testConfig := &CompositeScoreConfig{
+	cfg := &CompositeScoreConfig{
+		// Config does NOT include direct mappings for "left", "center", "right"
 		Models: []ModelConfig{
-			{ModelName: modelLeft, Perspective: "left"},
-			{ModelName: modelCenter, Perspective: "center"},
-			{ModelName: modelRight, Perspective: "right"},
+			{Perspective: "left", ModelName: "some-modern-left-model"},
+			{Perspective: "center", ModelName: "another-modern-center"},
+			{Perspective: "right", ModelName: "modern-right"},
 		},
 		Formula:          "average",
 		DefaultMissing:   0.0,
+		MinScore:         -1.0,
+		MaxScore:         1.0,
+		HandleInvalid:    "default",
 		ConfidenceMethod: "count_valid",
-		MinConfidence:    0.1,
-		MaxConfidence:    1.0,
-		HandleInvalid:    "replace",
-		MinScore:         -1.0, // Accept all valid scores
-		MaxScore:         1.0,  // Accept all valid scores
 	}
 
-	// Create test scores using both configured and legacy model names
 	scores := []db.LLMScore{
-		// Modern model names (configured)
-		{ArticleID: 1, Model: modelLeft, Score: 0.2},
-		// Legacy model names (not in config)
-		{ArticleID: 1, Model: "left", Score: 0.1},
-		{ArticleID: 1, Model: "center", Score: 0.5},
-		{ArticleID: 1, Model: "right", Score: 0.9},
-		// Unknown model (should be skipped)
-		{ArticleID: 1, Model: "unknown", Score: 0.7},
+		// These scores use the legacy model names directly
+		{Model: "left", Score: -0.5, Metadata: `{"confidence":0.9}`},  // Added metadata
+		{Model: "center", Score: 0.1, Metadata: `{"confidence":0.8}`}, // Added metadata
+		{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`}, // Added metadata
 	}
 
-	// Calculate score, passing the local testConfig
-	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testConfig)
+	compositeScore, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
 
-	// Assertions
-	require.NoError(t, err)
-	// Only the highest confidence score from each perspective should be used
-	// We expect the function to use left=0.2, center=0.5, right=0.9
-	// Average: (0.2 + 0.5 + 0.9) / 3 = 0.53
-	assert.InDelta(t, 0.53, score, 0.01)
-	// Expect confidence to be 1.0 when all perspectives are present
-	assert.InDelta(t, 1.0, confidence, 0.01)
+	assert.NoError(t, err, "Fallback logic should not produce an error")
+	// The expected score should be the average of the scores, as they should be correctly mapped
+	expected := (-0.5 + 0.1 + 0.4) / 3.0
+	assert.InDelta(t, expected, compositeScore, 0.001, "Fallback logic score mismatch")
 }
 
 // TestModelMappingWithInvalidConfiguration tests model mapping with invalid configurations

@@ -61,10 +61,13 @@ func TestMain(m *testing.M) {
 
 func TestComputeCompositeScore(t *testing.T) {
 	tests := []struct {
-		name        string
-		scores      []db.LLMScore
-		expected    float64
-		expectPanic bool
+		name          string
+		scores        []db.LLMScore
+		expected      float64
+		expectPanic   bool
+		expectError   bool
+		errorType     error
+		errorContains string
 	}{
 		{
 			name: "normal case - all models",
@@ -73,7 +76,7 @@ func TestComputeCompositeScore(t *testing.T) {
 				{Model: "center", Score: 0.2, Metadata: `{"confidence":0.8}`},
 				{Model: "right", Score: 0.6, Metadata: `{"confidence":0.85}`},
 			},
-			expected: 0.0, // Average of -0.8, 0.2, and 0.6
+			expected: 0.0,
 		},
 		{
 			name: "some models missing",
@@ -81,18 +84,24 @@ func TestComputeCompositeScore(t *testing.T) {
 				{Model: "left", Score: -0.5, Metadata: `{"confidence":0.85}`},
 				{Model: "right", Score: 0.5, Metadata: `{"confidence":0.9}`},
 			},
-			expected: 0.0, // Average of -0.5, 0.0 (default), 0.5
+			expected: 0.0,
 		},
 		{
 			name: "single model",
 			scores: []db.LLMScore{
-				{Model: "left", Score: 0.1},
+				{Model: "left", Score: 0.1, Metadata: `{"confidence":0.9}`},
 			},
 			expected: 0.1,
 		},
+		{
+			name:          "empty scores array",
+			scores:        []db.LLMScore{},
+			expected:      0.0,
+			expectError:   true,
+			errorContains: "no scores provided",
+		},
 	}
 
-	// Load the actual config for testing this function properly
 	cfg, err := LoadCompositeScoreConfig()
 	if err != nil {
 		t.Fatalf("Failed to load main config for test: %v", err)
@@ -107,12 +116,31 @@ func TestComputeCompositeScore(t *testing.T) {
 					}
 				}()
 			}
-			actual := ComputeCompositeScore(tc.scores, cfg)
-			if !tc.expectPanic && math.Abs(actual-tc.expected) > 0.001 {
-				t.Errorf("Expected score %v, got %v", tc.expected, actual)
+			actual, returnedErr := ComputeCompositeScoreReturnError(tc.scores, cfg)
+
+			if tc.expectError {
+				assert.Error(t, returnedErr)
+				if tc.errorType != nil {
+					assert.ErrorIs(t, returnedErr, tc.errorType)
+				} else if tc.errorContains != "" {
+					assert.ErrorContains(t, returnedErr, tc.errorContains)
+				}
+			} else {
+				assert.NoError(t, returnedErr)
+				if !tc.expectPanic && math.Abs(actual-tc.expected) > 0.001 {
+					t.Errorf("Expected score %v, got %v", tc.expected, actual)
+				}
 			}
 		})
 	}
+}
+
+// Helper function to adapt ComputeCompositeScore for error checking
+func ComputeCompositeScoreReturnError(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, error) {
+	// We directly test ComputeCompositeScoreWithConfidenceFixed as it's the one returning errors.
+	// The original ComputeCompositeScore is not designed to return these specific errors directly.
+	score, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
+	return score, err
 }
 
 func TestLLMClientInitialization(t *testing.T) {

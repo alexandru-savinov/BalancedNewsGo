@@ -50,37 +50,50 @@ func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 	return ""
 }
 
-// checkForAllZeroResponses detects if all LLM responses have zero scores and zero confidence
+// checkForAllZeroResponses detects if all non-ensemble LLM responses have zero confidence.
 func checkForAllZeroResponses(scores []db.LLMScore) (bool, error) {
-	zeroCount := 0
-	totalCount := 0
+	allZeroConfidence := true // Assume true until proven otherwise
+	nonEnsembleCount := 0
 
 	for _, score := range scores {
-		// Skip ensemble scores in the zero check
+		// Skip ensemble scores
 		if strings.ToLower(score.Model) == "ensemble" {
 			continue
 		}
 
-		totalCount++
-		if score.Score == 0 {
-			// Check if we have non-zero confidence
-			var metadata map[string]interface{}
+		nonEnsembleCount++
+
+		// Check confidence from metadata
+		hasNonZeroConfidence := false
+		var metadata map[string]interface{}
+		if score.Metadata != "" {
 			if err := json.Unmarshal([]byte(score.Metadata), &metadata); err == nil {
-				if confidence, ok := metadata["confidence"].(float64); ok && confidence > 0.0 {
-					continue
+				if confidenceValue, ok := metadata["confidence"]; ok {
+					if confidenceFloat, ok := confidenceValue.(float64); ok && confidenceFloat > 0.0 {
+						hasNonZeroConfidence = true
+					}
 				}
 			}
-			zeroCount++
+			// Malformed or missing metadata is treated as zero confidence
+		}
+
+		if hasNonZeroConfidence {
+			allZeroConfidence = false // Found one with non-zero confidence
+			break                     // No need to check further
 		}
 	}
 
-	if totalCount == 0 {
+	if nonEnsembleCount == 0 {
 		return false, nil // No non-ensemble scores to check
 	}
 
-	if zeroCount == totalCount {
-		log.Printf("Critical warning: All %d LLM models returned empty responses or zero values", totalCount)
-		return true, fmt.Errorf("all LLMs returned empty or zero-confidence responses (count: %d)", totalCount)
+	if allZeroConfidence {
+		log.Printf("Critical warning: All %d non-ensemble LLM models returned zero confidence", nonEnsembleCount)
+		// Return the specific sentinel error variable, potentially wrapped if needed elsewhere,
+		// but the base error should be comparable with errors.Is
+		// Using the formatted error caused issues with errors.Is checks.
+		// Let's return the sentinel directly for reliable checks.
+		return true, ErrAllScoresZeroConfidence
 	}
 
 	return false, nil
