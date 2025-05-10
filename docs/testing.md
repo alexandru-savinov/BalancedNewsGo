@@ -25,6 +25,7 @@ Based on recent debugging efforts (documented in `docs/pr/`), the following impr
 | `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
 | `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
 | `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
+| `updated_backend` | ❌ FAIL | Advanced, strict API and edge-case tests. Fails due to stricter status/schema checks, chained variables, and more endpoints. See below. |
 
 ## Test Suites
 
@@ -165,4 +166,29 @@ See `docs/pr/todo_llm_test_fixes.md` for a detailed plan to address:
 
 1. **LLM Unit Test Failures**: Multiple unit tests in the `internal/llm` package need fixes related to score calculation
 2. **Missing Test Collections**: Several Newman test collections need to be created or acquired
-3. **Test Infrastructure Improvements**: Suggestions for improving the test process and automation 
+3. **Test Infrastructure Improvements**: Suggestions for improving the test process and automation
+
+## Additional Test Suite: `updated_backend_tests.json`
+
+A new, more comprehensive and strict test suite is available:
+- **File:** `postman/updated_backend_tests.json`
+- **Purpose:** Covers all endpoints, including advanced features (bias analysis, feed management, summary, SSE, etc.), and expects precise status codes, error messages, and response schemas.
+- **How to run:**
+  ```powershell
+  npx newman run postman/updated_backend_tests.json --reporters cli --timeout-request 5000 > test-results/updated_backend_cli.txt
+  ```
+- **Typical issues:**
+  - Fails if test data is not unique (e.g., duplicate article URLs)
+  - Fails if environment variables (like `articleId`) are not set due to earlier failures
+  - Fails if API error messages or status codes do not match exactly
+  - Fails on endpoints not present or not fully implemented in the backend
+  - More likely to expose bugs in chaining, error handling, and advanced flows
+
+### Troubleshooting `updated_backend_tests.json` failures
+- **Reset test data** before running (clean DB, unique URLs)
+- **Check environment variable chaining** (ensure each test sets up what the next needs)
+- **Align API error messages and status codes** with test expectations
+- **Implement all tested endpoints** (bias, ensemble, summary, SSE, etc.)
+- **Review `test-results/updated_backend_cli.txt`** for detailed failure reasons
+
+> **Note:** The `unified_backend_tests.json` suite is more forgiving and will pass even if some advanced features or strict error handling are missing. Use `updated_backend_tests.json` for full coverage and to catch subtle or edge-case bugs. 
