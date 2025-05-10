@@ -1,0 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Rules: NewsBalancer Go Project
+
+## 1. Architecture & Data Flow
+- NewsBalancer fetches news from RSS feeds, analyzes political bias using LLMs, stores results in SQLite, and exposes data via a web API/UI.
+- Core flow: RSS ingestion → DB storage → LLM analysis (ensemble, composite scoring) → API/web presentation.
+- LLM analysis uses multiple models/prompts, combines results per config, and averages duplicate scores/confidences.
+
+## 2. Key Directories & Files
+- `cmd/server/main.go`: Main entry point, sets up Gin server, loads configs, initializes DB, LLM, RSS collector, and API routes.
+- `internal/api/`: API layer (routes, handlers, DTOs, caching, progress tracking).
+- `internal/llm/`: LLM client, ensemble logic, composite scoring, caching, progress, and config loading.
+- `internal/db/`: SQLite DAL, schema, CRUD for articles, scores, feedback, labels.
+- `internal/rss/`: RSS feed fetching, parsing, deduplication, and storage.
+- `configs/`: Contains `feed_sources.json` (RSS URLs) and `composite_score_config.json` (LLM ensemble/scoring config).
+- `.env`: LLM API keys, DB path, and service URLs.
+
+## 3. LLM Scoring & Config
+- LLM ensemble logic is driven by `configs/composite_score_config.json` (models, perspectives, formula, weights, confidence method).
+- Composite score calculation is in `internal/llm/composite_score_fix.go` and is highly configurable.
+- Caching of LLM responses is handled in `internal/llm/cache.go`.
+
+## 4. API & Web
+- API endpoints are registered in `internal/api/api.go` via `RegisterRoutes`.
+- Progress of async LLM scoring is tracked by `ProgressManager` and exposed via API (e.g., SSE endpoint).
+- Web UI is served from `web/`.
+
+## 5. Database
+- Schema is defined in `internal/db/db.go` (tables: articles, llm_scores, feedback, labels).
+- `llm_scores` has a UNIQUE constraint on (article_id, model) for upserts.
+
+## 6. Testing & Utilities
+- Use `NO_AUTO_ANALYZE=true` for reliable test runs.
+- Mock LLM service: `mock_llm_service.go`.
+- Batch/utility tools in `cmd/` (import, clear, score, fetch, validate, report, query, test).
+
+## 7. Error Handling
+- Standardized via `internal/apperrors/` (AppError, error codes, wrapping).
+
+## 8. Metrics
+- Prometheus metrics in `internal/metrics/prom.go`.
+- Aggregated DB metrics in `internal/metrics/metrics.go`.
+
+## 9. Debugging Tips
+- Check logs for errors in API, LLM, RSS, and DB.
+- Validate config files and DB schema.
+- Monitor LLM API key usage and quota.
+- Use job logs and progress endpoints for batch/async tasks.
+
+
