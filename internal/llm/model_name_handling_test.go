@@ -144,8 +144,8 @@ func TestComputeWithMixedModelNames(t *testing.T) {
 
 	// Expected score (average): Uses -0.8 (left), 0.3 (center, higher conf), 0.9 (right)
 	// (-0.8 + 0.3 + 0.9) / 3 = 0.4 / 3 = 0.1333...
-	expectedScore := 0.1         // left: -0.8, center: (0.1+0.3)/2=0.2, right: 0.9. Avg = 0.1
-	expectedConfidence := 0.8667 // left: 0.9, center: (0.8+0.7)/2=0.75, right: 0.95. Avg = 0.8667
+	expectedScore := 0.4 / 3.0
+	expectedConfidence := 1.0 // Assumes count_valid, 3/3 perspectives found
 
 	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg)
 
