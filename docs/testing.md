@@ -1,202 +1,168 @@
-# Testing Guide
+# Testing Guide for NewsBalancer Go
 
-This guide explains how to set up your environment, run the various test suites, and analyze/debug test results for the NewsBalancer project.
+## Overview
 
-## Prerequisites
+This document provides information on how to test the NewsBalancer Go application, including running test suites, troubleshooting common issues, and understanding test output.
 
-Before running tests, ensure you have the following installed:
+## Recent Improvements
 
-- Go (Version 1.24+ recommended, check `README.md` for the specific version)
-- Node.js (Required for test runners and reporting tools)
-- Newman (The Postman CLI runner): Install globally via npm:
-  ```bash
-  npm install -g newman
-  ```
+Based on recent debugging efforts (documented in `docs/pr/`), the following improvements have been made:
 
-## Running Tests
+1. **Schema Fix**: Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table to fix SQL `ON CONFLICT` issues
+2. **Enhanced Documentation**: Detailed troubleshooting steps for common test failures
+3. **Test Process**: Improved cleanup procedures to prevent port conflicts and database locks
 
-Tests are primarily run using the consolidated test script (`scripts/test.cmd` for Windows, `scripts/test.sh` for Linux/macOS) or standard Go commands.
+## Current Test Status
 
-### Using the Consolidated Test Script
+| Test Suite | Status | Notes |
+|------------|--------|-------|
+| `essential` | ✅ PASS | Core API functionality tests pass after schema fix |
+| `backend` | ✅ PASS | All 61 assertions successful |
+| `api` | ✅ PASS | All API endpoints function correctly |
+| Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
+| Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
+| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation (see `docs/pr/todo_llm_test_fixes.md`) |
+| `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
+| `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
+| `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
 
-This script provides various subcommands to run different test suites. Use `scripts/test.cmd help` or `scripts/test.sh help` to see all available commands.
+## Test Suites
 
-Common commands:
+The application includes several test suites:
 
-- **Go Unit Tests:**
-  ```bash
-  go test ./...
-  ```
-  *(Note: This command is run directly, not via the test script)*
+1. **Go Unit Tests** - Test individual packages
+   ```powershell
+   $env:NO_AUTO_ANALYZE='true'; go test ./...
+   ```
+   
+   Or test specific packages:
+   ```powershell
+   $env:NO_AUTO_ANALYZE='true'; go test ./internal/db -v
+   $env:NO_AUTO_ANALYZE='true'; go test ./internal/api -v
+   ```
 
-- **Backend Integration Tests:**
-  ```bash
-  # Windows
-  scripts/test.cmd backend
-  # Linux/macOS
-  scripts/test.sh backend 
-  ```
+2. **Newman API Tests** - These are Postman collections executed through Newman:
 
-- **API Tests:**
-  ```bash
-  # Windows
-  scripts/test.cmd api
-  # Linux/macOS
-  scripts/test.sh api 
-  ```
+   | Test Suite | Command | Description |
+   |------------|---------|-------------|
+   | `essential` | `scripts/test.cmd essential` | Core API functionality tests |
+   | `backend` | `scripts/test.cmd backend` | Backend service tests |
+   | `api` | `scripts/test.cmd api` | API endpoint tests |
+   | `debug` | `scripts/test.cmd debug` | Debugging-specific tests |
+   | `confidence` | `scripts/test.cmd confidence` | Confidence calculation tests |
+   | `all` | `scripts/test.cmd all` | Run all available test suites |
+   | `clean` | `scripts/test.cmd clean` | Clean up test results and artifacts |
 
-- **Essential Tests:**
-  ```bash
-  # Windows
-  scripts/test.cmd essential
-  # Linux/macOS
-  scripts/test.sh essential 
-  ```
+## Environment Requirements
 
-- **All Tests (Combined):** Runs essential, extended, and confidence tests.
-  ```bash
-  # Windows
-  scripts/test.cmd all
-  # Linux/macOS
-  scripts/test.sh all 
-  ```
+For successful test execution:
 
-- **Debug Tests:** Runs a specific debug collection.
-  ```bash
-  # Windows
-  scripts/test.cmd debug
-  # Linux/macOS
-  scripts/test.sh debug 
-  ```
+1. **Environment Variables**
+   - `NO_AUTO_ANALYZE=true` - **IMPORTANT**: This prevents background LLM processing during tests, which can cause SQLite concurrency issues
+   - This is automatically set by `scripts/test.cmd` but must be set manually when running `go run` or `go test` directly
 
-- **Confidence Validation Tests:**
-  ```bash
-  # Windows
-  scripts/test.cmd confidence
-  # Linux/macOS
-  scripts/test.sh confidence 
-  ```
+2. **Database**
+   - The tests use an in-memory SQLite database by default
+   - Some tests create a temporary file-based database at the project root
+   - The `llm_scores` table must have the `UNIQUE(article_id, model)` constraint for `ON CONFLICT` clauses to work
 
-- **Generate Report:** Creates an HTML report from latest results.
-  ```bash
-  # Windows
-  scripts/test.cmd report
-  # Linux/macOS
-  scripts/test.sh report 
-  ```
+3. **Port Requirements**
+   - The server runs on port 8080 during tests
+   - Ensure no other processes are using this port
 
-- **Analyze Results:** Runs a CLI analysis tool.
-  ```bash
-  # Windows
-  scripts/test.cmd analyze
-  # Linux/macOS
-  scripts/test.sh analyze 
-  ```
+## Root Causes of Common Failures
 
-- **List Results:** Shows existing result files.
-  ```bash
-  # Windows
-  scripts/test.cmd list
-  # Linux/macOS
-  scripts/test.sh list 
-  ```
+Based on recent debugging (see `docs/pr/test_fixes_summary.md`), we identified two primary issues that cause test failures:
 
-- **Clean Results:** Deletes generated test results and logs.
-  ```bash
-  # Windows
-  scripts/test.cmd clean
-  # Linux/macOS
-  scripts/test.sh clean 
-  ```
+1. **SQL Schema Constraint Mismatch**: Without a `UNIQUE(article_id, model)` constraint on the `llm_scores` table, SQL `ON CONFLICT` clauses fail with:
+   ```
+   SQL logic error: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+   ```
 
-### Important Note on Concurrency
+2. **Concurrency Issues with SQLite**: Without `NO_AUTO_ANALYZE=true`, background LLM analysis processes cause database lock contention with test API calls, resulting in `SQLITE_BUSY` errors.
 
-Due to concurrency limitations with SQLite and background LLM analysis tasks triggered by some API calls, tests involving Newman (`backend`, `api`, `essential`, `all`, `debug`, `confidence`) currently require the `NO_AUTO_ANALYZE=true` environment variable to be set. The provided `test.cmd` and `test.sh` scripts handle this automatically by setting the variable before starting the Go server for the test run. This prevents tests from failing due to database locks (`SQLITE_BUSY`) caused by contention between the test runner and background analysis.
+## Troubleshooting Common Issues
 
-## Analyzing and Debugging Results
+### 1. Port Conflicts
 
-### Generating Reports
+**Error:** `listen tcp :8080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted`
 
-An HTML report summarizing test runs can be generated using the test script:
-
-```bash
-# Windows
-scripts/test.cmd report
-# Linux/macOS
-scripts/test.sh report
+**Solution:**
+```powershell
+Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | 
+   Select-Object -ExpandProperty OwningProcess | 
+   ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
 ```
-This usually saves a report to the `test-results/` directory (e.g., `test_report.html`).
 
-### Command-Line Analysis
+### 2. Database Locks
 
-You can analyze Newman/Postman results directly from the CLI using the test script:
+**Error:** `database is locked` or `SQLITE_BUSY`
 
-1.  **List Result Files:** See available JSON results in `test-results/`.
-    ```bash
-    scripts/test.cmd list
-    ```
-2.  **Analyze Results:** Run the analyzer, which might prompt you to choose a file or analyze the latest.
-    ```bash
-    scripts/test.cmd analyze
-    ```
+**Solution:**
+- Ensure `NO_AUTO_ANALYZE=true` is set
+- Kill any lingering server processes:
+  ```powershell
+  Get-Process -Name "go", "newbalancer_server" -ErrorAction SilentlyContinue | Stop-Process -Force
+  ```
+- Delete the database file and start fresh:
+  ```powershell
+  Remove-Item news.db -Force
+  ```
 
-The analysis output usually includes:
-- Summary (Total, Passed, Failed, Time)
-- Detailed results for failures (Request, Response, Assertions, Errors)
+### 3. SQL Errors
 
-### Debugging in Postman
+**Error:** `SQL logic error: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint`
 
-For in-depth debugging, you can import the raw Newman result files (`.json` files saved in `test-results/`) into Postman:
+**Solution:**
+- This indicates a mismatch between SQL queries and database schema
+- The schema in `internal/db/db.go` should match what the queries expect
+- The `llm_scores` table should have a `UNIQUE(article_id, model)` constraint for `ON CONFLICT` to work
 
-1.  Run the desired test suite (especially `scripts/test.cmd debug` which saves `debug_tests.json`).
-2.  Open Postman.
-3.  Click the "Import" button.
-4.  Select the "File" tab and upload the relevant `.json` file from `test-results/`.
-5.  The results import as a temporary collection.
-6.  Examine individual requests:
-    *   View request details (headers, body).
-    *   View the actual response received (body, headers, status code).
-    *   Check the "Test Results" tab for assertion passes/failures.
-    *   Look at the Postman Console (`Ctrl+Alt+C` or `Cmd+Option+C`) for detailed logs written by test scripts (`pm.test`, `console.log`).
-7.  You can modify and re-run individual requests directly within Postman to pinpoint issues.
+### 4. Missing Test Collections
 
-### Debug Endpoints
+**Error:** `No collection found at path: [collection_name]`
 
-The API may include specific endpoints to aid debugging:
+**Solution:**
+- Verify that the test collection exists in the `postman` directory
+- Some test suites (debug, confidence, all) require collections that might not be present in your setup
+- Focus on using the `essential` and `backend` tests if you encounter missing collection errors
 
-- `GET /api/debug/schema`: Check if this exists; it might return the current database schema and sample data.
+## Test Results
 
-## Common Issues and Solutions
+Test results are saved in the `test-results` directory with timestamps, including:
+- Server logs: `server_essential_tests.log`, etc.
+- Test run logs: `all_tests_run_[timestamp].log`, etc.
 
-When tests fail, consider these common areas:
+Review these logs to diagnose failures. Common patterns to look for:
+- Connection refused errors (server not started)
+- 500/503 errors (server internal errors)
+- SQL errors (schema or query issues)
 
-1.  **Database Locking (`SQLITE_BUSY`):**
-    *   If you encounter errors related to the database being locked, ensure you are running tests via the `scripts/test.cmd` or `scripts/test.sh` scripts. These scripts set the `NO_AUTO_ANALYZE=true` environment variable, which prevents background LLM analysis from causing database contention during tests.
-    *   If running Newman manually or via other means, you may need to set this environment variable yourself.
+## Best Practices
 
-2.  **Feedback Table Schema Issues**:
-    *   Ensure the `feedback` table has all required columns (e.g., `id`, `article_id`, `user_id`, `feedback_text`, `category`, `ensemble_output_id`, `source`, `created_at`). Missing columns cause submission failures.
-    *   Use the `/api/debug/schema` endpoint (if available) or DB tools to verify the schema.
-3.  **Response Format Issues**:
-    *   The API likely follows a standard response structure (e.g., `{ "success": true/false, "data": {...} }` or `{ "success": false, "error_message": "..." }`).
-    *   Verify tests are asserting against the correct fields and structure based on the actual API response (visible in Postman or CLI analysis).
-4.  **Cache Issues**:
-    *   Endpoints like `GET /articles` might use caching.
-    *   If tests seem to get stale data, try adding a unique query parameter (e.g., `?timestamp=<value>`) to the request URL to bypass the cache during debugging.
-5.  **Ensemble Details Issues**:
-    *   Endpoints retrieving ensemble or detailed scores (e.g., `/api/articles/{id}/details`) might require the article to have been fully processed and scored by the LLMs.
-    *   A `404 Not Found` might indicate the scoring process hasn't completed for that article yet.
-6.  **Data Collisions:**
-    *   Ensure tests creating data (e.g., articles, feedback) use unique identifiers (titles, URLs, user IDs) per test run if the database isn't cleaned between runs, to avoid conflicts.
+1. **Always run `scripts/test.cmd clean` before test sessions**
+   - This ensures a clean testing environment
 
-## Updating Tests
+2. **Kill lingering server processes before starting tests**
+   - Use the commands in the "Port Conflicts" section
 
-If API behavior changes, the Postman tests need updating:
+3. **Run tests with `NO_AUTO_ANALYZE=true`**
+   - This prevents background processing from interfering with tests
 
-1.  Open the source Postman Collection (likely stored in the `postman/` directory).
-2.  Modify the requests or test scripts (`Tests` tab in Postman) as needed.
-3.  Save the changes in Postman.
-4.  Export the *entire collection* from Postman (usually as `Collection v2.1`).
-5.  Replace the corresponding collection file in the `postman/` directory with the newly exported file.
-6.  Commit the updated collection file to version control.
-7.  Run the tests again using Newman (via scripts or CLI) to ensure they pass with the updated collection. 
+4. **Start with essential tests**
+   - Begin with `scripts/test.cmd essential` to verify basic functionality
+
+5. **Debug one test suite at a time**
+   - Fix issues in smaller test suites before running larger ones
+
+6. **Check for schema changes when fixing SQL issues**
+   - Ensure database schemas in code match what SQL queries expect
+   - Test `ON CONFLICT` clauses against actual table constraints
+
+## Outstanding Issues
+
+See `docs/pr/todo_llm_test_fixes.md` for a detailed plan to address:
+
+1. **LLM Unit Test Failures**: Multiple unit tests in the `internal/llm` package need fixes related to score calculation
+2. **Missing Test Collections**: Several Newman test collections need to be created or acquired
+3. **Test Infrastructure Improvements**: Suggestions for improving the test process and automation 

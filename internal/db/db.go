@@ -654,8 +654,8 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		score REAL NOT NULL,
 		metadata TEXT,
 		version TEXT,
-		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		FOREIGN KEY (article_id) REFERENCES articles (id)
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,		FOREIGN KEY (article_id) REFERENCES articles (id),
+		UNIQUE(article_id, model)
 	);
 
 	CREATE TABLE IF NOT EXISTS feedback (

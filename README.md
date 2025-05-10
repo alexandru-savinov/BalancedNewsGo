@@ -6,7 +6,29 @@ A Go-based backend service that provides politically balanced news aggregation u
 
 NewsBalancer analyzes news articles from diverse sources using multiple LLM perspectives (left, center, right) to provide balanced viewpoints and identify potential biases. 
 
-**Current Status:** Basic functionality is working, and the `essential` test suite passes when run with the `NO_AUTO_ANALYZE=true` environment variable to prevent background LLM processing from interfering with tests due to SQLite concurrency limitations.
+**Current Status:** Basic functionality is working, and the `essential`, `backend`, and `api` test suites now pass when run with the `NO_AUTO_ANALYZE=true` environment variable to prevent background LLM processing from interfering with tests due to SQLite concurrency limitations.
+
+## Recent Fixes
+
+- Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table schema to support proper functioning of `ON CONFLICT` clauses in SQL queries that update ensemble scores. This fixed critical SQL errors during test execution.
+- Ensured proper test isolation by clearing database between test runs and properly shutting down processes.
+- Documentation improvements for troubleshooting common test issues.
+
+## Test Suite Status
+
+| Test Suite | Status | Notes |
+|------------|--------|-------|
+| `essential` | ✅ PASS | Core API functionality tests pass after schema fix |
+| `backend` | ✅ PASS | All 61 assertions successful |
+| `api` | ✅ PASS | All API endpoints function correctly |
+| Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
+| Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
+| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation, unrelated to the fixed SQL issue |
+| `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
+| `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
+| `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
+
+See `docs/pr/todo_llm_test_fixes.md` for detailed information about the remaining issues and plans for fixing them.
 
 ## Features
 
@@ -94,11 +116,34 @@ Refer to the **[Testing Guide](docs/testing.md)** for detailed instructions on r
 *   **Backend Integration Tests (`scripts/test.cmd backend`)**: Verify the interactions between different internal components of the backend system.
 *   **API Tests (`scripts/test.cmd api`)**: Perform black-box testing of the application's API endpoints, ensuring the public contract is met.
 *   **Aggregated Suites (`scripts/test.cmd all`)**: Run a combination of tests for broader coverage.
-*   **Essential Tests (`scripts/test.cmd essential`)**: Cover core functionality described as essential for basic operation. *(Passes with workaround)*
+*   **Essential Tests (`scripts/test.cmd essential`)**: Cover core functionality described as essential for basic operation.
 
-**Important Note on Testing:** Due to concurrency issues with SQLite and background LLM analysis tasks triggered by some API calls, tests involving Newman (`backend`, `api`, `essential`, `all`, `debug`, `confidence`) currently require the `NO_AUTO_ANALYZE=true` environment variable to be set. The provided `test.cmd` and `test.sh` scripts handle this automatically. This prevents tests from failing due to database locks (`SQLITE_BUSY`) caused by contention between the test runner and background analysis.
+**Important Note on Testing:** Due to concurrency issues with SQLite and background LLM analysis tasks triggered by some API calls, tests involving Newman (`backend`, `api`, `essential`, `all`, `debug`, `confidence`) require the `NO_AUTO_ANALYZE=true` environment variable to be set. The provided `test.cmd` and `test.sh` scripts handle this automatically. This prevents tests from failing due to database locks (`SQLITE_BUSY`) caused by contention between the test runner and background analysis.
 
-Common commands using the consolidated test script:
+Additionally, the database schema includes a `UNIQUE(article_id, model)` constraint on the `llm_scores` table to ensure SQL queries using `ON CONFLICT` clauses work correctly when updating ensemble scores. This prevents errors like `SQL logic error: ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint` during test execution.
+
+### Common Test Issues and Solutions
+
+1. **Port Conflicts**:
+   ```powershell
+   # Kill processes using port 8080
+   Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | 
+      Select-Object -ExpandProperty OwningProcess | 
+      ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+   ```
+
+2. **Database Locks**:
+   ```powershell
+   # Kill server processes
+   Get-Process -Name "go", "newbalancer_server" -ErrorAction SilentlyContinue | Stop-Process -Force
+   
+   # Delete database file
+   Remove-Item news.db -Force
+   ```
+
+3. **Missing Collections**: Some test suites require collections that may not be present. Focus on the `essential` and `backend` tests if you encounter missing collection errors.
+
+### Common Test Commands
 
 - Run Go unit tests:
   ```

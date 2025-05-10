@@ -312,3 +312,14 @@ These are standalone executables, typically for utility, testing, or batch proce
 ## 7. Final Remarks
 
 This document provides a logically structured overview of the NewsBalancer Go codebase, focusing on core components and their interactions. It covers the main server, API layer, LLM analysis core, database interactions, RSS ingestion, supporting packages, configuration files, command-line utilities, and testing tools. This structure should serve as a useful reference for understanding the system's architecture and data flow, facilitating future development and maintenance.
+
+## Database Schema
+
+The application uses SQLite as its database. The schema is defined in `internal/db/db.go` and includes the following tables:
+
+- **articles**: Stores article information and metadata, including composite scores.
+- **llm_scores**: Stores individual LLM model scores for articles.
+  - Contains a `UNIQUE(article_id, model)` constraint to enable `ON CONFLICT` clauses in SQL queries.
+  - This constraint is critical for the proper functioning of ensemble score updates.
+- **feedback**: Stores user feedback on articles.
+- **labels**: Stores training labels for the system.
