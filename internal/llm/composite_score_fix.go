@@ -2,19 +2,46 @@ package llm
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sort"
 	"strings"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
+// ErrAllPerspectivesInvalid is returned when no valid scores are found after processing.
+var ErrAllPerspectivesInvalid = errors.New("no valid scores found")
+
+// isInvalid checks if a score is NaN, ±Inf, or outside the configured MinScore/MaxScore bounds.
+func isInvalid(v float64, cfg *CompositeScoreConfig) bool {
+	return math.IsNaN(v) || math.IsInf(v, 0) || v < cfg.MinScore || v > cfg.MaxScore
+}
+
 // MapModelToPerspective maps a model name to its perspective (left, center, right)
-// based on the provided composite score configuration
+// based on the provided composite score configuration.
+//
+// Matching order:
+//  1. If the model name is empty, return the perspective for the first model in the config with an empty name (if any).
+//  2. If the normalized model name exactly matches a normalized config model name, return its perspective (first match wins, including duplicates).
+//  3. If no exact match, but the normalized model name has a config model name as a prefix (for cases like extra slashes or suffixes), return its perspective (first match wins).
+//  4. If no config match, but the normalized model name is "left", "center", or "right", return that as the perspective.
+//  5. If none of the above, return an empty string.
 func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 	if cfg == nil {
 		log.Printf("Error: CompositeScoreConfig is nil in MapModelToPerspective")
+		return ""
+	}
+
+	// 1. Handle empty model name - look for a model with empty name in config
+	if modelName == "" {
+		for _, model := range cfg.Models {
+			if model.ModelName == "" {
+				return strings.ToLower(model.Perspective)
+			}
+		}
 		return ""
 	}
 
@@ -24,20 +51,29 @@ func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 		normalizedModelName = normalizedModelName[:colonIndex]
 	}
 
-	// Look up the model in the configuration
+	// 2. Look for exact match in the configuration (first match wins)
 	for _, model := range cfg.Models {
-		// Normalize the configured model name the same way
 		normalizedConfigModel := strings.ToLower(strings.TrimSpace(model.ModelName))
 		if colonIndex := strings.Index(normalizedConfigModel, ":"); colonIndex != -1 {
 			normalizedConfigModel = normalizedConfigModel[:colonIndex]
 		}
-
-		if normalizedConfigModel == normalizedModelName {
+		if normalizedModelName == normalizedConfigModel {
 			return strings.ToLower(model.Perspective)
 		}
 	}
 
-	// Fallback to legacy names
+	// 3. Look for prefix match in the configuration (first match wins)
+	for _, model := range cfg.Models {
+		normalizedConfigModel := strings.ToLower(strings.TrimSpace(model.ModelName))
+		if colonIndex := strings.Index(normalizedConfigModel, ":"); colonIndex != -1 {
+			normalizedConfigModel = normalizedConfigModel[:colonIndex]
+		}
+		if strings.HasPrefix(normalizedModelName, normalizedConfigModel) {
+			return strings.ToLower(model.Perspective)
+		}
+	}
+
+	// 4. Fallback to legacy names
 	if normalizedModelName == LabelLeft {
 		return LabelLeft
 	} else if normalizedModelName == LabelCenter {
@@ -46,6 +82,7 @@ func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
 		return LabelRight
 	}
 
+	// 5. No match found
 	log.Printf("Warning: Model '%s' not found in composite score configuration", modelName)
 	return ""
 }
@@ -113,14 +150,38 @@ func processScoresByPerspective(perspectiveModels map[string][]db.LLMScore, cfg 
 			log.Printf("  Model: %s, Score: %.2f, Metadata: %s", m.Model, m.Score, m.Metadata)
 		}
 
-		// Sort models by created_at descending (or another criteria if needed)
+		// Sort models by confidence (highest first) and then by created_at
 		sort.Slice(models, func(i, j int) bool {
+			// Extract confidence from metadata
+			var iConf, jConf float64
+			if models[i].Metadata != "" {
+				var metadata map[string]interface{}
+				if err := json.Unmarshal([]byte(models[i].Metadata), &metadata); err == nil {
+					if conf, ok := metadata["confidence"].(float64); ok {
+						iConf = conf
+					}
+				}
+			}
+			if models[j].Metadata != "" {
+				var metadata map[string]interface{}
+				if err := json.Unmarshal([]byte(models[j].Metadata), &metadata); err == nil {
+					if conf, ok := metadata["confidence"].(float64); ok {
+						jConf = conf
+					}
+				}
+			}
+
+			// First sort by confidence (highest first)
+			if iConf != jConf {
+				return iConf > jConf
+			}
+			// If confidence is equal, sort by created_at (newest first)
 			return models[i].CreatedAt.After(models[j].CreatedAt)
 		})
 
-		// Select the first (latest) valid score for this perspective
+		// Select the first (highest confidence) valid score for this perspective
 		for _, s := range models {
-			if isInvalid(s.Score) {
+			if isInvalid(s.Score, cfg) {
 				if cfg.HandleInvalid == "ignore" {
 					continue
 				} else { // Default to default value
@@ -273,6 +334,8 @@ func calculateConfidence(cfg *CompositeScoreConfig, validModels map[string]bool,
 	var confidence float64
 	switch cfg.ConfidenceMethod {
 	case "count_valid":
+		// Note: if cfg.HandleInvalid == "ignore", perspectives with invalid scores
+		// that are skipped will reduce perspectiveCount, thus lowering confidence.
 		confidence = float64(perspectiveCount) / 3.0
 	case "spread":
 		spread := scoreSpread(scoreMap)
@@ -298,19 +361,19 @@ func calculateConfidence(cfg *CompositeScoreConfig, validModels map[string]bool,
 func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
 	// Check for empty scores array
 	if len(scores) == 0 {
-		return 0, 0, fmt.Errorf("no scores provided")
+		return 0, 0, fmt.Errorf("no scores provided: %w", ErrAllPerspectivesInvalid)
 	}
 
 	// First check if we have all zero responses
 	if allZeros, err := checkForAllZeroResponses(scores); allZeros {
 		log.Printf("[ERROR][CONFIDENCE] All scores are zero, returning error")
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("%w: %w", ErrAllPerspectivesInvalid, err)
 	}
 
 	// Use the provided config directly
 	if cfg == nil {
 		log.Printf("[ERROR][CONFIDENCE] Config is nil")
-		return 0, 0, fmt.Errorf("composite score config is nil")
+		return 0, 0, fmt.Errorf("composite score config is nil: %w", ErrAllPerspectivesInvalid)
 	}
 
 	// Map for left/center/right
@@ -334,7 +397,7 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *Composi
 	if validCount == 0 {
 		// Handle the case where only invalid scores existed and were ignored/defaulted
 		log.Printf("[WARN][CONFIDENCE] No valid model scores found after processing. Returning default score.")
-		return cfg.DefaultMissing, 0.0, fmt.Errorf("no valid scores found") // Return default and 0 confidence
+		return cfg.DefaultMissing, 0.0, ErrAllPerspectivesInvalid // Changed to use ErrAllPerspectivesInvalid
 	}
 
 	// Check if we have only ensemble scores (This check might be redundant now with validCount check above)

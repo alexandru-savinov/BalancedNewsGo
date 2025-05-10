@@ -7,7 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
+
+	// "math"
 	"net/http"
 	"os"
 	"strings"
@@ -64,10 +65,6 @@ func ComputeCompositeScore(scores []db.LLMScore, cfg *CompositeScoreConfig) floa
 		return 0.0
 	}
 	return score
-}
-
-func isInvalid(f float64) bool {
-	return math.IsNaN(f) || math.IsInf(f, 0)
 }
 
 func parseLLMAPIResponse(body []byte) (string, error) {

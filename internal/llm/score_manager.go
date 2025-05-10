@@ -64,6 +64,7 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 				Step:        "Error",
 				Message:     errCalc.Error(),
 				Status:      "Error",
+				Error:       errCalc.Error(),
 				Percent:     100,
 				LastUpdated: time.Now().Unix(),
 			}

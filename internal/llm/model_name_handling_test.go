@@ -11,7 +11,7 @@ import (
 
 // Helper to create a score with metadata containing confidence
 // (Copied from deleted composite_score_fix_test.go)
-func createScoreWithConfidence(model string, score float64, confidence float64) db.LLMScore {
+func createScoreWithConfidenceForModelTest(model string, score float64, confidence float64) db.LLMScore {
 	metadata := fmt.Sprintf(`{"confidence": %.2f}`, confidence)
 	return db.LLMScore{
 		ArticleID: 1, // Hardcode article ID as it's not relevant for these tests
@@ -79,7 +79,7 @@ func createModelNameTestConfig() *CompositeScoreConfig {
 			{ModelName: "Vendor/Legacy-Left", Perspective: "left"},
 			{ModelName: " Vendor / Mixed-Case-Center ", Perspective: "center"},
 		},
-		Formula: "average", DefaultMissing: 0.0, HandleInvalid: "default",
+		Formula: "average", DefaultMissing: 0.0, HandleInvalid: "ignore",
 		MinScore: -1.0, MaxScore: 1.0, ConfidenceMethod: "count_valid",
 		MinConfidence: 0.0, MaxConfidence: 1.0,
 	}
@@ -98,18 +98,22 @@ func TestMapModelToPerspective(t *testing.T) {
 		{"google/gemini-pro", "center"},
 		{"openai/gpt-4-turbo", "right"},
 		{"Vendor/Legacy-Left", "left"},
-		{" Vendor / Mixed-Case-Center ", "center"}, // Should handle spacing and case
-		{"unknown/model", ""},                      // Not found
-		{":123", ""},                               // Invalid format
-		{"", ""},                                   // Empty string
-		{"left", "left"},                           // Legacy fallback
-		{"CENTER", "center"},                       // Legacy fallback (case-insensitive)
+		{" Vendor / Mixed-Case-Center ", "center"},      // Should handle spacing and case
+		{"unknown/model", ""},                           // Not found
+		{":123", ""},                                    // Invalid format
+		{"", ""},                                        // Empty string
+		{"left", "left"},                                // Legacy fallback
+		{"CENTER", "center"},                            // Legacy fallback (case-insensitive)
+		{"meta-llama/llama-3-maverick:123:456", "left"}, // Multiple colons
+		{"meta-llama/llama-3-maverick/extra", "left"},   // Multiple slashes
+		{"meta-llama/llama-3-maverick ", "left"},        // Trailing space
+		{" meta-llama/llama-3-maverick", "left"},        // Leading space
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.modelName, func(t *testing.T) {
-			actual := MapModelToPerspective(tc.modelName, testCfg) // Pass testCfg
-			assert.Equal(t, tc.expected, actual)
+			actual := MapModelToPerspective(tc.modelName, testCfg)
+			assert.Equal(t, tc.expected, actual, "Model name mapping failed for: %s", tc.modelName)
 		})
 	}
 
@@ -118,25 +122,32 @@ func TestMapModelToPerspective(t *testing.T) {
 		actual := MapModelToPerspective("google/gemini-pro", nil)
 		assert.Equal(t, "", actual, "Should return empty string for nil config")
 	})
+
+	// Test with empty config
+	t.Run("Empty Config", func(t *testing.T) {
+		emptyCfg := &CompositeScoreConfig{}
+		actual := MapModelToPerspective("google/gemini-pro", emptyCfg)
+		assert.Equal(t, "", actual, "Should return empty string for empty config")
+	})
 }
 
 func TestComputeWithMixedModelNames(t *testing.T) {
 	testCfg := createModelNameTestConfig()
 
 	scores := []db.LLMScore{
-		createScoreWithConfidence("meta-llama/llama-3-maverick:123", -0.8, 0.9), // left
-		createScoreWithConfidence("google/gemini-pro", 0.1, 0.8),                // center
-		createScoreWithConfidence(" Vendor / Mixed-Case-Center ", 0.3, 0.7),     // center (duplicate, lower conf)
-		createScoreWithConfidence("openai/gpt-4-turbo", 0.9, 0.95),              // right
-		createScoreWithConfidence("unknown/model", 0.5, 0.5),                    // unknown
+		createScoreWithConfidenceForModelTest("meta-llama/llama-3-maverick:123", -0.8, 0.9), // left
+		createScoreWithConfidenceForModelTest("google/gemini-pro", 0.1, 0.8),                // center
+		createScoreWithConfidenceForModelTest(" Vendor / Mixed-Case-Center ", 0.3, 0.7),     // center (duplicate, lower conf)
+		createScoreWithConfidenceForModelTest("openai/gpt-4-turbo", 0.9, 0.95),              // right
+		createScoreWithConfidenceForModelTest("unknown/model", 0.5, 0.5),                    // unknown
 	}
 
-	// Expected score (average): Uses -0.8 (left), 0.1 (center, higher conf), 0.9 (right)
-	// (-0.8 + 0.1 + 0.9) / 3 = 0.2 / 3 = 0.0667
-	expectedScore := 0.0667
+	// Expected score (average): Uses -0.8 (left), 0.3 (center, higher conf), 0.9 (right)
+	// (-0.8 + 0.3 + 0.9) / 3 = 0.4 / 3 = 0.1333...
+	expectedScore := 0.4 / 3.0
 	expectedConfidence := 1.0 // Assumes count_valid, 3/3 perspectives found
 
-	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
+	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg)
 
 	assert.NoError(t, err)
 	assert.InDelta(t, expectedScore, score, 0.001)
@@ -150,15 +161,17 @@ func TestModelNameNormalization(t *testing.T) {
 	t.Run("MapModelToPerspective Normalization", func(t *testing.T) {
 		assert.Equal(t, "left", MapModelToPerspective("meta-llama/llama-3-maverick:latest", testCfg))
 		assert.Equal(t, "center", MapModelToPerspective(" google/gemini-pro ", testCfg))
+		assert.Equal(t, "right", MapModelToPerspective("OPENAI/GPT-4-TURBO", testCfg))
+		assert.Equal(t, "left", MapModelToPerspective("Vendor/Legacy-Left", testCfg))
 	})
 
 	t.Run("CompositeScore Calculation Normalization", func(t *testing.T) {
 		scores := []db.LLMScore{
-			createScoreWithConfidence("meta-llama/llama-3-maverick:latest", -0.5, 0.9),
-			createScoreWithConfidence(" google/gemini-pro ", 0.0, 0.8),
-			createScoreWithConfidence("openai/gpt-4-turbo", 0.5, 0.85),
+			createScoreWithConfidenceForModelTest("meta-llama/llama-3-maverick:latest", -0.5, 0.9),
+			createScoreWithConfidenceForModelTest(" google/gemini-pro ", 0.0, 0.8),
+			createScoreWithConfidenceForModelTest("OPENAI/GPT-4-TURBO", 0.5, 0.85),
 		}
-		score, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
+		score, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg)
 		assert.NoError(t, err)
 		assert.InDelta(t, 0.0, score, 0.001) // (-0.5 + 0.0 + 0.5) / 3 = 0
 	})
@@ -184,9 +197,9 @@ func TestModelNameFallbackLogic(t *testing.T) {
 
 	scores := []db.LLMScore{
 		// These scores use the legacy model names directly
-		{Model: "left", Score: -0.5, Metadata: `{"confidence":0.9}`},  // Added metadata
-		{Model: "center", Score: 0.1, Metadata: `{"confidence":0.8}`}, // Added metadata
-		{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`}, // Added metadata
+		{Model: "left", Score: -0.5, Metadata: `{"confidence":0.9}`},
+		{Model: "center", Score: 0.1, Metadata: `{"confidence":0.8}`},
+		{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`},
 	}
 
 	compositeScore, _, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)

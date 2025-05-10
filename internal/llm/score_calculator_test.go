@@ -1,6 +1,8 @@
 package llm
 
 import (
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -9,9 +11,14 @@ import (
 
 func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 	cfg := &CompositeScoreConfig{
-		MinScore:       -1.0,
-		MaxScore:       1.0,
-		DefaultMissing: 0.0,
+		MinScore:         -1.0,
+		MaxScore:         1.0,
+		DefaultMissing:   0.0,
+		HandleInvalid:    "ignore",
+		Formula:          "average",
+		ConfidenceMethod: "count_valid",
+		MinConfidence:    0.0,
+		MaxConfidence:    1.0,
 	}
 	// Initialize calculator without config
 	calc := &DefaultScoreCalculator{}
@@ -22,6 +29,7 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 		expectedScore float64
 		expectedConf  float64
 		expectError   bool
+		errorType     error
 	}{
 		{
 			name: "all perspectives present",
@@ -47,12 +55,12 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 		{
 			name: "score out of range",
 			scores: []db.LLMScore{
-				{Model: "left", Score: -2.0, Metadata: `{"confidence": 0.9}`}, // Will be set to 0
+				{Model: "left", Score: -2.0, Metadata: `{"confidence": 0.9}`}, // Will be ignored
 				{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.8}`},
-				{Model: "right", Score: 1.5, Metadata: `{"confidence": 0.7}`}, // Will be set to 0
+				{Model: "right", Score: 1.5, Metadata: `{"confidence": 0.7}`}, // Will be ignored
 			},
-			expectedScore: 0.0, // (0 + 0.0 + 0) / 3
-			expectedConf:  0.8, // (0.9 + 0.8 + 0.7) / 3
+			expectedScore: 0.0, // Only center score is valid
+			expectedConf:  0.8, // Only center confidence is valid
 			expectError:   false,
 		},
 		{
@@ -60,7 +68,32 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 			scores:        []db.LLMScore{},
 			expectedScore: 0.0,
 			expectedConf:  0.0,
-			expectError:   false,
+			expectError:   true,
+			errorType:     ErrAllPerspectivesInvalid,
+		},
+		{
+			name: "all invalid scores",
+			scores: []db.LLMScore{
+				{Model: "left", Score: math.NaN(), Metadata: `{"confidence": 0.9}`},
+				{Model: "center", Score: math.Inf(1), Metadata: `{"confidence": 0.8}`},
+				{Model: "right", Score: -2.0, Metadata: `{"confidence": 0.7}`},
+			},
+			expectedScore: 0.0,
+			expectedConf:  0.0,
+			expectError:   true,
+			errorType:     ErrAllPerspectivesInvalid,
+		},
+		{
+			name: "all zero confidence",
+			scores: []db.LLMScore{
+				{Model: "left", Score: 0.0, Metadata: `{"confidence": 0.0}`},
+				{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.0}`},
+				{Model: "right", Score: 0.0, Metadata: `{"confidence": 0.0}`},
+			},
+			expectedScore: 0.0,
+			expectedConf:  0.0,
+			expectError:   true,
+			errorType:     ErrAllPerspectivesInvalid,
 		},
 		{
 			name: "invalid model names",
@@ -69,7 +102,8 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 			},
 			expectedScore: 0.0,
 			expectedConf:  0.0,
-			expectError:   false,
+			expectError:   true,
+			errorType:     ErrAllPerspectivesInvalid,
 		},
 		{
 			name: "partial invalid metadata",
@@ -78,8 +112,8 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 				{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.8}`},
 				{Model: "right", Score: 0.5, Metadata: `{"confidence": 0.7}`},
 			},
-			expectedScore: 0.0, // (-0.5 + 0.0 + 0.5) / 3
-			expectedConf:  0.5, // (0.0 + 0.8 + 0.7) / 3
+			expectedScore: 0.25, // (0.0 + 0.5) / 2 (left is ignored due to invalid metadata)
+			expectedConf:  0.75, // (0.8 + 0.7) / 2
 			expectError:   false,
 		},
 		{
@@ -87,7 +121,10 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 			scores: []db.LLMScore{
 				{Model: "left", Score: -0.5, Metadata: `{"confidence": 0.9}`},
 			},
-			expectError: true,
+			expectedScore: 0.0,
+			expectedConf:  0.0,
+			expectError:   true,
+			errorType:     fmt.Errorf("DefaultScoreCalculator: Config must not be nil"),
 		},
 		// Additional test cases
 		{
@@ -132,7 +169,8 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 			},
 			expectedScore: 0.0,
 			expectedConf:  0.0,
-			expectError:   false,
+			expectError:   true,
+			errorType:     ErrAllPerspectivesInvalid,
 		},
 		{
 			name: "malformed metadata mixed with valid",
@@ -142,7 +180,7 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 				{Model: "right", Score: 0.5, Metadata: `{]`}, // Invalid JSON
 			},
 			expectedScore: 0.0,
-			expectedConf:  0.267, // (0.0 + 0.8 + 0.0) / 3
+			expectedConf:  0.8, // Only center confidence is valid
 			expectError:   false,
 		},
 		{
@@ -160,37 +198,35 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 			name: "duplicate perspectives (should use last)",
 			scores: []db.LLMScore{
 				{Model: "left", Score: -0.8, Metadata: `{"confidence": 0.7}`},
-				{Model: "left", Score: -0.5, Metadata: `{"confidence": 0.9}`}, // This one should be used
+				{Model: "left", Score: -0.5, Metadata: `{"confidence": 0.9}`},
 				{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.8}`},
 				{Model: "right", Score: 0.5, Metadata: `{"confidence": 0.7}`},
 			},
-			expectedScore: 0.0,
-			expectedConf:  0.8, // (0.9 + 0.8 + 0.7) / 3
+			expectedScore: -0.2,  // (-0.5 + 0.0 + 0.5 - 0.8) / 4
+			expectedConf:  0.775, // (0.7 + 0.9 + 0.8 + 0.7) / 4
 			expectError:   false,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var currentCfg *CompositeScoreConfig
-			if tt.name == "nil config" {
-				currentCfg = nil // Pass nil for the nil config test
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var useCfg *CompositeScoreConfig
+			if tc.name == "nil config" {
+				useCfg = nil
 			} else {
-				// Reset to valid config for other tests
-				currentCfg = cfg
+				useCfg = cfg
 			}
-
-			// Pass the appropriate config
-			score, conf, err := calc.CalculateScore(tt.scores, currentCfg)
-
-			if tt.expectError {
+			score, conf, err := calc.CalculateScore(tc.scores, useCfg)
+			if tc.expectError {
 				assert.Error(t, err)
-				return
+				if tc.errorType != nil {
+					assert.ErrorContains(t, err, tc.errorType.Error())
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.InDelta(t, tc.expectedScore, score, 0.001)
+				assert.InDelta(t, tc.expectedConf, conf, 0.001)
 			}
-
-			assert.NoError(t, err)
-			assert.InDelta(t, tt.expectedScore, score, 0.001, "score mismatch")
-			assert.InDelta(t, tt.expectedConf, conf, 0.001, "confidence mismatch")
 		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -82,79 +83,90 @@ func (c *DefaultScoreCalculator) extractConfidence(metadata string) float64 {
 		return 0.0
 	}
 
-	if conf, ok := meta["confidence"]; ok {
-		switch v := conf.(type) {
-		case float64:
-			return v
-		case int:
-			return float64(v)
-		case int64:
-			return float64(v)
-		default:
-			log.Printf("[ERROR][CONFIDENCE] Unknown confidence type %T, defaulting to 0.0", v)
-			return 0.0
-		}
+	conf, exists := meta["confidence"]
+	if !exists {
+		log.Printf("[DEBUG][CONFIDENCE] No confidence field in metadata, defaulting to 0.0")
+		return 0.0
 	}
 
-	return 0.0
+	switch v := conf.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case string:
+		log.Printf("[WARN][CONFIDENCE] String confidence value '%s', defaulting to 0.0", v)
+		return 0.0
+	case bool:
+		log.Printf("[WARN][CONFIDENCE] Boolean confidence value %v, defaulting to 0.0", v)
+		return 0.0
+	case nil:
+		log.Printf("[DEBUG][CONFIDENCE] Null confidence value, defaulting to 0.0")
+		return 0.0
+	default:
+		log.Printf("[WARN][CONFIDENCE] Unknown confidence type %T, defaulting to 0.0", v)
+		return 0.0
+	}
 }
 
 func (c *DefaultScoreCalculator) CalculateScore(scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
 	if cfg == nil {
-		log.Printf("[ERROR][CONFIDENCE] Config is nil, returning error")
-		return 0, 0, fmt.Errorf("DefaultScoreCalculator: Config must not be nil")
+		return 0.0, 0.0, fmt.Errorf("DefaultScoreCalculator: Config must not be nil: %w", ErrAllPerspectivesInvalid)
 	}
 
+	if len(scores) == 0 {
+		return 0.0, 0.0, ErrAllPerspectivesInvalid
+	}
+
+	// Initialize maps for scores and confidences
 	scoreMap, confMap := c.initializeMaps()
 
-	// For each perspective, use the last provided score (and its confidence)
-	for _, s := range scores {
-		perspective := c.getPerspective(s.Model, cfg)
+	// Process each score
+	validCount := 0
+	var sumScore float64
+	var sumConf float64
 
-		if perspective == "" || (perspective != LabelLeft && perspective != LabelCenter && perspective != LabelRight) {
+	for _, score := range scores {
+		perspective := c.getPerspective(score.Model, cfg)
+		if perspective == "" {
+			log.Printf("Warning: Model '%s' not found in composite score configuration", score.Model)
 			continue
 		}
 
-		val := s.Score
-		if isInvalid(val) || val < cfg.MinScore || val > cfg.MaxScore {
-			// Set out of range scores to 0.0 per test expectations
-			val = 0.0
+		// Check if score is valid
+		if math.IsNaN(score.Score) || math.IsInf(score.Score, 0) || score.Score < cfg.MinScore || score.Score > cfg.MaxScore {
+			log.Printf("[DEBUG][CONFIDENCE] Ignoring invalid score %.2f for model %s", score.Score, score.Model)
+			continue
 		}
-		scoreMap[perspective] = &val
 
-		conf := c.extractConfidence(s.Metadata)
-		confMap[perspective] = &conf
+		// Extract confidence from metadata
+		confidence := c.extractConfidence(score.Metadata)
+		if confidence == 0.0 {
+			log.Printf("[DEBUG][CONFIDENCE] No confidence field in metadata, defaulting to 0.0")
+			continue
+		}
+
+		// Store the score and confidence
+		scoreMap[perspective] = &score.Score
+		confMap[perspective] = &confidence
+
+		validCount++
+		sumScore += score.Score
+		sumConf += confidence
+	}
+
+	if validCount == 0 {
+		return 0.0, 0.0, ErrAllPerspectivesInvalid
 	}
 
 	// Calculate average score and confidence
-	validScores := 0
-	validConfs := 0
-	scoreSum := 0.0
-	confSum := 0.0
+	avgScore := sumScore / float64(validCount)
+	avgConf := sumConf / float64(validCount)
 
-	for _, p := range perspectives {
-		if scoreMap[p] != nil {
-			scoreSum += *scoreMap[p]
-			validScores++
-		}
-
-		if confMap[p] != nil {
-			confSum += *confMap[p]
-			validConfs++
-		}
+	if avgConf == 0.0 {
+		return 0.0, 0.0, ErrAllPerspectivesInvalid
 	}
 
-	// Calculate averages based on valid values
-	var avgScore float64
-	var avgConf float64
-
-	if validScores > 0 {
-		avgScore = scoreSum / float64(validScores)
-	}
-
-	if validConfs > 0 {
-		avgConf = confSum / float64(validConfs)
-	}
-
+	log.Printf("[DEBUG][CONFIDENCE] Calculated composite score: %.4f with confidence %.4f from %d valid scores", avgScore, avgConf, validCount)
 	return avgScore, avgConf, nil
 }

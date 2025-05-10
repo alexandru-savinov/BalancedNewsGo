@@ -94,11 +94,33 @@ func TestComputeCompositeScore(t *testing.T) {
 			expected: 0.1,
 		},
 		{
-			name:          "empty scores array",
-			scores:        []db.LLMScore{},
-			expected:      0.0,
-			expectError:   true,
-			errorContains: "no scores provided",
+			name:        "empty scores array",
+			scores:      []db.LLMScore{},
+			expected:    0.0,
+			expectError: true,
+			errorType:   ErrAllPerspectivesInvalid,
+		},
+		{
+			name: "all invalid scores",
+			scores: []db.LLMScore{
+				{Model: "left", Score: math.NaN(), Metadata: `{"confidence":0.9}`},
+				{Model: "center", Score: math.Inf(1), Metadata: `{"confidence":0.8}`},
+				{Model: "right", Score: -2.0, Metadata: `{"confidence":0.85}`},
+			},
+			expected:    0.0,
+			expectError: true,
+			errorType:   ErrAllPerspectivesInvalid,
+		},
+		{
+			name: "all zero confidence",
+			scores: []db.LLMScore{
+				{Model: "left", Score: -0.5, Metadata: `{"confidence":0.0}`},
+				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.0}`},
+				{Model: "right", Score: 0.5, Metadata: `{"confidence":0.0}`},
+			},
+			expected:    0.0,
+			expectError: true,
+			errorType:   ErrAllPerspectivesInvalid,
 		},
 	}
 
@@ -119,12 +141,7 @@ func TestComputeCompositeScore(t *testing.T) {
 			actual, returnedErr := ComputeCompositeScoreReturnError(tc.scores, cfg)
 
 			if tc.expectError {
-				assert.Error(t, returnedErr)
-				if tc.errorType != nil {
-					assert.ErrorIs(t, returnedErr, tc.errorType)
-				} else if tc.errorContains != "" {
-					assert.ErrorContains(t, returnedErr, tc.errorContains)
-				}
+				assert.ErrorIs(t, returnedErr, tc.errorType)
 			} else {
 				assert.NoError(t, returnedErr)
 				if !tc.expectPanic && math.Abs(actual-tc.expected) > 0.001 {
