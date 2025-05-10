@@ -120,6 +120,7 @@ type DBOperations interface {
 
 	// LLM Score operations
 	FetchLLMScores(ctx context.Context, articleID int64) ([]LLMScore, error)
+	UpdateArticleScoreLLM(ctx context.Context, articleID int64, score float64, confidence float64) error
 }
 
 // DBInstance implements the DBOperations interface
@@ -215,6 +216,13 @@ func (d *DBInstance) InsertFeedback(ctx context.Context, feedback *Feedback) err
 // FetchLLMScores retrieves LLM scores for an article
 func (d *DBInstance) FetchLLMScores(ctx context.Context, articleID int64) ([]LLMScore, error) {
 	return FetchLLMScores(d.DB, articleID)
+}
+
+// UpdateArticleScoreLLM updates an article's score by an LLM, typically as part of a transaction
+func (d *DBInstance) UpdateArticleScoreLLM(ctx context.Context, articleID int64, score float64, confidence float64) error {
+	// The actual db.UpdateArticleScoreLLM takes sqlx.ExtContext.
+	// For DBInstance, d.DB is *sqlx.DB which implements sqlx.ExtContext.
+	return UpdateArticleScoreLLM(d.DB, articleID, score, confidence)
 }
 
 // New creates a new database connection

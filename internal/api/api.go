@@ -60,7 +60,15 @@ func getProgress(articleID int64) *models.ProgressState {
 }
 
 // RegisterRoutes registers all API routes on the provided router
-func RegisterRoutes(router *gin.Engine, dbConn *sqlx.DB, rssCollector rss.CollectorInterface, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager) {
+func RegisterRoutes(
+	router *gin.Engine,
+	dbConn *sqlx.DB,
+	rssCollector rss.CollectorInterface,
+	llmClient *llm.LLMClient,
+	scoreManager *llm.ScoreManager,
+	progressManager *llm.ProgressManager,
+	cache *SimpleCache,
+) {
 	// Articles endpoints
 	// @Summary Get all articles
 	// @Description Get a list of all articles with optional filtering
@@ -521,17 +529,15 @@ func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 
 // Refactored reanalyzeHandler to use ScoreManager for scoring, storage, and progress
 // @Summary Reanalyze article
-// @Description Initiates a reanalysis of an article's political bias or directly updates the score
-// @Tags Analysis
+// @Description Trigger a new LLM analysis for a specific article and update its scores.
+// @Tags LLM
 // @Accept json
 // @Produce json
-// @Param id path int true "Article ID" minimum(1)
-// @Param request body ManualScoreRequest false "Optional score to set directly"
-// @Success 200 {object} StandardResponse "Success - reanalysis queued or score updated"
-// @Failure 400 {object} ErrorResponse "Invalid article ID or score"
+// @Param id path integer true "Article ID"
+// @Success 202 {object} StandardResponse "Reanalysis started"
+// @Failure 400 {object} ErrorResponse "Invalid article ID"
 // @Failure 404 {object} ErrorResponse "Article not found"
-// @Failure 429 {object} ErrorResponse "Rate limit exceeded"
-// @Failure 500 {object} ErrorResponse "Internal server error or LLM service unavailable"
+// @Failure 500 {object} ErrorResponse "Server error"
 // @Router /llm/reanalyze/{id} [post]
 func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {

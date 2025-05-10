@@ -29,9 +29,11 @@ const validArticleJSON = `{
 
 // TestCreateArticleHandler tests the createArticleHandler function
 func TestCreateArticleHandler(t *testing.T) {
+	t.Parallel()
 	gin.SetMode(gin.TestMode)
 
 	t.Run("Success", func(t *testing.T) {
+		t.Parallel()
 		// Create router with a mocked handler
 		router := gin.New()
 		router.POST("/api/articles", SafeHandler(func(c *gin.Context) {
@@ -74,6 +76,7 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Missing Required Fields", func(t *testing.T) {
+		t.Parallel()
 		// Create router with a mocked handler
 		router := gin.New()
 		router.POST("/api/articles", func(c *gin.Context) {
@@ -122,6 +125,7 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Invalid URL Format", func(t *testing.T) {
+		t.Parallel()
 		// Create router with a mocked handler
 		router := gin.New()
 		router.POST("/api/articles", SafeHandler(func(c *gin.Context) {
@@ -172,6 +176,7 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Invalid pub_date Format", func(t *testing.T) {
+		t.Parallel()
 		// Create router with a mocked handler
 		router := gin.New()
 		router.POST("/api/articles", SafeHandler(func(c *gin.Context) {
@@ -222,6 +227,7 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Duplicate URL", func(t *testing.T) {
+		t.Parallel()
 		mockDB := &MockDBOperations{}
 		mockDB.On("ArticleExistsByURL", mock.Anything, "https://example.com/duplicate").Return(true, nil)
 
@@ -275,6 +281,7 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Extra Fields", func(t *testing.T) {
+		t.Parallel()
 		// Create router with a mocked handler
 		router := gin.New()
 		router.POST("/api/articles", SafeHandler(func(c *gin.Context) {
@@ -326,6 +333,7 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Malformed JSON", func(t *testing.T) {
+		t.Parallel()
 		// Create router with a mocked handler
 		router := gin.New()
 		router.POST("/api/articles", SafeHandler(func(c *gin.Context) {
@@ -365,6 +373,7 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Database Error - Check Existing", func(t *testing.T) {
+		t.Parallel()
 		mockDB := &MockDBOperations{}
 		mockDB.On("ArticleExistsByURL", mock.Anything, mock.Anything).Return(false, fmt.Errorf("database error"))
 
@@ -400,21 +409,14 @@ func TestCreateArticleHandler(t *testing.T) {
 	})
 
 	t.Run("Database Error - Insert", func(t *testing.T) {
+		t.Parallel()
 		mockDB := &MockDBOperations{}
 		mockDB.On("ArticleExistsByURL", mock.Anything, mock.Anything).Return(false, nil)
 		mockDB.On("InsertArticle", mock.Anything, mock.AnythingOfType("*db.Article")).Return(int64(0), fmt.Errorf("database error"))
 
-		// Create router with a mocked handler
+		// Create router and use the REAL createArticleHandler
 		router := gin.New()
-		router.POST("/api/articles", SafeHandler(func(c *gin.Context) {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"error": map[string]string{
-					"code":    "internal_error",
-					"message": "Failed to create article",
-				},
-			})
-		}))
+		router.POST("/api/articles", SafeHandler(createArticleHandlerWithDB(mockDB)))
 
 		// Create valid request
 		validArticle := validArticleJSON
@@ -446,16 +448,19 @@ func TestCreateArticleHandler(t *testing.T) {
 			t.Log("Skipping message check as error field was not a map")
 		}
 
-		// Verify that InsertArticle was called
+		// Verify that ArticleExistsByURL and InsertArticle were called
+		mockDB.AssertCalled(t, "ArticleExistsByURL", mock.Anything, mock.Anything)
 		mockDB.AssertCalled(t, "InsertArticle", mock.Anything, mock.AnythingOfType("*db.Article"))
 	})
 }
 
 // TestGetArticlesHandler tests the getArticlesHandler function
 func TestGetArticlesHandler(t *testing.T) {
+	t.Parallel()
 	gin.SetMode(gin.TestMode)
 
 	t.Run("Success - Default Parameters", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation instead of the real handler
 		router := gin.New()
 		router.GET("/api/articles", func(c *gin.Context) {
@@ -501,6 +506,7 @@ func TestGetArticlesHandler(t *testing.T) {
 	})
 
 	t.Run("Success - With Filters", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation instead of the real handler
 		router := gin.New()
 		router.GET("/api/articles", func(c *gin.Context) {
@@ -552,6 +558,7 @@ func TestGetArticlesHandler(t *testing.T) {
 	})
 
 	t.Run("Invalid Limit Parameter", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles", func(c *gin.Context) {
@@ -594,6 +601,7 @@ func TestGetArticlesHandler(t *testing.T) {
 	})
 
 	t.Run("Limit Out Of Range", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles", func(c *gin.Context) {
@@ -626,6 +634,7 @@ func TestGetArticlesHandler(t *testing.T) {
 	})
 
 	t.Run("Invalid Offset Parameter", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles", func(c *gin.Context) {
@@ -668,6 +677,7 @@ func TestGetArticlesHandler(t *testing.T) {
 	})
 
 	t.Run("Negative Offset", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles", func(c *gin.Context) {
@@ -692,6 +702,7 @@ func TestGetArticlesHandler(t *testing.T) {
 	})
 
 	t.Run("Database Error", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles", func(c *gin.Context) {
@@ -736,9 +747,11 @@ func TestGetArticlesHandler(t *testing.T) {
 
 // TestGetArticleByIDHandler tests the getArticleByIDHandler function
 func TestGetArticleByIDHandler(t *testing.T) {
+	t.Parallel()
 	gin.SetMode(gin.TestMode)
 
 	t.Run("Success", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation instead of the real handler
 		router := gin.New()
 		router.GET("/api/articles/:id", func(c *gin.Context) {
@@ -796,6 +809,7 @@ func TestGetArticleByIDHandler(t *testing.T) {
 	})
 
 	t.Run("Invalid ID", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles/:id", func(c *gin.Context) {
@@ -838,6 +852,7 @@ func TestGetArticleByIDHandler(t *testing.T) {
 	})
 
 	t.Run("Negative ID", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles/:id", func(c *gin.Context) {
@@ -862,6 +877,7 @@ func TestGetArticleByIDHandler(t *testing.T) {
 	})
 
 	t.Run("Article Not Found", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles/:id", func(c *gin.Context) {
@@ -909,6 +925,7 @@ func TestGetArticleByIDHandler(t *testing.T) {
 	})
 
 	t.Run("Database Error", func(t *testing.T) {
+		t.Parallel()
 		// Use a direct handler implementation
 		router := gin.New()
 		router.GET("/api/articles/:id", func(c *gin.Context) {
@@ -956,6 +973,7 @@ func TestGetArticleByIDHandler(t *testing.T) {
 	})
 
 	t.Run("Cache Test", func(t *testing.T) {
+		t.Parallel()
 		// For the cache test, we'll use a simple counter to verify the handler is called once
 		callCount := 0
 

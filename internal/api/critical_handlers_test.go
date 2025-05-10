@@ -64,7 +64,7 @@ func TestCreateArticleHandlerSuccess(t *testing.T) {
 
 	successVal, okSuccess := response["success"].(bool)
 	assert.True(t, okSuccess, "\"success\" field should be a boolean")
-	assert.True(t, successVal, "\"success\" field should be true")
+	assert.True(t, successVal)
 
 	dataVal, okData := response["data"].(map[string]interface{})
 	assert.True(t, okData, "\"data\" field should be a map")
@@ -491,7 +491,7 @@ func TestGetArticleByIDHandlerSuccess(t *testing.T) {
 
 	successVal, okSuccess := response["success"].(bool)
 	assert.True(t, okSuccess, "\"success\" field should be a boolean")
-	assert.True(t, successVal, "\"success\" field should be true")
+	assert.True(t, successVal)
 
 	data, okData := response["data"].(map[string]interface{})
 	assert.True(t, okData, "\"data\" field should be a map")

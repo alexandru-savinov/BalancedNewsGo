@@ -50,7 +50,7 @@ func TestRegisterRoutes(t *testing.T) {
 	mockScoreManager := new(llm.ScoreManager)
 
 	// Register routes
-	RegisterRoutes(router, dbConn, mockRSS, mockLLM, mockScoreManager)
+	RegisterRoutes(router, dbConn, mockRSS, mockLLM, mockScoreManager, nil, nil)
 
 	// Test that key routes exist
 	routes := []struct {

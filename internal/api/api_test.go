@@ -194,6 +194,12 @@ func (m *MockDBOperations) FetchLLMScores(ctx context.Context, articleID int64) 
 	return val, mockedErr
 }
 
+// UpdateArticleScoreLLM mocks the DBOperations.UpdateArticleScoreLLM method
+func (m *MockDBOperations) UpdateArticleScoreLLM(ctx context.Context, articleID int64, score float64, confidence float64) error {
+	args := m.Called(ctx, articleID, score, confidence)
+	return args.Error(0)
+}
+
 // Test helper functions
 func setupTestRouter(mock db.DBOperations) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -709,6 +715,7 @@ func TestCreateArticleValidation(t *testing.T) {
 }
 
 func TestCreateArticleDuplicate(t *testing.T) {
+	t.Parallel()
 	mock := &MockDBOperations{}
 	mock.On("ArticleExistsByURL", Anything, Anything).Return(true, nil)
 	router := setupTestRouter(mock)
@@ -723,6 +730,7 @@ func TestCreateArticleDuplicate(t *testing.T) {
 }
 
 func TestGetArticlesLimitOffsetValidation(t *testing.T) {
+	t.Parallel()
 	mock := &MockDBOperations{}
 	mock.On("FetchArticles", Anything, Anything, Anything, Anything, Anything).Return([]db.Article{}, nil)
 	router := setupTestRouter(mock)
@@ -741,6 +749,7 @@ func TestGetArticlesLimitOffsetValidation(t *testing.T) {
 }
 
 func TestManualScoreValidation(t *testing.T) {
+	t.Parallel()
 	mock := &MockDBOperations{}
 	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
 	mock.On("UpdateArticleScore", Anything, Anything, Anything, Anything).Return(nil)
@@ -771,6 +780,7 @@ func TestManualScoreValidation(t *testing.T) {
 }
 
 func TestManualScoreDatabaseErrors(t *testing.T) {
+	t.Parallel()
 	// Article not found case
 	mock1 := &MockDBOperations{}
 	mock1.On("FetchArticleByID", Anything, Anything).Return(nil, db.ErrArticleNotFound)
@@ -797,6 +807,7 @@ func TestManualScoreDatabaseErrors(t *testing.T) {
 }
 
 func TestFeedbackValidation(t *testing.T) {
+	t.Parallel()
 	mock := &MockDBOperations{}
 	mock.On("InsertFeedback", Anything, Anything).Return(nil)
 	mock.On("FetchLLMScores", Anything, Anything).Return(nil, nil)
@@ -812,6 +823,7 @@ func TestFeedbackValidation(t *testing.T) {
 }
 
 func TestGetArticlesHandlerWithDB(t *testing.T) {
+	t.Parallel()
 	mock := &MockDBOperations{}
 	mock.On("FetchArticles", Anything, Anything, Anything, Anything, Anything).Return([]db.Article{}, nil)
 	router := setupTestRouter(mock)
@@ -836,6 +848,7 @@ func TestGetArticlesHandlerWithDB(t *testing.T) {
 }
 
 func TestGetArticleByIDHandlerWithDB(t *testing.T) {
+	t.Parallel()
 	mock := &MockDBOperations{}
 	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
 	router := setupTestRouter(mock)

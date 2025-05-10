@@ -1,6 +1,8 @@
 // File: api_integration_legacy_test.go
 // Purpose: Legacy integration and handler tests for API edge cases and progress/SSE flows.
-// Note: This file contains only handler-level and progress/SSE tests. True end-to-end rescoring and scoring pipeline tests are performed via Postman collections and external E2E tools.
+// Note: This file contains only handler-level and progress/SSE tests.
+// True end-to-end rescoring and scoring pipeline tests are performed via Postman collections
+// and external E2E tools.
 //
 // For real E2E and workflow validation, see Postman collections in /postman and scripts in /test_sse_progress.js.
 
@@ -14,7 +16,6 @@ import (
 	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -68,12 +69,9 @@ func TestSSEProgressConcurrentClients(t *testing.T) {
 
 // --- Helpers for panic recovery test ---
 
-// panicCalculator is a mock ScoreCalculator that panics
-type panicCalculator struct{}
-
-// CalculateScore implements ScoreCalculator and panics
-func (p *panicCalculator) CalculateScore(scores []db.LLMScore, cfg *llm.CompositeScoreConfig) (float64, float64, error) {
-	panic("panicCalculator.CalculateScore called")
+// mockProgressManager provides a mock implementation of ProgressManager
+type mockProgressManager struct {
+	mock.Mock // Embed mock.Mock
 }
 
 // --- Use the existing MockDBOperations from api_test.go ---
