@@ -17,16 +17,33 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.22'
 
     - name: Install dependencies
       run: go mod tidy
+
+    # The project uses 'averaging everywhere' for LLM score calculation. All tests must pass.
+
+    - name: Run Go unit and integration tests (NO_AUTO_ANALYZE=true)
+      run: |
+        export NO_AUTO_ANALYZE=true
+        go test -v ./...
+
+    - name: Run full API/integration test suite (scripts/test.sh all)
+      if: runner.os == 'Linux'
+      run: |
+        chmod +x scripts/test.sh
+        ./scripts/test.sh all
+
+    - name: Upload test-results artifact
+      if: runner.os == 'Linux'
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: test-results/
 
     # To enable OpenAI live integration test, uncomment and set these secrets or env vars:
     # env:
     #   LLM_PROVIDER: openai
     #   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     #   OPENAI_MODEL: gpt-3.5-turbo
-
-    - name: Run tests
-      run: go test -v ./...

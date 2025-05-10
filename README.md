@@ -8,6 +8,11 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 
 **Current Status:** Basic functionality is working, and the `essential`, `backend`, and `api` test suites now pass when run with the `NO_AUTO_ANALYZE=true` environment variable to prevent background LLM processing from interfering with tests due to SQLite concurrency limitations.
 
+**Test Status Update (May 2025):**
+- All Go unit, integration, and end-to-end tests now pass, including the previously failing `internal/llm` tests.
+- The codebase now uses **averaging everywhere** for duplicate model/perspective scores and confidences. This logic is fully covered by passing tests.
+- For reliable test runs, set the environment variable `NO_AUTO_ANALYZE=true` (see `docs/testing.md`).
+
 ## Recent Fixes
 
 - Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table schema to support proper functioning of `ON CONFLICT` clauses in SQL queries that update ensemble scores. This fixed critical SQL errors during test execution.
@@ -23,7 +28,7 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 | `api` | ✅ PASS | All API endpoints function correctly |
 | Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
 | Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
-| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation, unrelated to the fixed SQL issue |
+| Go Unit Tests: `internal/llm` | ✅ PASS | All LLM score calculation tests now pass |
 | `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
 | `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
 | `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |

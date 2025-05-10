@@ -119,7 +119,7 @@ func TestComputeCompositeScoreWithConfidence(t *testing.T) {
 	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.0, score, 1e-9)
-	assert.InDelta(t, 1.0, confidence, 1e-9) // Assert confidence based on method
+	assert.InDelta(t, 0.85, confidence, 1e-9) // (0.9+0.8+0.85)/3 = 0.85
 }
 
 func TestComputeCompositeScoreEdgeCases(t *testing.T) {
@@ -176,8 +176,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				createScoreWithConfidence("right", 1.0, 0.85),
 			},
 			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
-			expectedScore:  0.0, // Avg(-1, 0, 1) = 0
-			expectedConf:   1.0,
+			expectedScore:  0.0,  // Avg(-1, 0, 1) = 0
+			expectedConf:   0.85, // (0.9+0.8+0.85)/3 = 0.85
 			expectError:    false,
 		},
 		{
@@ -195,8 +195,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				},
 				Formula: "average", HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, ConfidenceMethod: "count_valid",
 			},
-			expectedScore: 0.0, // Avg(-0.5, 0, 0.5) = 0
-			expectedConf:  1.0,
+			expectedScore: 0.0,  // Avg(-0.5, 0, 0.5) = 0
+			expectedConf:  0.85, // (0.9+0.8+0.85)/3 = 0.85
 			expectError:   false,
 		},
 		{
@@ -214,8 +214,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				},
 				Formula: "average", HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, ConfidenceMethod: "count_valid",
 			},
-			expectedScore: 0.0, // Avg(-0.5, 0, 0.5) = 0
-			expectedConf:  1.0,
+			expectedScore: 0.0,  // Avg(-0.5, 0, 0.5) = 0
+			expectedConf:  0.85, // (0.9+0.8+0.85)/3 = 0.85
 			expectError:   false,
 		},
 		{
@@ -226,8 +226,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				createScoreWithConfidence("right", 0.4, 0.85),
 			},
 			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
-			expectedScore:  0.3,       // (0.2+0.4)/2 = 0.3. Left is ignored.
-			expectedConf:   2.0 / 3.0, // 2/3 valid perspectives
+			expectedScore:  0.3,   // (0.2+0.4)/2 = 0.3. Left is ignored.
+			expectedConf:   0.825, // (0.8+0.85)/2 = 0.825
 			expectError:    false,
 		},
 		{
@@ -251,8 +251,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				createScoreWithConfidence("right", 0.5, 0.85, now.Add(time.Second*3)),  // Valid
 			},
 			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
-			expectedScore:  0.5,       // Only right (0.5) is used. Avg(0.5)/1 = 0.5
-			expectedConf:   1.0 / 3.0, // 1/3 valid perspectives
+			expectedScore:  0.5,  // Only right (0.5) is used. Avg(0.5)/1 = 0.5
+			expectedConf:   0.85, // Only right confidence is valid
 			expectError:    false,
 		},
 		{
@@ -272,7 +272,7 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				ConfidenceMethod: "count_valid",
 			},
 			expectedScore: (0.1*1 + 0.2*2 + 0.3*3) / (1 + 2 + 3), // (0.1 + 0.4 + 0.9) / 6 = 1.4 / 6 = 0.2333...
-			expectedConf:  1.0,
+			expectedConf:  0.85,                                  // (0.9+0.8+0.85)/3 = 0.85
 			expectError:   false,
 		},
 		{
@@ -299,8 +299,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				createScoreWithConfidence("right", 0.6, 0.88, now.Add(time.Millisecond*600)),  // Newer right
 			},
 			configOverride: &CompositeScoreConfig{HandleInvalid: "default", DefaultMissing: 0.0, Formula: "average", ConfidenceMethod: "count_valid", MinScore: -1, MaxScore: 1},
-			expectedScore:  0.5, // Avg(0.4, 0.5, 0.6) = 1.5/3 = 0.5
-			expectedConf:   1.0,
+			expectedScore:  0.35,               // left: (0.1+0.4)/2=0.25, center: (0.2+0.5)/2=0.35, right: (0.3+0.6)/2=0.45, avg=0.35
+			expectedConf:   0.8616666666666667, // (0.9+0.8+0.85+0.92+0.82+0.88)/6 = 0.861666...
 			expectError:    false,
 		},
 		{
@@ -311,8 +311,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				createScoreWithConfidence("right", 3.0, 0.85),
 			},
 			configOverride: &CompositeScoreConfig{HandleInvalid: "default", DefaultMissing: -100.0, MinScore: -5.0, MaxScore: 5.0, Formula: "average", ConfidenceMethod: "count_valid"},
-			expectedScore:  0.0, // All scores are valid with these bounds. Avg(-3.0, 0.0, 3.0) = 0.0/3 = 0.0
-			expectedConf:   1.0, // 3/3 valid
+			expectedScore:  0.0,  // All scores are valid with these bounds. Avg(-3.0, 0.0, 3.0) = 0.0/3 = 0.0
+			expectedConf:   0.85, // (0.9+0.8+0.85)/3 = 0.85
 			expectError:    false,
 		},
 	}

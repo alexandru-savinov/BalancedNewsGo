@@ -202,8 +202,8 @@ func TestDefaultScoreCalculator_CalculateScore(t *testing.T) {
 				{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.8}`},
 				{Model: "right", Score: 0.5, Metadata: `{"confidence": 0.7}`},
 			},
-			expectedScore: -0.2,  // (-0.5 + 0.0 + 0.5 - 0.8) / 4
-			expectedConf:  0.775, // (0.7 + 0.9 + 0.8 + 0.7) / 4
+			expectedScore: -0.2,  // (-0.8 + -0.5 + 0.0 + 0.5)/4 = -0.2
+			expectedConf:  0.775, // (0.7 + 0.9 + 0.8 + 0.7)/4 = 0.775
 			expectError:   false,
 		},
 	}

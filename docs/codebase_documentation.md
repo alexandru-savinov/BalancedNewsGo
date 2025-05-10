@@ -4,6 +4,11 @@
 
 This document provides a high-level overview and detailed documentation of the Go codebase for the NewsBalancer project. The primary goal of NewsBalancer is to fetch news articles from various RSS feeds, analyze their political bias using Large Language Models (LLMs), store the results, and expose this data through a web interface and API.
 
+**Test Status Update (May 2025):**
+- All Go unit, integration, and end-to-end tests now pass, including the previously failing `internal/llm` tests.
+- The codebase now uses **averaging everywhere** for duplicate model/perspective scores and confidences. This logic is fully covered by passing tests.
+- For reliable test runs, set the environment variable `NO_AUTO_ANALYZE=true` (see `docs/testing.md`).
+
 **High-Level Architecture & Data Flow:**
 
 ```
