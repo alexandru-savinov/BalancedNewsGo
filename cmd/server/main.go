@@ -46,7 +46,7 @@ func main() {
 		log.Println("No .env file found or error loading .env file:", err)
 	}
 	// Initialize services
-	dbConn, llmClient, rssCollector, scoreManager := initServices()
+	dbConn, llmClient, rssCollector, scoreManager, progressManager, simpleCache := initServices()
 	defer func() { _ = dbConn.Close() }()
 
 	// Initialize Gin
@@ -68,7 +68,9 @@ func main() {
 	})
 
 	// Register API routes on the router instance
-	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager)
+	// The ProgressManager handles progress tracking for LLM scoring jobs.
+	// The SimpleCache provides in-memory caching for API responses.
+	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager, progressManager, simpleCache)
 
 	// @Summary Get Articles
 	// @Description Fetches a list of articles with optional filters.
@@ -157,7 +159,7 @@ func main() {
 
 // Removed placeholder function processArticleWithLLM as it's replaced by llmClient.EnsembleAnalyze
 
-func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager) {
+func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager, *llm.ProgressManager, *api.SimpleCache) {
 	// Load environment variables from .env file if present
 	err := godotenv.Load()
 	if err != nil {
@@ -217,12 +219,17 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	// Start cron job for fetching RSS feeds
 
 	// Initialize ScoreManager
-	cache := llm.NewCache()
+	llmAPICache := llm.NewCache() // This is the cache for the LLM service, distinct from the API cache.
 	calculator := &llm.DefaultScoreCalculator{}
-	progressMgr := llm.NewProgressManager(10 * time.Minute) // Clean up progress data every 10 minutes
-	scoreManager := llm.NewScoreManager(dbConn, cache, calculator, progressMgr)
+	// ProgressManager handles progress tracking and cleanup for LLM scoring jobs.
+	// Using a 1-minute cleanup interval as a reasonable default.
+	progressManager := llm.NewProgressManager(time.Minute)
+	scoreManager := llm.NewScoreManager(dbConn, llmAPICache, calculator, progressManager)
 
-	return dbConn, llmClient, collector, scoreManager
+	// SimpleCache provides in-memory caching for API responses (articles, summaries, etc).
+	simpleAPICache := api.NewSimpleCache()
+
+	return dbConn, llmClient, collector, scoreManager, progressManager, simpleAPICache
 }
 
 func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {

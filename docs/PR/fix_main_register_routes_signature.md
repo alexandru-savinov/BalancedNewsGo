@@ -100,12 +100,12 @@ This plan details the steps required to resolve this error, ensure all dependenc
 ---
 
 ## Checklist
-- [ ] Instantiate `ProgressManager` in `main.go`
-- [ ] Instantiate `SimpleCache` in `main.go`
-- [ ] Pass both to `api.RegisterRoutes`
-- [ ] Build and run the server successfully
-- [ ] Run all tests and confirm passing
-- [ ] Update documentation/comments as needed
+- [x] Instantiate `ProgressManager` in `main.go`
+- [x] Instantiate `SimpleCache` in `main.go`
+- [x] Pass both to `api.RegisterRoutes`
+- [x] Build and run the server successfully
+- [x] Run all tests and confirm passing
+- [x] Update documentation/comments as needed
 
 ---
 
