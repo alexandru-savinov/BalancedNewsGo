@@ -1,1 +1,0 @@
-74:	router.GET("/api/articles/:id", getArticleByIDHandlerFixed(dbConn)) // Use the fixed handler
