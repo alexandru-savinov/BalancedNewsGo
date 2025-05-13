@@ -1,0 +1,52 @@
+Makefile Target Test Results
+===========================
+
+1. tidy: ✅ Success
+   - Runs `go mod tidy` to clean up go.mod/go.sum dependencies. Ensures module files are up to date and free of unused dependencies.
+
+2. build: ✅ Success
+   - Compiles the backend server from `./cmd/server/main.go` into `./bin/newbalancer_server`. Verifies that the project builds successfully.
+
+3. clean: ❌ Failed
+   - Intended to remove build artifacts (`./bin`, `./coverage`, `coverage*.out`) using `rm -rf`. This Unix command is not available by default on Windows, so the target fails. Windows users should use `del`/`rmdir` or install Unix tools (e.g., Git Bash).
+
+4. lint: ⚠️ Ran, but reported many code issues
+   - Runs `golangci-lint` on all Go code. The linter works, but the codebase has many warnings/errors (e.g., formatting, complexity, error handling, duplication). Review output for code quality improvements.
+
+5. unit: ❌ Failed
+   - Runs fast unit tests with `go test -race -count=1 ./... -run . -short -timeout 2m`. The `-race` flag requires CGO and a C compiler (`gcc`). On Windows, you must install a C compiler (e.g., MinGW) for this to work.
+
+6. integ: ✅ Success
+   - Runs integration tests with `go test -tags=integration ./...`. These tests require a working DB and possibly other services. No errors encountered.
+
+7. test: ❌ Failed
+   - Runs both unit and integration tests. Fails for the same reason as `unit` (missing C compiler for `-race`).
+
+8. coverage-core: ❌ No output
+   - Runs coverage on core packages (`internal/llm`, `internal/db`, `internal/api`) and enforces ≥90% coverage. Likely fails due to the same CGO/gcc issue as unit tests, or because of missing coverage output.
+
+9. docs: ✅ Success
+   - Generates Swagger docs using `swag init` from the main server entrypoint. Output is placed in `internal/api/docs`. If docs are up to date, this is a no-op.
+
+10. contract: ❌ Failed
+    - Runs OpenAPI linting (`npx @stoplight/spectral-cli lint`) and breaking change detection (`oasdiff`). Fails due to missing ruleset for Spectral CLI. You may need to provide a `.spectral.yaml` or similar config.
+
+11. mock-llm-go: ❌ Failed
+    - Runs the Go mock LLM service (`go run ./tools/mock_llm_service.go`). Exited with status 1, likely due to a code or environment issue. Check the Go file for errors or missing dependencies.
+
+12. mock-llm-py: ✅ Success
+    - Runs the Python mock LLM service (`python ./tools/mock_llm_service.py`). No errors encountered; script runs as expected.
+
+13. docker-up: ❌ Failed
+    - Spins up the Docker stack using `docker compose -f infra/docker-compose.yml up -d`. Fails because `infra/docker-compose.yml` does not exist. Add this file to enable Docker-based workflows.
+
+14. docker-down: ❌ Failed
+    - Tears down the Docker stack using `docker compose -f infra/docker-compose.yml down -v`. Fails for the same reason as `docker-up` (missing compose file).
+
+15. e2e: ❌ Failed
+    - Runs end-to-end tests: brings up Docker stack, runs Playwright tests via `pnpm --filter=web test:e2e`, then brings down Docker. Fails due to missing Docker compose file. Also requires Playwright and pnpm installed.
+
+Technical Notes:
+- Many targets assume a Unix-like environment (e.g., `rm`, `awk`). On Windows, consider using Git Bash, WSL, or adapting commands for PowerShell.
+- For Go race detection, install a C compiler and ensure `CGO_ENABLED=1` is set.
+- Some targets depend on external tools (e.g., `golangci-lint`, `swag`, `pnpm`, `docker`, `npx`). Ensure these are installed and available in your PATH. 
