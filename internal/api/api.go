@@ -78,7 +78,7 @@ func RegisterRoutes(
 	// @Param source query string false "Filter by news source"
 	// @Param offset query integer false "Pagination offset"
 	// @Param limit query integer false "Number of items per page"
-	// @Success 200 {array} models.Article
+	// @Success 200 {array} api.Article
 	// @Failure 500 {object} ErrorResponse
 	// @Router /articles [get]
 	router.GET("/api/articles", SafeHandler(getArticlesHandler(dbConn)))
@@ -89,7 +89,7 @@ func RegisterRoutes(
 	// @Accept json
 	// @Produce json
 	// @Param id path integer true "Article ID"
-	// @Success 200 {object} models.Article
+	// @Success 200 {object} api.Article
 	// @Failure 404 {object} ErrorResponse
 	// @Router /articles/{id} [get]
 	router.GET("/api/articles/:id", SafeHandler(getArticleByIDHandler(dbConn)))
@@ -100,7 +100,7 @@ func RegisterRoutes(
 	// @Accept json
 	// @Produce json
 	// @Param article body models.CreateArticleRequest true "Article object"
-	// @Success 200 {object} StandardResponse{data=models.Article}
+	// @Success 200 {object} StandardResponse{data=api.Article}
 	// @Failure 400 {object} ErrorResponse
 	// @Router /articles [post]
 	router.POST("/api/articles", SafeHandler(createArticleHandler(dbConn)))
@@ -135,10 +135,11 @@ func RegisterRoutes(
 	// @Accept json
 	// @Produce json
 	// @Param id path integer true "Article ID"
-	// @Param score body models.ManualScoreRequest true "Score information"
+	// @Param score body api.ManualScoreRequest true "Score information"
 	// @Success 200 {object} StandardResponse
 	// @Failure 400 {object} ErrorResponse
 	// @Router /manual-score/{id} [post]
+	// @ID addManualScore
 	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(dbConn)))
 
 	// Article analysis
@@ -148,7 +149,7 @@ func RegisterRoutes(
 	// @Accept json
 	// @Produce json
 	// @Param id path integer true "Article ID"
-	// @Success 200 {object} models.SummaryResponse
+	// @Success 200 {object} api.StandardResponse
 	// @Failure 404 {object} ErrorResponse
 	// @Router /articles/{id}/summary [get]
 	handler := NewSummaryHandler(&db.DBInstance{DB: dbConn})
@@ -160,7 +161,7 @@ func RegisterRoutes(
 	// @Accept json
 	// @Produce json
 	// @Param id path integer true "Article ID"
-	// @Success 200 {object} models.BiasResponse
+	// @Success 200 {object} api.ScoreResponse
 	// @Failure 404 {object} ErrorResponse
 	// @Router /articles/{id}/bias [get]
 	router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(dbConn)))
@@ -169,7 +170,7 @@ func RegisterRoutes(
 	// @Description Get detailed ensemble analysis results for an article
 	// @Tags Analysis
 	// @Param id path integer true "Article ID"
-	// @Success 200 {object} models.EnsembleResponse
+	// @Success 200 {object} api.StandardResponse
 	// @Failure 404 {object} ErrorResponse
 	// @Router /articles/{id}/ensemble [get]
 	router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(dbConn)))
@@ -249,6 +250,7 @@ func articleToPostmanSchema(a *db.Article) map[string]interface{} {
 // @Failure 409 {object} ErrorResponse "Article URL already exists"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /articles [post]
+// @ID createArticle
 func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -370,20 +372,20 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // Utility function for handling article array results
 // ... remove handleArticleBatch function ...
 
-// getArticlesHandler handles GET /articles
+// Handler for GET /api/articles
 // @Summary Get articles
-// @Description Fetches a list of articles with optional filters
+// @Description Fetches a list of articles with optional filtering by source, leaning, and pagination
 // @Tags Articles
 // @Accept json
 // @Produce json
-// @Param source query string false "Filter by source (e.g., CNN, Fox)"
-// @Param leaning query string false "Filter by political leaning"
-// @Param limit query int false "Maximum number of articles to return" default(20) minimum(1) maximum(100)
-// @Param offset query int false "Number of articles to skip" default(0) minimum(0)
-// @Success 200 {object} StandardResponse{data=[]db.Article} "Success"
-// @Failure 400 {object} ErrorResponse "Invalid parameters"
+// @Param source query string false "Filter by news source"
+// @Param leaning query string false "Filter by political leaning (left/center/right)"
+// @Param offset query integer false "Pagination offset (default: 0)"
+// @Param limit query integer false "Number of items per page (default: 20)"
+// @Success 200 {array} api.Article "List of articles"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /articles [get]
+// @ID getArticlesList
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -461,6 +463,7 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @Failure 404 {object} ErrorResponse "Article not found"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /articles/{id} [get]
+// @ID getArticleById
 func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -518,6 +521,7 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @Success 200 {object} StandardResponse{data=map[string]string} "Refresh started successfully"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /api/refresh [post]
+// @ID triggerRssRefresh
 func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -539,6 +543,7 @@ func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 // @Failure 404 {object} ErrorResponse "Article not found"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /llm/reanalyze/{id} [post]
+// @ID reanalyzeArticle
 func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
@@ -720,6 +725,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 // @Success 200 {object} models.ProgressState "event-stream containing progress updates"
 // @Failure 400 {object} ErrorResponse "Invalid article ID"
 // @Router /api/llm/score-progress/{id} [get]
+// @ID getScoreProgress
 func scoreProgressSSEHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")
@@ -792,6 +798,7 @@ func percent(step, total int) int {
 // @Success 200 {object} map[string]bool "Feed health status mapping feed names to boolean status"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /api/feeds/healthz [get]
+// @ID getFeedsHealth
 func feedHealthHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := rssCollector.CheckFeedHealth()
@@ -806,6 +813,7 @@ func feedHealthHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 // @Success 200 {object} StandardResponse
 // @Failure 404 {object} ErrorResponse "Summary not available"
 // @Router /api/articles/{id}/summary [get]
+// @ID getArticleSummary
 type SummaryHandler struct {
 	db db.DBOperations
 }
@@ -895,6 +903,7 @@ func (h *SummaryHandler) Handle(c *gin.Context) {
 // @Failure 404 {object} ErrorResponse "Article not found"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /articles/{id}/bias [get]
+// @ID getArticleBias
 // If no valid LLM scores are available, the API responds with:
 //   - "composite_score": null
 //   - "status": "scoring_unavailable"
@@ -1063,6 +1072,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @Success 200 {object} StandardResponse
 // @Failure 404 {object} ErrorResponse "Ensemble data not found"
 // @Router /api/articles/{id}/ensemble [get]
+// @ID getArticleEnsemble
 func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -1184,6 +1194,7 @@ func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 // @Failure 400 {object} ErrorResponse "Invalid request data"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /feedback [post]
+// @ID submitFeedback
 func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -1293,6 +1304,7 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 // @Success 200 {object} StandardResponse
 // @Failure 400 {object} ErrorResponse
 // @Router /api/manual-score/{id} [post]
+// @ID addManualScore
 func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		idStr := c.Param("id")

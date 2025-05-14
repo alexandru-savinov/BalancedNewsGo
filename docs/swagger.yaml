@@ -1,5 +1,50 @@
+basePath: /api
 definitions:
-  api.CreateArticleRequest:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.Article:
+    description: A news article with bias analysis information
+    properties:
+      composite_score:
+        description: Political bias score (-1 to 1)
+        example: 0.25
+        type: number
+      confidence:
+        description: Confidence in the score (0 to 1)
+        example: 0.85
+        type: number
+      content:
+        description: Article content
+        example: Article content...
+        type: string
+      created_at:
+        description: When added to the system
+        example: "2023-01-02T00:00:00Z"
+        type: string
+      id:
+        description: Unique identifier
+        example: 42
+        type: integer
+      pub_date:
+        description: Article publication date
+        example: "2023-01-01T12:00:00Z"
+        type: string
+      score_source:
+        description: Source of the score
+        example: llm
+        type: string
+      source:
+        description: News source name
+        example: CNN
+        type: string
+      title:
+        description: Article title
+        example: Breaking News
+        type: string
+      url:
+        description: URL to the original article
+        example: https://example.com/article
+        type: string
+    type: object
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleRequest:
     description: Request body for creating a new article
     properties:
       content:
@@ -29,7 +74,7 @@ definitions:
     - title
     - url
     type: object
-  api.CreateArticleResponse:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleResponse:
     description: Response from creating a new article
     properties:
       article_id:
@@ -41,7 +86,7 @@ definitions:
         example: created
         type: string
     type: object
-  api.ErrorDetail:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorDetail:
     description: Detailed error information
     properties:
       code:
@@ -53,19 +98,19 @@ definitions:
         example: Invalid input parameters
         type: string
     type: object
-  api.ErrorResponse:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse:
     description: Standard API error response
     properties:
       error:
         allOf:
-        - $ref: '#/definitions/api.ErrorDetail'
+        - $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorDetail'
         description: Error details
       success:
         description: Always false for errors
         example: false
         type: boolean
     type: object
-  api.FeedbackRequest:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.FeedbackRequest:
     description: Request body for submitting user feedback
     properties:
       article_id:
@@ -93,7 +138,7 @@ definitions:
     - feedback_text
     - user_id
     type: object
-  api.IndividualScoreResult:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.IndividualScoreResult:
     description: Individual model scoring result
     properties:
       confidence:
@@ -116,7 +161,7 @@ definitions:
         example: 0.3
         type: number
     type: object
-  api.ManualScoreRequest:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.ManualScoreRequest:
     description: Request body for manually setting an article's bias score
     properties:
       score:
@@ -126,7 +171,7 @@ definitions:
     required:
     - score
     type: object
-  api.ScoreResponse:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.ScoreResponse:
     description: Political bias score analysis result
     properties:
       composite_score:
@@ -136,14 +181,14 @@ definitions:
       results:
         description: Individual model scores
         items:
-          $ref: '#/definitions/api.IndividualScoreResult'
+          $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.IndividualScoreResult'
         type: array
       status:
         description: Status message if applicable
         example: scoring_unavailable
         type: string
     type: object
-  api.StandardResponse:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse:
     description: Standard API success response
     properties:
       data:
@@ -153,38 +198,7 @@ definitions:
         example: true
         type: boolean
     type: object
-  db.Article:
-    properties:
-      composite_score:
-        type: number
-      confidence:
-        type: number
-      content:
-        type: string
-      created_at:
-        type: string
-      escalated:
-        type: boolean
-      fail_count:
-        type: integer
-      id:
-        type: integer
-      last_attempt:
-        type: string
-      pub_date:
-        type: string
-      score_source:
-        type: string
-      source:
-        type: string
-      status:
-        type: string
-      title:
-        type: string
-      url:
-        type: string
-    type: object
-  models.ProgressState:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState:
     description: Progress state for long-running operations
     properties:
       error:
@@ -215,13 +229,224 @@ definitions:
         example: Scoring
         type: string
     type: object
+  internal_api.Article:
+    description: A news article with bias analysis information
+    properties:
+      composite_score:
+        description: Political bias score (-1 to 1)
+        example: 0.25
+        type: number
+      confidence:
+        description: Confidence in the score (0 to 1)
+        example: 0.85
+        type: number
+      content:
+        description: Article content
+        example: Article content...
+        type: string
+      created_at:
+        description: When added to the system
+        example: "2023-01-02T00:00:00Z"
+        type: string
+      id:
+        description: Unique identifier
+        example: 42
+        type: integer
+      pub_date:
+        description: Article publication date
+        example: "2023-01-01T12:00:00Z"
+        type: string
+      score_source:
+        description: Source of the score
+        example: llm
+        type: string
+      source:
+        description: News source name
+        example: CNN
+        type: string
+      title:
+        description: Article title
+        example: Breaking News
+        type: string
+      url:
+        description: URL to the original article
+        example: https://example.com/article
+        type: string
+    type: object
+  internal_api.CreateArticleRequest:
+    description: Request body for creating a new article
+    properties:
+      content:
+        description: Article content
+        example: Article content...
+        type: string
+      pub_date:
+        description: Publication date in RFC3339 format
+        example: "2023-01-01T12:00:00Z"
+        type: string
+      source:
+        description: News source name
+        example: CNN
+        type: string
+      title:
+        description: Article title
+        example: Breaking News
+        type: string
+      url:
+        description: Article URL
+        example: https://example.com/article
+        type: string
+    required:
+    - content
+    - pub_date
+    - source
+    - title
+    - url
+    type: object
+  internal_api.CreateArticleResponse:
+    description: Response from creating a new article
+    properties:
+      article_id:
+        description: ID of the created article
+        example: 42
+        type: integer
+      status:
+        description: Status of the operation
+        example: created
+        type: string
+    type: object
+  internal_api.ErrorDetail:
+    description: Detailed error information
+    properties:
+      code:
+        description: Error code
+        example: validation_error
+        type: string
+      message:
+        description: Human-readable error message
+        example: Invalid input parameters
+        type: string
+    type: object
+  internal_api.ErrorResponse:
+    description: Standard API error response
+    properties:
+      error:
+        allOf:
+        - $ref: '#/definitions/internal_api.ErrorDetail'
+        description: Error details
+      success:
+        description: Always false for errors
+        example: false
+        type: boolean
+    type: object
+  internal_api.FeedbackRequest:
+    description: Request body for submitting user feedback
+    properties:
+      article_id:
+        description: Article ID
+        type: integer
+      category:
+        description: 'Feedback category: agree, disagree, unclear, other'
+        example: agree
+        type: string
+      ensemble_output_id:
+        description: ID of specific ensemble output
+        type: integer
+      feedback_text:
+        description: Feedback content
+        type: string
+      source:
+        description: Source of the feedback
+        example: web
+        type: string
+      user_id:
+        description: User ID
+        type: string
+    required:
+    - article_id
+    - feedback_text
+    - user_id
+    type: object
+  internal_api.IndividualScoreResult:
+    description: Individual model scoring result
+    properties:
+      confidence:
+        description: Model confidence
+        example: 0.8
+        type: number
+      created_at:
+        description: When the score was generated
+        type: string
+      explanation:
+        description: Explanation for the score
+        example: Reasoning
+        type: string
+      model:
+        description: Model name
+        example: claude-3
+        type: string
+      score:
+        description: Bias score
+        example: 0.3
+        type: number
+    type: object
+  internal_api.ManualScoreRequest:
+    description: Request body for manually setting an article's bias score
+    properties:
+      score:
+        description: Score value between -1.0 and 1.0
+        example: 0.5
+        type: number
+    required:
+    - score
+    type: object
+  internal_api.ScoreResponse:
+    description: Political bias score analysis result
+    properties:
+      composite_score:
+        description: Overall bias score
+        example: 0.25
+        type: number
+      results:
+        description: Individual model scores
+        items:
+          $ref: '#/definitions/internal_api.IndividualScoreResult'
+        type: array
+      status:
+        description: Status message if applicable
+        example: scoring_unavailable
+        type: string
+    type: object
+  internal_api.StandardResponse:
+    description: Standard API success response
+    properties:
+      data:
+        description: Response data payload
+      success:
+        description: Always true for success
+        example: true
+        type: boolean
+    type: object
+host: localhost:8080
 info:
-  contact: {}
+  contact:
+    email: support@newsbalancer.example
+    name: NewsBalancer Support
+    url: https://github.com/alexandru-savinov/BalancedNewsGo
+  description: API for the NewsBalancer application which analyzes political bias
+    in news articles using LLM models
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: NewsBalancer API
+  version: "1.0"
 paths:
   /api/articles/{id}/ensemble:
     get:
       description: Retrieves individual model results and aggregation for an article's
         ensemble score
+      operationId: getArticleEnsemble
       parameters:
       - description: Article ID
         in: path
@@ -233,11 +458,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
         "404":
           description: Ensemble data not found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Get ensemble scoring details
       tags:
       - Analysis
@@ -246,6 +471,7 @@ paths:
       consumes:
       - application/json
       description: Returns the health status of all configured RSS feeds
+      operationId: getFeedsHealth
       produces:
       - application/json
       responses:
@@ -258,7 +484,7 @@ paths:
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Get RSS feed health status
       tags:
       - Feeds
@@ -268,6 +494,7 @@ paths:
       - application/json
       description: Server-Sent Events endpoint streaming real-time scoring progress
         for an article
+      operationId: getScoreProgress
       parameters:
       - description: Article ID
         in: path
@@ -281,17 +508,18 @@ paths:
         "200":
           description: event-stream containing progress updates
           schema:
-            $ref: '#/definitions/models.ProgressState'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState'
         "400":
           description: Invalid article ID
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Score progress SSE stream
       tags:
       - LLM
   /api/manual-score/{id}:
     post:
       description: Updates an article's bias score manually
+      operationId: addManualScore
       parameters:
       - description: Article ID
         in: path
@@ -304,16 +532,16 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/api.ManualScoreRequest'
+          $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ManualScoreRequest'
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Manually set article score
       tags:
       - Analysis
@@ -323,6 +551,7 @@ paths:
       - application/json
       description: Initiates a manual RSS feed refresh job to fetch new articles from
         configured RSS sources
+      operationId: triggerRssRefresh
       produces:
       - application/json
       responses:
@@ -330,7 +559,7 @@ paths:
           description: Refresh started successfully
           schema:
             allOf:
-            - $ref: '#/definitions/api.StandardResponse'
+            - $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
             - properties:
                 data:
                   additionalProperties:
@@ -340,7 +569,7 @@ paths:
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Trigger RSS feed refresh
       tags:
       - Feeds
@@ -348,51 +577,39 @@ paths:
     get:
       consumes:
       - application/json
-      description: Fetches a list of articles with optional filters
+      description: Fetches a list of articles with optional filtering by source, leaning,
+        and pagination
+      operationId: getArticlesList
       parameters:
-      - description: Filter by source (e.g., CNN, Fox)
+      - description: Filter by news source
         in: query
         name: source
         type: string
-      - description: Filter by political leaning
+      - description: Filter by political leaning (left/center/right)
         in: query
         name: leaning
         type: string
-      - default: 20
-        description: Maximum number of articles to return
+      - description: 'Pagination offset (default: 0)'
         in: query
-        maximum: 100
-        minimum: 1
-        name: limit
-        type: integer
-      - default: 0
-        description: Number of articles to skip
-        in: query
-        minimum: 0
         name: offset
+        type: integer
+      - description: 'Number of items per page (default: 20)'
+        in: query
+        name: limit
         type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: Success
+          description: List of articles
           schema:
-            allOf:
-            - $ref: '#/definitions/api.StandardResponse'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/db.Article'
-                  type: array
-              type: object
-        "400":
-          description: Invalid parameters
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            items:
+              $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.Article'
+            type: array
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Get articles
       tags:
       - Articles
@@ -400,13 +617,14 @@ paths:
       consumes:
       - application/json
       description: Creates a new article with the provided information
+      operationId: createArticle
       parameters:
       - description: Article information
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/api.CreateArticleRequest'
+          $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleRequest'
       produces:
       - application/json
       responses:
@@ -414,23 +632,23 @@ paths:
           description: Article created successfully
           schema:
             allOf:
-            - $ref: '#/definitions/api.StandardResponse'
+            - $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/api.CreateArticleResponse'
+                  $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleResponse'
               type: object
         "400":
           description: Invalid request data
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "409":
           description: Article URL already exists
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Create article
       tags:
       - Articles
@@ -439,6 +657,7 @@ paths:
       consumes:
       - application/json
       description: Fetches a specific article by its ID with scores and metadata
+      operationId: getArticleById
       parameters:
       - description: Article ID
         in: path
@@ -452,19 +671,19 @@ paths:
         "200":
           description: Success with article details
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
         "400":
           description: Invalid article ID
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "404":
           description: Article not found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Get article by ID
       tags:
       - Articles
@@ -474,6 +693,7 @@ paths:
       - application/json
       description: Retrieves the political bias score and individual model results
         for an article
+      operationId: getArticleBias
       parameters:
       - description: Article ID
         in: path
@@ -510,23 +730,23 @@ paths:
           description: Success
           schema:
             allOf:
-            - $ref: '#/definitions/api.StandardResponse'
+            - $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/api.ScoreResponse'
+                  $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ScoreResponse'
               type: object
         "400":
           description: Invalid parameters
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "404":
           description: Article not found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Get article bias analysis
       tags:
       - Analysis
@@ -535,28 +755,29 @@ paths:
       consumes:
       - application/json
       description: Submit user feedback on an article's political bias analysis
+      operationId: submitFeedback
       parameters:
       - description: Feedback information
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/api.FeedbackRequest'
+          $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.FeedbackRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Feedback received
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
         "400":
           description: Invalid request data
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Submit user feedback
       tags:
       - Feedback
@@ -564,44 +785,55 @@ paths:
     post:
       consumes:
       - application/json
-      description: Initiates a reanalysis of an article's political bias or directly
-        updates the score
+      description: Trigger a new LLM analysis for a specific article and update its
+        scores.
+      operationId: reanalyzeArticle
       parameters:
       - description: Article ID
         in: path
-        minimum: 1
         name: id
         required: true
         type: integer
-      - description: Optional score to set directly
-        in: body
-        name: request
-        schema:
-          $ref: '#/definitions/api.ManualScoreRequest'
       produces:
       - application/json
       responses:
-        "200":
-          description: Success - reanalysis queued or score updated
+        "202":
+          description: Reanalysis started
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse'
         "400":
-          description: Invalid article ID or score
+          description: Invalid article ID
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "404":
           description: Article not found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "429":
-          description: Rate limit exceeded
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
         "500":
-          description: Internal server error or LLM service unavailable
+          description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse'
       summary: Reanalyze article
       tags:
-      - Analysis
+      - LLM
+schemes:
+- http
+- https
 swagger: "2.0"
+tags:
+- description: Operations related to news articles
+  name: Articles
+- description: Operations related to user feedback
+  name: Feedback
+- description: Operations related to LLM processing and scoring
+  name: LLM
+- description: Operations related to RSS feeds
+  name: Feeds
+- description: Administrative operations
+  name: Admin
+- description: Health check operations
+  name: Health
+- description: Operations related to article scoring and manual scoring
+  name: Scoring
+- description: Operations related to article analysis and summaries
+  name: Analysis

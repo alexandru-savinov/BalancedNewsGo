@@ -1,8 +1,26 @@
 {
+    "schemes": [
+        "http",
+        "https"
+    ],
     "swagger": "2.0",
     "info": {
-        "contact": {}
+        "description": "API for the NewsBalancer application which analyzes political bias in news articles using LLM models",
+        "title": "NewsBalancer API",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "NewsBalancer Support",
+            "url": "https://github.com/alexandru-savinov/BalancedNewsGo",
+            "email": "support@newsbalancer.example"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "version": "1.0"
     },
+    "host": "localhost:8080",
+    "basePath": "/api",
     "paths": {
         "/api/articles/{id}/ensemble": {
             "get": {
@@ -11,6 +29,7 @@
                     "Analysis"
                 ],
                 "summary": "Get ensemble scoring details",
+                "operationId": "getArticleEnsemble",
                 "parameters": [
                     {
                         "minimum": 1,
@@ -25,13 +44,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.StandardResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                         }
                     },
                     "404": {
                         "description": "Ensemble data not found",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -50,6 +69,7 @@
                     "Feeds"
                 ],
                 "summary": "Get RSS feed health status",
+                "operationId": "getFeedsHealth",
                 "responses": {
                     "200": {
                         "description": "Feed health status mapping feed names to boolean status",
@@ -63,7 +83,7 @@
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -82,6 +102,7 @@
                     "LLM"
                 ],
                 "summary": "Score progress SSE stream",
+                "operationId": "getScoreProgress",
                 "parameters": [
                     {
                         "minimum": 1,
@@ -96,13 +117,13 @@
                     "200": {
                         "description": "event-stream containing progress updates",
                         "schema": {
-                            "$ref": "#/definitions/models.ProgressState"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState"
                         }
                     },
                     "400": {
                         "description": "Invalid article ID",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -115,6 +136,7 @@
                     "Analysis"
                 ],
                 "summary": "Manually set article score",
+                "operationId": "addManualScore",
                 "parameters": [
                     {
                         "minimum": 1,
@@ -130,7 +152,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/api.ManualScoreRequest"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ManualScoreRequest"
                         }
                     }
                 ],
@@ -138,13 +160,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.StandardResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -163,13 +185,14 @@
                     "Feeds"
                 ],
                 "summary": "Trigger RSS feed refresh",
+                "operationId": "triggerRssRefresh",
                 "responses": {
                     "200": {
                         "description": "Refresh started successfully",
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/api.StandardResponse"
+                                    "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                                 },
                                 {
                                     "type": "object",
@@ -188,7 +211,7 @@
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -196,7 +219,7 @@
         },
         "/articles": {
             "get": {
-                "description": "Fetches a list of articles with optional filters",
+                "description": "Fetches a list of articles with optional filtering by source, leaning, and pagination",
                 "consumes": [
                     "application/json"
                 ],
@@ -207,69 +230,47 @@
                     "Articles"
                 ],
                 "summary": "Get articles",
+                "operationId": "getArticlesList",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Filter by source (e.g., CNN, Fox)",
+                        "description": "Filter by news source",
                         "name": "source",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Filter by political leaning",
+                        "description": "Filter by political leaning (left/center/right)",
                         "name": "leaning",
                         "in": "query"
                     },
                     {
-                        "maximum": 100,
-                        "minimum": 1,
                         "type": "integer",
-                        "default": 20,
-                        "description": "Maximum number of articles to return",
-                        "name": "limit",
+                        "description": "Pagination offset (default: 0)",
+                        "name": "offset",
                         "in": "query"
                     },
                     {
-                        "minimum": 0,
                         "type": "integer",
-                        "default": 0,
-                        "description": "Number of articles to skip",
-                        "name": "offset",
+                        "description": "Number of items per page (default: 20)",
+                        "name": "limit",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Success",
+                        "description": "List of articles",
                         "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/api.StandardResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/db.Article"
-                                            }
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid parameters",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.Article"
+                            }
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -286,6 +287,7 @@
                     "Articles"
                 ],
                 "summary": "Create article",
+                "operationId": "createArticle",
                 "parameters": [
                     {
                         "description": "Article information",
@@ -293,7 +295,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/api.CreateArticleRequest"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleRequest"
                         }
                     }
                 ],
@@ -303,13 +305,13 @@
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/api.StandardResponse"
+                                    "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/api.CreateArticleResponse"
+                                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleResponse"
                                         }
                                     }
                                 }
@@ -319,19 +321,19 @@
                     "400": {
                         "description": "Invalid request data",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Article URL already exists",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -350,6 +352,7 @@
                     "Articles"
                 ],
                 "summary": "Get article by ID",
+                "operationId": "getArticleById",
                 "parameters": [
                     {
                         "minimum": 1,
@@ -364,25 +367,25 @@
                     "200": {
                         "description": "Success with article details",
                         "schema": {
-                            "$ref": "#/definitions/api.StandardResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid article ID",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Article not found",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -401,6 +404,7 @@
                     "Analysis"
                 ],
                 "summary": "Get article bias analysis",
+                "operationId": "getArticleBias",
                 "parameters": [
                     {
                         "minimum": 1,
@@ -446,13 +450,13 @@
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/api.StandardResponse"
+                                    "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/api.ScoreResponse"
+                                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ScoreResponse"
                                         }
                                     }
                                 }
@@ -462,19 +466,19 @@
                     "400": {
                         "description": "Invalid parameters",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Article not found",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -493,6 +497,7 @@
                     "Feedback"
                 ],
                 "summary": "Submit user feedback",
+                "operationId": "submitFeedback",
                 "parameters": [
                     {
                         "description": "Feedback information",
@@ -500,7 +505,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/api.FeedbackRequest"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.FeedbackRequest"
                         }
                     }
                 ],
@@ -508,19 +513,19 @@
                     "200": {
                         "description": "Feedback received",
                         "schema": {
-                            "$ref": "#/definitions/api.StandardResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid request data",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -528,7 +533,7 @@
         },
         "/llm/reanalyze/{id}": {
             "post": {
-                "description": "Initiates a reanalysis of an article's political bias or directly updates the score",
+                "description": "Trigger a new LLM analysis for a specific article and update its scores.",
                 "consumes": [
                     "application/json"
                 ],
@@ -536,56 +541,42 @@
                     "application/json"
                 ],
                 "tags": [
-                    "Analysis"
+                    "LLM"
                 ],
                 "summary": "Reanalyze article",
+                "operationId": "reanalyzeArticle",
                 "parameters": [
                     {
-                        "minimum": 1,
                         "type": "integer",
                         "description": "Article ID",
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "Optional score to set directly",
-                        "name": "request",
-                        "in": "body",
-                        "schema": {
-                            "$ref": "#/definitions/api.ManualScoreRequest"
-                        }
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "Success - reanalysis queued or score updated",
+                    "202": {
+                        "description": "Reanalysis started",
                         "schema": {
-                            "$ref": "#/definitions/api.StandardResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse"
                         }
                     },
                     "400": {
-                        "description": "Invalid article ID or score",
+                        "description": "Invalid article ID",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Article not found",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
-                        }
-                    },
-                    "429": {
-                        "description": "Rate limit exceeded",
-                        "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or LLM service unavailable",
+                        "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/api.ErrorResponse"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse"
                         }
                     }
                 }
@@ -593,7 +584,63 @@
         }
     },
     "definitions": {
-        "api.CreateArticleRequest": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.Article": {
+            "description": "A news article with bias analysis information",
+            "type": "object",
+            "properties": {
+                "composite_score": {
+                    "description": "Political bias score (-1 to 1)",
+                    "type": "number",
+                    "example": 0.25
+                },
+                "confidence": {
+                    "description": "Confidence in the score (0 to 1)",
+                    "type": "number",
+                    "example": 0.85
+                },
+                "content": {
+                    "description": "Article content",
+                    "type": "string",
+                    "example": "Article content..."
+                },
+                "created_at": {
+                    "description": "When added to the system",
+                    "type": "string",
+                    "example": "2023-01-02T00:00:00Z"
+                },
+                "id": {
+                    "description": "Unique identifier",
+                    "type": "integer",
+                    "example": 42
+                },
+                "pub_date": {
+                    "description": "Article publication date",
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "score_source": {
+                    "description": "Source of the score",
+                    "type": "string",
+                    "example": "llm"
+                },
+                "source": {
+                    "description": "News source name",
+                    "type": "string",
+                    "example": "CNN"
+                },
+                "title": {
+                    "description": "Article title",
+                    "type": "string",
+                    "example": "Breaking News"
+                },
+                "url": {
+                    "description": "URL to the original article",
+                    "type": "string",
+                    "example": "https://example.com/article"
+                }
+            }
+        },
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleRequest": {
             "description": "Request body for creating a new article",
             "type": "object",
             "required": [
@@ -631,7 +678,7 @@
                 }
             }
         },
-        "api.CreateArticleResponse": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.CreateArticleResponse": {
             "description": "Response from creating a new article",
             "type": "object",
             "properties": {
@@ -647,7 +694,7 @@
                 }
             }
         },
-        "api.ErrorDetail": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorDetail": {
             "description": "Detailed error information",
             "type": "object",
             "properties": {
@@ -663,7 +710,7 @@
                 }
             }
         },
-        "api.ErrorResponse": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorResponse": {
             "description": "Standard API error response",
             "type": "object",
             "properties": {
@@ -671,7 +718,7 @@
                     "description": "Error details",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/api.ErrorDetail"
+                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.ErrorDetail"
                         }
                     ]
                 },
@@ -682,7 +729,7 @@
                 }
             }
         },
-        "api.FeedbackRequest": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.FeedbackRequest": {
             "description": "Request body for submitting user feedback",
             "type": "object",
             "required": [
@@ -719,7 +766,7 @@
                 }
             }
         },
-        "api.IndividualScoreResult": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.IndividualScoreResult": {
             "description": "Individual model scoring result",
             "type": "object",
             "properties": {
@@ -749,7 +796,7 @@
                 }
             }
         },
-        "api.ManualScoreRequest": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.ManualScoreRequest": {
             "description": "Request body for manually setting an article's bias score",
             "type": "object",
             "required": [
@@ -763,7 +810,7 @@
                 }
             }
         },
-        "api.ScoreResponse": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.ScoreResponse": {
             "description": "Political bias score analysis result",
             "type": "object",
             "properties": {
@@ -776,7 +823,7 @@
                     "description": "Individual model scores",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/api.IndividualScoreResult"
+                        "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_api.IndividualScoreResult"
                     }
                 },
                 "status": {
@@ -786,7 +833,7 @@
                 }
             }
         },
-        "api.StandardResponse": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_api.StandardResponse": {
             "description": "Standard API success response",
             "type": "object",
             "properties": {
@@ -800,54 +847,7 @@
                 }
             }
         },
-        "db.Article": {
-            "type": "object",
-            "properties": {
-                "composite_score": {
-                    "type": "number"
-                },
-                "confidence": {
-                    "type": "number"
-                },
-                "content": {
-                    "type": "string"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "escalated": {
-                    "type": "boolean"
-                },
-                "fail_count": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "last_attempt": {
-                    "type": "string"
-                },
-                "pub_date": {
-                    "type": "string"
-                },
-                "score_source": {
-                    "type": "string"
-                },
-                "source": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.ProgressState": {
+        "github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState": {
             "description": "Progress state for long-running operations",
             "type": "object",
             "properties": {
@@ -886,6 +886,303 @@
                     "example": "Scoring"
                 }
             }
+        },
+        "internal_api.Article": {
+            "description": "A news article with bias analysis information",
+            "type": "object",
+            "properties": {
+                "composite_score": {
+                    "description": "Political bias score (-1 to 1)",
+                    "type": "number",
+                    "example": 0.25
+                },
+                "confidence": {
+                    "description": "Confidence in the score (0 to 1)",
+                    "type": "number",
+                    "example": 0.85
+                },
+                "content": {
+                    "description": "Article content",
+                    "type": "string",
+                    "example": "Article content..."
+                },
+                "created_at": {
+                    "description": "When added to the system",
+                    "type": "string",
+                    "example": "2023-01-02T00:00:00Z"
+                },
+                "id": {
+                    "description": "Unique identifier",
+                    "type": "integer",
+                    "example": 42
+                },
+                "pub_date": {
+                    "description": "Article publication date",
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "score_source": {
+                    "description": "Source of the score",
+                    "type": "string",
+                    "example": "llm"
+                },
+                "source": {
+                    "description": "News source name",
+                    "type": "string",
+                    "example": "CNN"
+                },
+                "title": {
+                    "description": "Article title",
+                    "type": "string",
+                    "example": "Breaking News"
+                },
+                "url": {
+                    "description": "URL to the original article",
+                    "type": "string",
+                    "example": "https://example.com/article"
+                }
+            }
+        },
+        "internal_api.CreateArticleRequest": {
+            "description": "Request body for creating a new article",
+            "type": "object",
+            "required": [
+                "content",
+                "pub_date",
+                "source",
+                "title",
+                "url"
+            ],
+            "properties": {
+                "content": {
+                    "description": "Article content",
+                    "type": "string",
+                    "example": "Article content..."
+                },
+                "pub_date": {
+                    "description": "Publication date in RFC3339 format",
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "source": {
+                    "description": "News source name",
+                    "type": "string",
+                    "example": "CNN"
+                },
+                "title": {
+                    "description": "Article title",
+                    "type": "string",
+                    "example": "Breaking News"
+                },
+                "url": {
+                    "description": "Article URL",
+                    "type": "string",
+                    "example": "https://example.com/article"
+                }
+            }
+        },
+        "internal_api.CreateArticleResponse": {
+            "description": "Response from creating a new article",
+            "type": "object",
+            "properties": {
+                "article_id": {
+                    "description": "ID of the created article",
+                    "type": "integer",
+                    "example": 42
+                },
+                "status": {
+                    "description": "Status of the operation",
+                    "type": "string",
+                    "example": "created"
+                }
+            }
+        },
+        "internal_api.ErrorDetail": {
+            "description": "Detailed error information",
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Error code",
+                    "type": "string",
+                    "example": "validation_error"
+                },
+                "message": {
+                    "description": "Human-readable error message",
+                    "type": "string",
+                    "example": "Invalid input parameters"
+                }
+            }
+        },
+        "internal_api.ErrorResponse": {
+            "description": "Standard API error response",
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error details",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/internal_api.ErrorDetail"
+                        }
+                    ]
+                },
+                "success": {
+                    "description": "Always false for errors",
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "internal_api.FeedbackRequest": {
+            "description": "Request body for submitting user feedback",
+            "type": "object",
+            "required": [
+                "article_id",
+                "feedback_text",
+                "user_id"
+            ],
+            "properties": {
+                "article_id": {
+                    "description": "Article ID",
+                    "type": "integer"
+                },
+                "category": {
+                    "description": "Feedback category: agree, disagree, unclear, other",
+                    "type": "string",
+                    "example": "agree"
+                },
+                "ensemble_output_id": {
+                    "description": "ID of specific ensemble output",
+                    "type": "integer"
+                },
+                "feedback_text": {
+                    "description": "Feedback content",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Source of the feedback",
+                    "type": "string",
+                    "example": "web"
+                },
+                "user_id": {
+                    "description": "User ID",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_api.IndividualScoreResult": {
+            "description": "Individual model scoring result",
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "description": "Model confidence",
+                    "type": "number",
+                    "example": 0.8
+                },
+                "created_at": {
+                    "description": "When the score was generated",
+                    "type": "string"
+                },
+                "explanation": {
+                    "description": "Explanation for the score",
+                    "type": "string",
+                    "example": "Reasoning"
+                },
+                "model": {
+                    "description": "Model name",
+                    "type": "string",
+                    "example": "claude-3"
+                },
+                "score": {
+                    "description": "Bias score",
+                    "type": "number",
+                    "example": 0.3
+                }
+            }
+        },
+        "internal_api.ManualScoreRequest": {
+            "description": "Request body for manually setting an article's bias score",
+            "type": "object",
+            "required": [
+                "score"
+            ],
+            "properties": {
+                "score": {
+                    "description": "Score value between -1.0 and 1.0",
+                    "type": "number",
+                    "example": 0.5
+                }
+            }
+        },
+        "internal_api.ScoreResponse": {
+            "description": "Political bias score analysis result",
+            "type": "object",
+            "properties": {
+                "composite_score": {
+                    "description": "Overall bias score",
+                    "type": "number",
+                    "example": 0.25
+                },
+                "results": {
+                    "description": "Individual model scores",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_api.IndividualScoreResult"
+                    }
+                },
+                "status": {
+                    "description": "Status message if applicable",
+                    "type": "string",
+                    "example": "scoring_unavailable"
+                }
+            }
+        },
+        "internal_api.StandardResponse": {
+            "description": "Standard API success response",
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Response data payload"
+                },
+                "success": {
+                    "description": "Always true for success",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
         }
-    }
+    },
+    "tags": [
+        {
+            "description": "Operations related to news articles",
+            "name": "Articles"
+        },
+        {
+            "description": "Operations related to user feedback",
+            "name": "Feedback"
+        },
+        {
+            "description": "Operations related to LLM processing and scoring",
+            "name": "LLM"
+        },
+        {
+            "description": "Operations related to RSS feeds",
+            "name": "Feeds"
+        },
+        {
+            "description": "Administrative operations",
+            "name": "Admin"
+        },
+        {
+            "description": "Health check operations",
+            "name": "Health"
+        },
+        {
+            "description": "Operations related to article scoring and manual scoring",
+            "name": "Scoring"
+        },
+        {
+            "description": "Operations related to article analysis and summaries",
+            "name": "Analysis"
+        }
+    ]
 }

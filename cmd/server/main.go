@@ -38,6 +38,24 @@ import (
 
 // @host      localhost:8080
 // @BasePath  /api
+// @schemes   http https
+
+// @tag.name Articles
+// @tag.description Operations related to news articles
+// @tag.name Feedback
+// @tag.description Operations related to user feedback
+// @tag.name LLM
+// @tag.description Operations related to LLM processing and scoring
+// @tag.name Feeds
+// @tag.description Operations related to RSS feeds
+// @tag.name Admin
+// @tag.description Administrative operations
+// @tag.name Health
+// @tag.description Health check operations
+// @tag.name Scoring
+// @tag.description Operations related to article scoring and manual scoring
+// @tag.name Analysis
+// @tag.description Operations related to article analysis and summaries
 
 func main() {
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED

@@ -207,22 +207,59 @@ See `scripts/test.cmd help` or `scripts/test.sh help` for all available commands
 2. Configure RSS feed sources in `configs/feed_sources.json`
 3. Set up LLM API keys in `.env`
 
+### API Contract Validation Tools
+
+Our project uses tools to validate the API specification (OpenAPI).
+
+**1. Spectral CLI:**
+This tool is used for linting the OpenAPI specification. It's managed as an npm dev dependency in `package.json`. Ensure you run `npm install` (or `pnpm install`).
+
+**2. oasdiff:**
+This tool is used for detecting breaking changes between API versions. Install it using Go:
+```bash
+go install github.com/oasdiff/oasdiff@latest
+```
+Ensure that your Go binary path (typically `$(go env GOPATH)/bin` or `~/go/bin`) is included in your system's `PATH` environment variable.
+
+**Purpose & Usage:**
+
+The `make contract` target is crucial for maintaining API quality and stability. It performs two main functions:
+1.  **Linting**: Uses Spectral CLI to check the OpenAPI specification (`docs/swagger.json`) against a defined ruleset (`.spectral.yaml`) for style consistency, completeness, and best practices.
+2.  **Breaking Change Detection**: Uses `oasdiff` to compare the current API specification against the last known version (backed up as `swagger.json.bak`) to identify any changes that could break existing client integrations.
+
+**Common Contract Validation Workflow:**
+
+1. Run `make docs` to generate or update the Swagger documentation from your code.
+2. Run `make contract` to validate the API specification.
+3. If validation fails:
+   - For linting errors: Check the handler annotations in your Go files (`internal/api/api.go`, `cmd/server/main.go`).
+   - For breaking changes: Review if the change was intentional and consider versioning your API if necessary.
+
+**API Annotation Best Practices:**
+
+When documenting API endpoints with Swagger annotations, ensure:
+- Every handler has a unique `@ID` attribute
+- Handler tags match those defined in the global annotations (`@tag.name` in `cmd/server/main.go`)
+- Response models use fully qualified types that exist in your codebase
+- Every endpoint has proper descriptions, parameters, and response types
+
+**Pre-commit Hook:**
+To automate these checks, a pre-commit hook is recommended. 
+
+*   **Manual Setup:** To set this up manually:
+    1.  Create/edit the file `.git/hooks/pre-commit`.
+    2.  Paste the script content (provided in the project's `docs/PR/makefile_test_results.txt` or by the setup assistant).
+    3.  Make it executable: `chmod +x .git/hooks/pre-commit` (on Linux/macOS).
+    This hook will automatically run `make docs` and then `make contract` before each commit, preventing commits with API contract violations.
+
+**Interpreting Errors:**
+
+*   **Spectral Errors:** Linting errors from Spectral will point to issues in your OpenAPI specification, often originating from the Go code comments used to generate it. Address these by correcting the annotations in your Go handlers or models.
+*   **`oasdiff` Errors:** Breaking change errors indicate that a modification to the API (e.g., removing a field, changing a data type) is not backward-compatible. Carefully review these changes. If intentional, the API version might need to be incremented. If unintentional, revert the change.
+
+Regularly running `make contract` and using the pre-commit hook helps catch API design issues early, ensuring a more robust and reliable API.
+
 ### Running Locally
 
 Start the server:
 ```
-go run cmd/server/main.go
-```
-
-The server will be available at http://localhost:8080
-
-## Contributing
-
-1. Ensure tests pass locally
-2. Add tests for new functionality
-3. Update documentation as needed
-4. Submit a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
-
-## License
-
-MIT License - see LICENSE file for details

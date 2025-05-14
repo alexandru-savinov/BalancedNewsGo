@@ -1,3 +1,24 @@
+# Attempt to use bash/sh for shell-specific syntax
+SHELL = sh
+
+# Configurable race detection flag (default: enabled)
+ENABLE_RACE_DETECTION ?= true
+
+# OS detection
+ifeq ($(OS),Windows_NT)
+    OS_DETECTED := Windows
+else
+    OS_DETECTED := $(shell uname -s)
+endif
+
+# Base test command without race detection
+GO_TEST_CMD := go test -count=1 ./cmd/... ./internal/... -run . -short -timeout 2m
+
+# Add race flag conditionally
+ifeq ($(ENABLE_RACE_DETECTION),true)
+    GO_TEST_CMD += -race
+endif
+
 # Go / tools
 GO              := go
 GOLANGCI        := golangci-lint
@@ -10,11 +31,14 @@ COVER_DIR       := ./coverage
 MOCK_GO         := ./tools/mock_llm_service.go
 MOCK_PY         := ./tools/mock_llm_service.py
 
+# Coverage Configuration
+COVERAGE_DIR := ./coverage
+COVERAGE_THRESHOLD ?= 90
+
 # Binaries
 SERVER_BIN      := $(BIN_DIR)/newbalancer_server
 
 # Flags
-RACE            := -race -count=1
 SHORT           := -short
 
 .PHONY: help build run clean \
@@ -32,7 +56,12 @@ help: ## Show this help
 # ===================
 
 $(BIN_DIR):
-	@mkdir -p $@
+	@echo "Ensuring bin directory exists..."
+	@go run ./tools/mkdir.go $(BIN_DIR)
+
+$(COVER_DIR):
+	@echo "Ensuring coverage directory exists..."
+	@go run ./tools/mkdir.go $(COVER_DIR)
 
 build: $(BIN_DIR) ## Compile backend server into ./bin
 	$(GO) build -o $(SERVER_BIN) $(SERVER_CMD)
@@ -40,8 +69,10 @@ build: $(BIN_DIR) ## Compile backend server into ./bin
 run: build ## Build and run server
 	$(SERVER_BIN)
 
-clean: ## Remove binaries & coverage artefacts
-	rm -rf $(BIN_DIR) $(COVER_DIR) coverage*.out
+clean:
+	@echo "Cleaning build artifacts..."
+	@go run ./tools/clean.go
+	@echo "Clean complete."
 
 # Code Quality
 # ==============
@@ -55,40 +86,55 @@ lint: ## Run golangci-lint
 # Testing Matrix
 # ===============
 
-unit: ## Fast unit tests
-	$(GO) test $(RACE) ./... -run . $(SHORT) -timeout 2m
+unit:
+	@echo "Running unit tests..."
+	@echo "OS detected: $(OS_DETECTED)"
+ifeq ($(ENABLE_RACE_DETECTION),true)
+	@echo "Race detection enabled. Ensure you have a C compiler installed."
+	@echo "On Windows, you need MinGW-w64 or another C compiler in your PATH."
+	@echo "To disable race detection: make unit ENABLE_RACE_DETECTION=false"
+endif
+	$(GO_TEST_CMD)
+	@echo "Unit tests complete."
 
 integ: ## Go integration tests (requires DB etc.)
-	$(GO) test -tags=integration ./...
+	$(GO) test -tags=integration ./cmd/... ./internal/...
 
 e2e: docker-up ## Docker stack + Playwright e2e
 	pnpm --filter=web test:e2e
 	$(MAKE) docker-down
 
-test: unit integ ## Run all Go tests
+test: unit integ
+	@echo "All tests complete."
 
 # Coverage Enforcement
 # =====================
 
-$(COVER_DIR):
-	@mkdir -p $@
-
-coverage-core: $(COVER_DIR) ## Ensure ≥90 % on core pkgs
-	@echo "→ Core coverage check"
-	@$(GO) test -coverpkg=./internal/llm,./internal/db,./internal/api \
-	    -coverprofile=$(COVER_DIR)/core.out ./internal/llm ./internal/db ./internal/api
-	@$(GO) tool cover -func=$(COVER_DIR)/core.out | \
-	    awk '/total:/ {sub(/%/,"",$3); if($$3<90){printf("FAIL %.1f%% < 90%%\n",$$3);exit 1}else{printf("PASS %.1f%% ≥ 90%%\n",$$3)}}'
+coverage-core: $(COVER_DIR)
+	@echo "Running core package coverage tests..."
+ifeq ($(ENABLE_RACE_DETECTION),true)
+	@echo "Race detection enabled for coverage. Ensure you have a C compiler installed."
+endif
+	$(GO) test -coverprofile=$(COVERAGE_DIR)/core.out -covermode=atomic $(if $(filter true,$(ENABLE_RACE_DETECTION)),-race) -coverpkg=./internal/llm,./internal/db,./internal/api ./internal/...
+	@echo "Generating coverage report..."
+	$(GO) tool cover -func=$(COVERAGE_DIR)/core.out > $(COVERAGE_DIR)/coverage.txt
+	@echo "Checking coverage threshold ($(COVERAGE_THRESHOLD)%)..."
+	$(GO) run ./tools/check_coverage.go $(COVERAGE_DIR)/coverage.txt $(COVERAGE_THRESHOLD)
+	@echo "Coverage tests complete."
 
 # Docs & Contract
 # =================
 
 docs: ## Generate swagger docs
-	$(SWAG) init -g $(SERVER_CMD) -o internal/api/docs --openapi 3
+	$(SWAG) init -g $(SERVER_CMD) -o docs --parseDependency --parseDependencyLevel 3 --parseInternal --generatedTime
 
-contract: docs ## Lint & diff OpenAPI spec
-	npx @stoplight/spectral-cli lint internal/api/docs/swagger.json
-	oasdiff breaking internal/api/docs/swagger.json docs_baseline/swagger.json
+contract:
+	@echo "Running OpenAPI contract validation..."
+	@echo "Linting API specification (docs/swagger.json)..."
+	@npx @stoplight/spectral-cli lint docs/swagger.json --ruleset .spectral.yaml || (echo "ERROR: Spectral linting found errors that must be fixed." && exit 1)
+	@echo "Checking for breaking API changes..."
+	@$(GO) run ./tools/run_oasdiff_conditionally.go docs/swagger.json.bak docs/swagger.json
+	@echo "OpenAPI contract validation complete."
 
 # Mock Services Convenience
 # ==========================

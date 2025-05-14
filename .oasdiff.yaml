@@ -1,0 +1,10 @@
+breaking:
+  checkAdditionalProperties: true
+  checkConstraints: true
+  checkEnumValues: true
+  checkExamples: false # Examples usually don't break clients
+  checkExtensions: false # Extensions are often non-critical
+  checkPaths: true
+  checkRequired: true
+  checkRequiredInProperties: true
+  checkResponseDefinition: true 
