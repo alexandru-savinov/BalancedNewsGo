@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -870,4 +871,308 @@ func TestGetArticleByIDHandlerWithDB(t *testing.T) {
 	dataVal, okData := body["data"].(map[string]interface{})
 	assert.True(t, okData, "\"data\" field should be a map[string]interface{}")
 	assert.NotEmpty(t, dataVal, "\"data\" field should not be empty")
+}
+
+func TestCreateArticleHandlerAdditional(t *testing.T) {
+	// Setup mock database
+	mockDB := &MockDBOperations{}
+
+	// Setup test server with the handler
+	router := gin.Default()
+	router.POST("/articles", createArticleHandlerWithDB(mockDB))
+
+	// Test valid article creation
+	t.Run("valid article", func(t *testing.T) {
+		// Setup mock expectations
+		mockDB.On("ArticleExistsByURL", mock.Anything).Return(false, nil)
+		mockDB.On("InsertArticle", mock.Anything).Return(int64(1), nil)
+
+		// Create test request body
+		article := db.Article{
+			Title:   "Test Article",
+			URL:     "http://example.com/test",
+			Content: "This is test content",
+			Source:  "Test Source",
+			PubDate: time.Now(),
+		}
+
+		body, _ := json.Marshal(article)
+		req, _ := http.NewRequest("POST", "/articles", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusCreated, w.Code)
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test duplicate article
+	t.Run("duplicate article", func(t *testing.T) {
+		// Setup mock expectations
+		mockDB.On("ArticleExistsByURL", mock.Anything).Return(true, nil)
+
+		// Create test request body
+		article := db.Article{
+			Title:   "Test Article",
+			URL:     "http://example.com/test",
+			Content: "This is test content",
+			Source:  "Test Source",
+			PubDate: time.Now(),
+		}
+
+		body, _ := json.Marshal(article)
+		req, _ := http.NewRequest("POST", "/articles", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusConflict, w.Code)
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test invalid request body
+	t.Run("invalid request body", func(t *testing.T) {
+		// Create invalid JSON
+		req, _ := http.NewRequest("POST", "/articles", bytes.NewBuffer([]byte("{invalid json")))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	// Test database error
+	t.Run("database error", func(t *testing.T) {
+		// Setup mock expectations
+		mockDB.On("ArticleExistsByURL", mock.Anything).Return(false, nil)
+		mockDB.On("InsertArticle", mock.Anything).Return(int64(0), errors.New("database error"))
+
+		// Create test request body
+		article := db.Article{
+			Title:   "Test Article",
+			URL:     "http://example.com/test",
+			Content: "This is test content",
+			Source:  "Test Source",
+			PubDate: time.Now(),
+		}
+
+		body, _ := json.Marshal(article)
+		req, _ := http.NewRequest("POST", "/articles", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+}
+
+func TestGetArticlesHandlerAdditional(t *testing.T) {
+	// Setup mock database
+	mockDB := &MockDBOperations{}
+
+	// Setup test server with the handler
+	router := gin.Default()
+	router.GET("/articles", getArticlesHandlerWithDB(mockDB))
+
+	// Test successful retrieval
+	t.Run("successful retrieval", func(t *testing.T) {
+		// Setup mock response
+		articles := []db.Article{
+			{
+				ID:      1,
+				Title:   "Test Article 1",
+				URL:     "http://example.com/test1",
+				Content: "This is test content 1",
+				Source:  "Test Source",
+				PubDate: time.Now(),
+			},
+			{
+				ID:      2,
+				Title:   "Test Article 2",
+				URL:     "http://example.com/test2",
+				Content: "This is test content 2",
+				Source:  "Test Source",
+				PubDate: time.Now(),
+			},
+		}
+
+		// Setup mock expectations
+		mockDB.On("FetchArticles", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(articles, nil)
+
+		// Create test request
+		req, _ := http.NewRequest("GET", "/articles?limit=10&offset=0", nil)
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		// Parse response body
+		var response map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		assert.NoError(t, err)
+
+		// Verify response structure
+		assert.Contains(t, response, "data")
+		articlesData, ok := response["data"].([]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, 2, len(articlesData))
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test database error
+	t.Run("database error", func(t *testing.T) {
+		// Setup mock expectations
+		mockDB.On("FetchArticles", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("database error"))
+
+		// Create test request
+		req, _ := http.NewRequest("GET", "/articles?limit=10&offset=0", nil)
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test invalid parameters
+	t.Run("invalid parameters", func(t *testing.T) {
+		// Create test request with invalid limit
+		req, _ := http.NewRequest("GET", "/articles?limit=invalid&offset=0", nil)
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
+func TestGetArticleByIDHandlerAdditional(t *testing.T) {
+	// Setup mock database
+	mockDB := &MockDBOperations{}
+
+	// Setup test server with the handler
+	router := gin.Default()
+	router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
+
+	// Test successful retrieval
+	t.Run("successful retrieval", func(t *testing.T) {
+		// Setup mock article
+		article := db.Article{
+			ID:      1,
+			Title:   "Test Article",
+			URL:     "http://example.com/test",
+			Content: "This is test content",
+			Source:  "Test Source",
+			PubDate: time.Now(),
+		}
+
+		// Setup mock expectations
+		mockDB.On("FetchArticleByID", int64(1)).Return(&article, nil)
+
+		// Create test request
+		req, _ := http.NewRequest("GET", "/articles/1", nil)
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		// Parse response body
+		var response map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		assert.NoError(t, err)
+
+		// Verify response contains article data
+		assert.Contains(t, response, "data")
+		articleData, ok := response["data"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, float64(1), articleData["id"])
+		assert.Equal(t, "Test Article", articleData["title"])
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test article not found
+	t.Run("article not found", func(t *testing.T) {
+		// Setup mock expectations
+		mockDB.On("FetchArticleByID", int64(999)).Return(nil, sql.ErrNoRows)
+
+		// Create test request
+		req, _ := http.NewRequest("GET", "/articles/999", nil)
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusNotFound, w.Code)
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test invalid ID
+	t.Run("invalid ID", func(t *testing.T) {
+		// Create test request with invalid ID
+		req, _ := http.NewRequest("GET", "/articles/invalid", nil)
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	// Test database error
+	t.Run("database error", func(t *testing.T) {
+		// Setup mock expectations
+		mockDB.On("FetchArticleByID", int64(1)).Return(nil, errors.New("database error"))
+
+		// Create test request
+		req, _ := http.NewRequest("GET", "/articles/1", nil)
+
+		// Perform request
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
 }

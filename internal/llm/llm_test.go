@@ -4,10 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +21,22 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/assert"
 )
+
+// cannedRoundTripper is a custom http.RoundTripper that always returns a canned response for LLM API calls in tests.
+type cannedRoundTripper struct{}
+
+func (c *cannedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp := &http.Response{
+		StatusCode: 200,
+		Body: ioutil.NopCloser(strings.NewReader(`{
+			"choices": [
+				{"message": {"content": "{\"score\": 0.5, \"explanation\": \"ok\", \"confidence\": 0.8}"}}
+			]
+		}`)),
+		Header: make(http.Header),
+	}
+	return resp, nil
+}
 
 func TestMain(m *testing.M) {
 	// Locate project root by finding configs/composite_score_config.json
@@ -455,4 +474,95 @@ type mockScoreTestService struct {
 // ScoreContent implements LLMService for testing
 func (m *mockScoreTestService) ScoreContent(ctx context.Context, pv PromptVariant, art *db.Article) (float64, float64, error) {
 	return m.score, m.confidence, nil
+}
+
+// TestAnalyzeAndStore tests the AnalyzeAndStore method of LLMClient
+func TestAnalyzeAndStore(t *testing.T) {
+	const testArticleID = int64(42)
+	configPath := "configs/composite_score_config.json"
+
+	// Backup the original config if it exists
+	var origConfig []byte
+	if _, err := os.Stat(configPath); err == nil {
+		origConfig, _ = ioutil.ReadFile(configPath)
+	}
+
+	// Write the test config
+	testConfig := `{
+		"models": [
+			{"modelName": "left", "perspective": "left", "weight": 1.0, "url": ""},
+			{"modelName": "center", "perspective": "center", "weight": 1.0, "url": ""},
+			{"modelName": "right", "perspective": "right", "weight": 1.0, "url": ""}
+		],
+		"formula": "average",
+		"confidence_method": "count_valid",
+		"min_score": -1.0,
+		"max_score": 1.0,
+		"default_missing": 0.0,
+		"min_confidence": 0.0,
+		"max_confidence": 1.0,
+		"handle_invalid": "default",
+		"weights": {"left": 1.0, "center": 1.0, "right": 1.0}
+	}`
+	_ = os.MkdirAll("configs", 0755)
+	ioutil.WriteFile(configPath, []byte(testConfig), 0644)
+	defer func() {
+		if origConfig != nil {
+			ioutil.WriteFile(configPath, origConfig, 0644)
+		} else {
+			os.Remove(configPath)
+		}
+	}()
+
+	// Create a mock database
+	mockDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Error creating sqlmock: %v", err)
+	}
+	sqlxDB := sqlx.NewDb(mockDB, "sqlmock")
+	defer func() { _ = mockDB.Close() }()
+
+	cfg, _ := LoadCompositeScoreConfig()
+
+	// Create a resty.Client that uses the cannedRoundTripper
+	restyClient := resty.New()
+	restyClient.SetTransport(&cannedRoundTripper{})
+
+	// Use the real HTTPLLMService with the canned client
+	service := NewHTTPLLMService(restyClient, "test-key", "test-backup-key", "")
+
+	// Success case: expect 3 DB inserts (for left, center, right)
+	mock.ExpectExec("INSERT INTO llm_scores").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO llm_scores").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO llm_scores").WillReturnResult(sqlmock.NewResult(1, 1))
+
+	client := &LLMClient{
+		db:         sqlxDB,
+		llmService: service,
+		config:     cfg,
+		cache:      NewCache(),
+	}
+	article := &db.Article{
+		ID:      testArticleID,
+		Title:   "Test Article",
+		Content: "Test content",
+	}
+	err = client.AnalyzeAndStore(article)
+	assert.NoError(t, err, "AnalyzeAndStore should succeed with valid mocks")
+
+	// DB error case: fail on the first insert
+	mock.ExpectExec("INSERT INTO llm_scores").WillReturnError(fmt.Errorf("db error"))
+	client2 := &LLMClient{
+		db:         sqlxDB,
+		llmService: service,
+		config:     cfg,
+		cache:      NewCache(),
+	}
+	article2 := &db.Article{
+		ID:      testArticleID + 1,
+		Title:   "Test Article 2",
+		Content: "Test content 2",
+	}
+	err = client2.AnalyzeAndStore(article2)
+	assert.Error(t, err, "AnalyzeAndStore should return error on DB failure")
 }

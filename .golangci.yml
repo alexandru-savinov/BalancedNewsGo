@@ -50,7 +50,7 @@ issues:
       linters:
         - funlen
         - gocyclo
-    - path: tools/.*\.go # Regex to match any .go file in the tools directory
+    - path: tools/.*/main\.go # Regex to match any main.go file in a tools subdirectory
       text: "main redeclared in this block" # The specific error message to ignore
     - linters:
         - dupl

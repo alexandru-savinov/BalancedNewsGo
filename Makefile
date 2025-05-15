@@ -28,7 +28,7 @@ SWAG            := swag
 SERVER_CMD      := ./cmd/server/main.go
 BIN_DIR         := ./bin
 COVER_DIR       := ./coverage
-MOCK_GO         := ./tools/mock_llm_service.go
+MOCK_GO         := ./tools/mock_llm_service/main.go
 MOCK_PY         := ./tools/mock_llm_service.py
 
 # Coverage Configuration
@@ -48,20 +48,18 @@ SHORT           := -short
 .DEFAULT_GOAL := help
 
 help: ## Show this help
-	@awk 'BEGIN {FS=":.*##"; printf "\nTargets:\n"} \
-	     /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' \
-	     $(MAKEFILE_LIST)
+	@go run ./tools/make_help.go
 
 # Build / Run / Clean
 # ===================
 
 $(BIN_DIR):
 	@echo "Ensuring bin directory exists..."
-	@go run ./tools/mkdir.go $(BIN_DIR)
+	@go run ./tools/mkdir/main.go $(BIN_DIR)
 
 $(COVER_DIR):
 	@echo "Ensuring coverage directory exists..."
-	@go run ./tools/mkdir.go $(COVER_DIR)
+	@go run ./tools/mkdir/main.go $(COVER_DIR)
 
 build: $(BIN_DIR) ## Compile backend server into ./bin
 	$(GO) build -o $(SERVER_BIN) $(SERVER_CMD)
@@ -71,7 +69,7 @@ run: build ## Build and run server
 
 clean:
 	@echo "Cleaning build artifacts..."
-	@go run ./tools/clean.go
+	@go run ./tools/clean/main.go
 	@echo "Clean complete."
 
 # Code Quality
@@ -119,7 +117,7 @@ endif
 	@echo "Generating coverage report..."
 	$(GO) tool cover -func=$(COVERAGE_DIR)/core.out > $(COVERAGE_DIR)/coverage.txt
 	@echo "Checking coverage threshold ($(COVERAGE_THRESHOLD)%)..."
-	$(GO) run ./tools/check_coverage.go $(COVERAGE_DIR)/coverage.txt $(COVERAGE_THRESHOLD)
+	$(GO) run ./tools/check_coverage/main.go $(COVERAGE_DIR)/coverage.txt $(COVERAGE_THRESHOLD)
 	@echo "Coverage tests complete."
 
 # Docs & Contract
@@ -133,7 +131,7 @@ contract:
 	@echo "Linting API specification (docs/swagger.json)..."
 	@npx @stoplight/spectral-cli lint docs/swagger.json --ruleset .spectral.yaml || (echo "ERROR: Spectral linting found errors that must be fixed." && exit 1)
 	@echo "Checking for breaking API changes..."
-	@$(GO) run ./tools/run_oasdiff_conditionally.go docs/swagger.json.bak docs/swagger.json
+	@$(GO) run ./tools/run_oasdiff_conditionally/main.go docs/swagger.json.bak docs/swagger.json
 	@echo "OpenAPI contract validation complete."
 
 # Mock Services Convenience
