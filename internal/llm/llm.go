@@ -282,21 +282,26 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 		return fmt.Errorf("LLMClient config is nil or has no models defined")
 	}
 
+	var lastErr error
+
 	for _, m := range c.config.Models {
 		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.Perspective, m.ModelName, m.URL)
 		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName)
 		if err != nil {
 			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.ModelName, err)
+			lastErr = fmt.Errorf("error analyzing article %d with model %s: %w", article.ID, m.ModelName, err)
 			continue
 		}
 
 		_, err = db.InsertLLMScore(c.db, score)
 		if err != nil {
 			log.Printf("Error inserting LLM score for article %d model %s: %v", article.ID, m.ModelName, err)
+			lastErr = fmt.Errorf("failed to insert LLM score: %w", err)
+			// Don't break here, try other models
 		}
 	}
 
-	return nil
+	return lastErr // Return the last error encountered
 }
 
 // ReanalyzeArticle performs a complete reanalysis of an article using all configured models

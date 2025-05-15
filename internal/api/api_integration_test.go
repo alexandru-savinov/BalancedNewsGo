@@ -593,3 +593,65 @@ func TestDatabaseErrorsErrorHandling(t *testing.T) {
 	// Verify that progress tracking was called
 	mockProgress.AssertCalled(t, "SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState"))
 }
+
+// Test that LLMAPIError is properly propagated through the reanalyze endpoint
+func TestReanalyzeEndpointLLMErrorPropagation(t *testing.T) {
+	// Setup test server
+	router, mockDB, _, _, _, mockLLM := setupIntegrationTestServer(t)
+
+	// Setup test data
+	testArticleID := int64(456)
+	testArticle := &db.Article{
+		ID:      testArticleID,
+		Title:   "LLM Error Test Article",
+		Content: "This is a test article for LLM error propagation.",
+		URL:     "https://example.com/test-error",
+	}
+
+	// Mock dependencies behavior
+	mockDB.On("GetArticleByID", mock.Anything, testArticleID).Return(testArticle, nil)
+
+	// Create a LLMAPIError for authentication failure
+	llmAuthError := llm.LLMAPIError{
+		Message:      "Invalid API key",
+		StatusCode:   401,
+		ResponseBody: "Authentication failed",
+		ErrorType:    llm.ErrTypeAuthentication,
+	}
+
+	// Mock ScoreWithModel to simulate an LLM health check authentication failure
+	mockLLM.On("ScoreWithModel", testArticle, mock.Anything).Return(0.0, llmAuthError)
+
+	// Create a request to trigger the reanalyze endpoint
+	req, _ := http.NewRequest("POST", fmt.Sprintf(reanalyzeURLPath, testArticleID), bytes.NewBuffer([]byte("{}")))
+	req.Header.Set(contentTypeHeader, applicationJSON)
+	w := httptest.NewRecorder()
+
+	// Serve the request
+	router.ServeHTTP(w, req)
+
+	// Assert that the correct HTTP status code is returned (401 for auth failure)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	// Parse the response body
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+
+	// Verify the response contains the expected error details
+	assert.False(t, response["success"].(bool))
+	errorData := response["error"].(map[string]interface{})
+	assert.Equal(t, "llm_service_error", errorData["code"])
+	assert.Equal(t, "LLM service authentication failed", errorData["message"])
+
+	// Check for the detailed error information
+	details := errorData["details"].(map[string]interface{})
+	assert.Equal(t, float64(401), details["llm_status_code"])
+	assert.Equal(t, "Invalid API key", details["llm_message"])
+	assert.Equal(t, "authentication", details["error_type"])
+	assert.Equal(t, "openrouter", details["provider"])
+
+	// Verify the recommended action field is present
+	assert.Contains(t, errorData, "recommended_action")
+	assert.Equal(t, "Contact administrator to update API credentials", errorData["recommended_action"])
+}

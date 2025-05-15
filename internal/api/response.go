@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,6 +35,14 @@ func RespondError(c *gin.Context, err error) {
 	// Handle LLMAPIError
 	var llmErr llm.LLMAPIError
 	if errors.As(err, &llmErr) {
+		// Track detailed error metrics
+		provider := "openrouter" // Default provider, could be made dynamic if needed
+		model := c.Request.URL.Query().Get("model")
+		if model == "" {
+			model = "unknown"
+		}
+		metrics.IncLLMAPIError(provider, model, string(llmErr.ErrorType), llmErr.StatusCode)
+
 		// Map LLM error types to appropriate HTTP status codes and responses
 		switch llmErr.ErrorType {
 		case llm.ErrTypeRateLimit:
@@ -71,11 +81,15 @@ func RespondError(c *gin.Context, err error) {
 				"code":    errorDetail.Code,
 				"message": errorDetail.Message,
 				"details": map[string]interface{}{
+					"provider":        "openrouter",
+					"model":           c.Request.URL.Query().Get("model"),
 					"llm_status_code": llmErr.StatusCode,
 					"llm_message":     llmErr.Message,
-					"llm_error_type":  string(llmErr.ErrorType),
+					"error_type":      string(llmErr.ErrorType),
 					"retry_after":     llmErr.RetryAfter,
+					"correlation_id":  c.Request.Header.Get("X-Request-ID"),
 				},
+				"recommended_action": getRecommendedAction(llmErr),
 			},
 		})
 		return
@@ -146,5 +160,24 @@ func getHTTPStatus(code string) int {
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
+	}
+}
+
+// getRecommendedAction returns user-friendly action suggestions based on LLM error type
+func getRecommendedAction(err llm.LLMAPIError) string {
+	switch err.ErrorType {
+	case llm.ErrTypeRateLimit:
+		if err.RetryAfter > 0 {
+			return fmt.Sprintf("Retry after %d seconds", err.RetryAfter)
+		}
+		return "Retry after a short delay"
+	case llm.ErrTypeAuthentication:
+		return "Contact administrator to update API credentials"
+	case llm.ErrTypeCredits:
+		return "Check API usage and billing information"
+	case llm.ErrTypeStreaming:
+		return "Retry with non-streaming request or check server logs"
+	default:
+		return "Try again later or contact support"
 	}
 }

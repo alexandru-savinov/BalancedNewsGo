@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -57,6 +59,15 @@ var (
 			Help: "Total number of streaming-related errors from OpenRouter",
 		},
 	)
+
+	// Detailed LLM API error counter with provider, model, and error type dimensions
+	LLMAPIErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "llm_api_errors_total",
+			Help: "Total number of LLM API errors by provider, model, and error type",
+		},
+		[]string{"provider", "model", "error_type", "status_code"},
+	)
 )
 
 func InitLLMMetrics() {
@@ -69,6 +80,9 @@ func InitLLMMetrics() {
 	prometheus.MustRegister(LLMAuthFailureCounter)
 	prometheus.MustRegister(LLMCreditsCounter)
 	prometheus.MustRegister(LLMStreamingErrors)
+
+	// Register detailed LLM API errors metric
+	prometheus.MustRegister(LLMAPIErrorsTotal)
 }
 
 func IncLLMRequest(model, promptHash string) {
@@ -89,6 +103,12 @@ func IncLLMFailure(model, promptHash, failureType string) {
 	case "streaming":
 		IncLLMStreamingError()
 	}
+}
+
+// IncLLMAPIError increments the detailed LLM API error counter
+func IncLLMAPIError(provider, model, errorType string, statusCode int) {
+	statusCodeStr := fmt.Sprintf("%d", statusCode)
+	LLMAPIErrorsTotal.WithLabelValues(provider, model, errorType, statusCodeStr).Inc()
 }
 
 func SetFailureStreak(model, promptHash string, count int) {

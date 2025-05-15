@@ -118,14 +118,21 @@ func RegisterRoutes(
 
 	// LLM Analysis
 	// @Summary Reanalyze article
-	// @Description Trigger a new LLM analysis for a specific article
+	// @Description Trigger a new LLM analysis for a specific article and update its scores.
 	// @Tags LLM
 	// @Accept json
 	// @Produce json
 	// @Param id path integer true "Article ID"
-	// @Success 202 {object} StandardResponse
-	// @Failure 404 {object} ErrorResponse
+	// @Success 202 {object} StandardResponse "Reanalysis started"
+	// @Failure 400 {object} ErrorResponse "Invalid article ID"
+	// @Failure 401 {object} ErrorResponse "LLM authentication failed"
+	// @Failure 402 {object} ErrorResponse "LLM payment required or credits exhausted"
+	// @Failure 404 {object} ErrorResponse "Article not found"
+	// @Failure 429 {object} ErrorResponse "LLM rate limit exceeded"
+	// @Failure 500 {object} ErrorResponse "Server error"
+	// @Failure 503 {object} ErrorResponse "LLM service unavailable or streaming error"
 	// @Router /llm/reanalyze/{id} [post]
+	// @ID reanalyzeArticle
 	router.POST("/api/llm/reanalyze/:id", SafeHandler(reanalyzeHandler(llmClient, dbConn, scoreManager)))
 
 	// Scoring
@@ -540,8 +547,12 @@ func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 // @Param id path integer true "Article ID"
 // @Success 202 {object} StandardResponse "Reanalysis started"
 // @Failure 400 {object} ErrorResponse "Invalid article ID"
+// @Failure 401 {object} ErrorResponse "LLM authentication failed"
+// @Failure 402 {object} ErrorResponse "LLM payment required or credits exhausted"
 // @Failure 404 {object} ErrorResponse "Article not found"
+// @Failure 429 {object} ErrorResponse "LLM rate limit exceeded"
 // @Failure 500 {object} ErrorResponse "Server error"
+// @Failure 503 {object} ErrorResponse "LLM service unavailable or streaming error"
 // @Router /llm/reanalyze/{id} [post]
 // @ID reanalyzeArticle
 func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *llm.ScoreManager) gin.HandlerFunc {
@@ -629,7 +640,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 		// Load composite score config to get the models
 		cfg, cfgErr := llm.LoadCompositeScoreConfig()
 		if cfgErr != nil || len(cfg.Models) == 0 {
-			RespondError(c, ErrLLMUnavailable)
+			RespondError(c, WrapError(cfgErr, ErrLLMService, "Failed to load LLM configuration"))
 			return
 		}
 
@@ -643,7 +654,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 				workingModel = cfg.Models[0].ModelName // Assume the first model would work for queuing purposes
 			} else {
 				log.Printf("[reanalyzeHandler %d] No models configured, cannot proceed even with NO_AUTO_ANALYZE.", articleID)
-				RespondError(c, ErrLLMUnavailable) // Or a more specific error
+				RespondError(c, NewAppError(ErrLLMService, "No LLM models configured"))
 				return
 			}
 		} else {
@@ -667,7 +678,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 
 		if workingModel == "" {
 			log.Printf("[reanalyzeHandler %d] No working models found (health check failed or skipped with no models): %v", articleID, healthErr)
-			RespondError(c, ErrLLMUnavailable)
+			RespondError(c, healthErr) // Propagate the actual LLM error instead of generic error
 			return
 		}
 

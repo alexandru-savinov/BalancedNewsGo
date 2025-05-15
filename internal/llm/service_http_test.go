@@ -58,7 +58,7 @@ func TestLLMAPIError_Error(t *testing.T) {
 				StatusCode:   401,
 				ResponseBody: `{"error": "Unauthorized"}`,
 			},
-			expectedText: "LLM API Error (status 401): Invalid token",
+			expectedText: "LLM API Error (unknown): Invalid token (status 401)",
 		},
 		{
 			name: "Rate limit error",
@@ -67,7 +67,7 @@ func TestLLMAPIError_Error(t *testing.T) {
 				StatusCode:   429,
 				ResponseBody: `{"error": "Too many requests"}`,
 			},
-			expectedText: "LLM API Error (status 429): Rate limit exceeded",
+			expectedText: "LLM API Error (unknown): Rate limit exceeded (status 429)",
 		},
 		{
 			name: "Server error",
@@ -76,7 +76,7 @@ func TestLLMAPIError_Error(t *testing.T) {
 				StatusCode:   500,
 				ResponseBody: `{"error": "Internal server error"}`,
 			},
-			expectedText: "LLM API Error (status 500): Internal server error",
+			expectedText: "LLM API Error (unknown): Internal server error (status 500)",
 		},
 		{
 			name: "Empty message",
@@ -85,7 +85,7 @@ func TestLLMAPIError_Error(t *testing.T) {
 				StatusCode:   400,
 				ResponseBody: `{}`,
 			},
-			expectedText: "LLM API Error (status 400): ",
+			expectedText: "LLM API Error (unknown):  (status 400)",
 		},
 	}
 

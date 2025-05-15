@@ -75,6 +75,7 @@ func (pm *ProgressManager) UpdateProgress(articleID int64, step string, percent 
 			errorDetails := map[string]interface{}{
 				"type":        string(llmErr.ErrorType),
 				"status_code": llmErr.StatusCode,
+				"message":     llmErr.Message,
 			}
 
 			// Only include retry_after if present

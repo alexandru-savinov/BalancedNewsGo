@@ -43,7 +43,11 @@ type LLMAPIError struct {
 
 // Error implements the error interface for LLMAPIError
 func (e LLMAPIError) Error() string {
-	return fmt.Sprintf("LLM API Error (%s): Status %d - %s", e.ErrorType, e.StatusCode, e.Message)
+	errType := string(e.ErrorType)
+	if errType == "" {
+		errType = "unknown"
+	}
+	return fmt.Sprintf("LLM API Error (%s): %s (status %d)", errType, e.Message, e.StatusCode)
 }
 
 // Create predefined app errors for consistent handling
@@ -138,7 +142,12 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 
 				// If we still have an error after trying all models
 				if err != nil || (resp != nil && resp.StatusCode() >= 400) {
-					return 0, 0, fmt.Errorf("rate limit exceeded on all models and keys: %w", ErrBothLLMKeysRateLimited)
+					return 0, 0, LLMAPIError{
+						Message:    "LLM rate limit exceeded: Rate limit exceeded",
+						StatusCode: 429,
+						ErrorType:  ErrTypeRateLimit,
+						RetryAfter: 30,
+					}
 				}
 			}
 		} else {
@@ -162,7 +171,12 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 
 			// If we still have an error after trying all models
 			if err != nil || (resp != nil && resp.StatusCode() >= 400) {
-				return 0, 0, fmt.Errorf("rate limit exceeded on all models: %w", ErrBothLLMKeysRateLimited)
+				return 0, 0, LLMAPIError{
+					Message:    "LLM rate limit exceeded: Rate limit exceeded",
+					StatusCode: 429,
+					ErrorType:  ErrTypeRateLimit,
+					RetryAfter: 30,
+				}
 			}
 		}
 	}
@@ -217,24 +231,59 @@ func formatHTTPError(resp *resty.Response) error {
 		if retryHeader := resp.Header().Get("Retry-After"); retryHeader != "" {
 			retryAfter, _ = strconv.Atoi(retryHeader)
 		}
-		// Increment rate limit metric
 		metrics.IncLLMFailure("openrouter", "", "rate_limit")
 	case 402:
 		errorType = ErrTypeCredits
-		// Increment credits exhausted metric
 		metrics.IncLLMFailure("openrouter", "", "credits")
 	case 401:
 		errorType = ErrTypeAuthentication
-		// Increment authentication failure metric
 		metrics.IncLLMFailure("openrouter", "", "authentication")
+	case 503:
+		lowerMsg := strings.ToLower(message)
+		if strings.Contains(lowerMsg, "stream") || strings.Contains(lowerMsg, "sse") {
+			errorType = ErrTypeStreaming
+			metrics.IncLLMFailure("openrouter", "", "streaming")
+		} else {
+			metrics.IncLLMFailure("openrouter", "", "other")
+		}
 	default:
-		// Increment generic LLM failure metric
-		metrics.IncLLMFailure("openrouter", "", "other")
+		lowerMsg := strings.ToLower(message)
+		if strings.Contains(lowerMsg, "stream") || strings.Contains(lowerMsg, "sse") {
+			errorType = ErrTypeStreaming
+			metrics.IncLLMFailure("openrouter", "", "streaming")
+		} else {
+			metrics.IncLLMFailure("openrouter", "", "other")
+		}
 	}
 
-	// Return the structured error
+	// Special case: empty response body and status 500
+	if resp.StatusCode() == 500 && strings.TrimSpace(resp.String()) == "" {
+		return LLMAPIError{
+			Message:      "LLM service error: 500 Internal Server Error",
+			StatusCode:   resp.StatusCode(),
+			ResponseBody: sanitizeResponse(resp.String()),
+			ErrorType:    errorType,
+			RetryAfter:   retryAfter,
+		}
+	}
+
+	// Create appropriate error message prefix based on error type
+	var errorPrefix string
+	switch errorType {
+	case ErrTypeRateLimit:
+		errorPrefix = "LLM rate limit exceeded: "
+	case ErrTypeCredits:
+		errorPrefix = "LLM credits exhausted: "
+	case ErrTypeAuthentication:
+		errorPrefix = "LLM authentication failed: "
+	case ErrTypeStreaming:
+		errorPrefix = "LLM streaming failed: "
+	default:
+		errorPrefix = "LLM service error: "
+	}
+
 	return LLMAPIError{
-		Message:      message,
+		Message:      errorPrefix + message,
 		StatusCode:   resp.StatusCode(),
 		ResponseBody: sanitizeResponse(resp.String()),
 		ErrorType:    errorType,
