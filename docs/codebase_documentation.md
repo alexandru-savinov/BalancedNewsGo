@@ -328,3 +328,65 @@ The application uses SQLite as its database. The schema is defined in `internal/
   - This constraint is critical for the proper functioning of ensemble score updates.
 - **feedback**: Stores user feedback on articles.
 - **labels**: Stores training labels for the system.
+
+## OpenRouter Error Handling
+
+The application includes robust error handling for the OpenRouter LLM service, which is used for article analysis. This section explains how different types of OpenRouter errors are handled.
+
+### OpenRouter Error Types
+
+| HTTP Status | Error Type | Description | Retry Strategy |
+|-------------|------------|-------------|----------------|
+| 429 | Rate Limit | Occurs when exceeding 1 request per credit per second | Respects Retry-After header, falls back to secondary key |
+| 402 | Credits Exhausted | Account has negative credit balance | No automatic retry, requires account top-up |
+| 401 | Authentication | Invalid API key | No retry, requires API key verification |
+| 4xx/5xx | Other Errors | Bad request, server errors, etc. | Limited retries with exponential backoff |
+
+### Error Response Format
+
+When an OpenRouter error occurs, the API responds with:
+
+```json
+{
+  "code": "llm_error_type",
+  "message": "Human-readable error description",
+  "details": {
+    "llm_status_code": 429,
+    "llm_message": "Original error message from OpenRouter",
+    "llm_error_type": "rate_limit",
+    "retry_after": 30
+  }
+}
+```
+
+### Monitoring and Metrics
+
+OpenRouter errors are tracked using Prometheus metrics:
+- `llm_requests_total`: Total number of requests made to OpenRouter
+- `llm_failures_total`: Total number of failed requests to OpenRouter
+- `llm_rate_limit_total`: Number of rate limit errors
+- `llm_auth_failure_total`: Number of authentication failures
+- `llm_credits_exhausted_total`: Number of credit exhaustion errors
+- `llm_streaming_errors_total`: Number of streaming-related errors
+
+### Troubleshooting OpenRouter Errors
+
+1. **Rate Limit Errors**:
+   - Check for multiple concurrent requests
+   - Verify secondary API key is configured
+   - Consider implementing request throttling
+
+2. **Authentication Errors**:
+   - Verify API key in `.env` file
+   - Check for proper API key format
+   - Confirm account is active on OpenRouter
+
+3. **Credits Exhausted**:
+   - Top up your OpenRouter account
+   - Monitor usage patterns to avoid unexpected exhaustion
+   - Consider implementing usage alerts
+
+4. **Streaming Errors**:
+   - Check for network connectivity issues
+   - Verify OpenRouter streaming endpoint status
+   - Consider falling back to non-streaming API

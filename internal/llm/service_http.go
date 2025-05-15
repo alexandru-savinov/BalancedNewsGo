@@ -2,11 +2,16 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -14,6 +19,39 @@ import (
 type LLMService interface {
 	ScoreContent(ctx context.Context, pv PromptVariant, art *db.Article) (score float64, confidence float64, err error)
 }
+
+// OpenRouterErrorType represents specific error types from OpenRouter
+type OpenRouterErrorType string
+
+const (
+	// OpenRouter specific error types
+	ErrTypeRateLimit      OpenRouterErrorType = "rate_limit"
+	ErrTypeAuthentication OpenRouterErrorType = "authentication"
+	ErrTypeCredits        OpenRouterErrorType = "credits"
+	ErrTypeStreaming      OpenRouterErrorType = "streaming"
+	ErrTypeUnknown        OpenRouterErrorType = "unknown"
+)
+
+// LLMAPIError wraps OpenRouter errors with additional context
+type LLMAPIError struct {
+	Message      string
+	StatusCode   int
+	ResponseBody string
+	ErrorType    OpenRouterErrorType
+	RetryAfter   int // For rate limit errors
+}
+
+// Error implements the error interface for LLMAPIError
+func (e LLMAPIError) Error() string {
+	return fmt.Sprintf("LLM API Error (%s): Status %d - %s", e.ErrorType, e.StatusCode, e.Message)
+}
+
+// Create predefined app errors for consistent handling
+var (
+	ErrLLMAuthenticationFailed = apperrors.New("LLM service authentication failed", "llm_authentication")
+	ErrLLMCreditsExhausted     = apperrors.New("LLM service credits exhausted", "llm_credits")
+	ErrLLMStreamingFailed      = apperrors.New("LLM streaming response failed", "llm_streaming")
+)
 
 // HTTPLLMService implements LLMService using HTTP calls
 type HTTPLLMService struct {
@@ -149,23 +187,64 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 	return score, confidence, err
 }
 
-// formatHTTPError formats a helpful error message from HTTP responses
+// formatHTTPError converts HTTP responses to structured LLMAPIError objects
 func formatHTTPError(resp *resty.Response) error {
+	// Initialize default values
+	errorType := ErrTypeUnknown
+	retryAfter := 0
+	message := "Unknown LLM API error"
+
+	// Try to parse the error response
+	var openRouterError struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    string `json:"code"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal([]byte(resp.String()), &openRouterError); err == nil && openRouterError.Error.Message != "" {
+		message = openRouterError.Error.Message
+	} else {
+		// Use status text if can't parse JSON
+		message = resp.Status()
+	}
+
+	// Identify error type and additional metadata
+	switch resp.StatusCode() {
+	case 429:
+		errorType = ErrTypeRateLimit
+		if retryHeader := resp.Header().Get("Retry-After"); retryHeader != "" {
+			retryAfter, _ = strconv.Atoi(retryHeader)
+		}
+		// Increment rate limit metric
+		metrics.IncLLMFailure("openrouter", "", "rate_limit")
+	case 402:
+		errorType = ErrTypeCredits
+		// Increment credits exhausted metric
+		metrics.IncLLMFailure("openrouter", "", "credits")
+	case 401:
+		errorType = ErrTypeAuthentication
+		// Increment authentication failure metric
+		metrics.IncLLMFailure("openrouter", "", "authentication")
+	default:
+		// Increment generic LLM failure metric
+		metrics.IncLLMFailure("openrouter", "", "other")
+	}
+
+	// Return the structured error
 	return LLMAPIError{
-		Message:      "HTTP error from LLM API",
+		Message:      message,
 		StatusCode:   resp.StatusCode(),
-		ResponseBody: resp.String(),
+		ResponseBody: sanitizeResponse(resp.String()),
+		ErrorType:    errorType,
+		RetryAfter:   retryAfter,
 	}
 }
 
-// LLMAPIError represents an error from the LLM API service
-type LLMAPIError struct {
-	Message      string
-	StatusCode   int
-	ResponseBody string
-}
-
-// Error implements the error interface for LLMAPIError
-func (e LLMAPIError) Error() string {
-	return fmt.Sprintf("LLM API Error (status %d): %s", e.StatusCode, e.Message)
+// Sanitize response to remove sensitive info
+func sanitizeResponse(response string) string {
+	// Simple sanitization - remove potential API keys
+	sanitized := regexp.MustCompile(`(sk-|or-)[a-zA-Z0-9]{20,}`).ReplaceAllString(response, "[REDACTED]")
+	return sanitized
 }

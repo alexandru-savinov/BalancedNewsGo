@@ -1,6 +1,8 @@
 package llm
 
 import (
+	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -43,6 +45,52 @@ func (pm *ProgressManager) SetProgress(articleID int64, state *models.ProgressSt
 	pm.progressMapLock.Lock()
 	defer pm.progressMapLock.Unlock()
 	pm.progressMap[articleID] = state
+}
+
+// UpdateProgress updates progress state with error handling
+func (pm *ProgressManager) UpdateProgress(articleID int64, step string, percent int, status string, err error) {
+	pm.progressMapLock.Lock()
+	defer pm.progressMapLock.Unlock()
+
+	state, exists := pm.progressMap[articleID]
+	if !exists {
+		state = &models.ProgressState{
+			LastUpdated: time.Now().Unix(),
+		}
+		pm.progressMap[articleID] = state
+	}
+
+	state.Step = step
+	state.Percent = percent
+	state.Status = status
+	state.LastUpdated = time.Now().Unix()
+
+	// Enhanced error handling for LLM errors
+	if err != nil {
+		state.Error = err.Error()
+
+		// Add specific error details for LLM errors
+		var llmErr LLMAPIError
+		if errors.As(err, &llmErr) {
+			errorDetails := map[string]interface{}{
+				"type":        string(llmErr.ErrorType),
+				"status_code": llmErr.StatusCode,
+			}
+
+			// Only include retry_after if present
+			if llmErr.RetryAfter > 0 {
+				errorDetails["retry_after"] = llmErr.RetryAfter
+			}
+
+			// Convert to JSON string
+			if detailsJSON, jsonErr := json.Marshal(errorDetails); jsonErr == nil {
+				state.ErrorDetails = string(detailsJSON)
+			}
+		}
+	} else {
+		state.Error = ""
+		state.ErrorDetails = ""
+	}
 }
 
 // GetProgress retrieves the progress state for an article

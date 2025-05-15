@@ -55,6 +55,21 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 		// Call the underlying API method
 		apiResp, err := httpService.callLLMAPIWithKey(modelName, prompt, httpService.apiKey) // Use renamed function and pass primary key
 		if err != nil {
+			// Enhanced error handling for SSE/streaming errors
+			if strings.Contains(err.Error(), "SSE") ||
+				strings.Contains(err.Error(), "stream") ||
+				strings.Contains(err.Error(), "PROCESSING") {
+				// Convert to streaming-specific error
+				log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Streaming error: %v",
+					articleID, modelName, promptHash, err)
+				return 0, "", 0, "", LLMAPIError{
+					Message:      "LLM streaming response failed",
+					StatusCode:   503,
+					ResponseBody: err.Error(),
+					ErrorType:    ErrTypeStreaming,
+				}
+			}
+
 			// Error is already logged within callLLMAPI
 			lastErr = err
 			// Try to get raw response body even on error for logging/parsing attempts

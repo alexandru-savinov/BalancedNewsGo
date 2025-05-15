@@ -492,8 +492,8 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 				RespondError(c, ErrArticleNotFound)
 				return
 			}
+			LogError(c, err, "getArticleByIDHandler: fetch article")
 			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch article"))
-			LogError("getArticleByIDHandler: fetch article", err)
 			return
 		}
 
@@ -589,19 +589,19 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 				var parseErr error
 				scoreFloat, parseErr = strconv.ParseFloat(s, 64)
 				if parseErr != nil {
+					LogError(c, parseErr, "reanalyzeHandler: invalid score format")
 					RespondError(c, NewAppError(ErrValidation, "Invalid score value"))
-					LogError("reanalyzeHandler: invalid score format", parseErr)
 					return
 				}
 			default:
 				RespondError(c, NewAppError(ErrValidation, "Invalid score value"))
-				LogError("reanalyzeHandler: invalid score value", nil)
+				LogError(c, nil, "reanalyzeHandler: invalid score value")
 				return
 			}
 
 			if scoreFloat < -1.0 || scoreFloat > 1.0 {
 				RespondError(c, NewAppError(ErrValidation, "Score must be between -1.0 and 1.0"))
-				LogError("reanalyzeHandler: invalid score value", nil)
+				LogError(c, nil, "reanalyzeHandler: invalid score value")
 				return
 			}
 
@@ -609,7 +609,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			err = db.UpdateArticleScoreLLM(dbConn, articleID, scoreFloat, confidence)
 			if err != nil {
 				RespondError(c, NewAppError(ErrInternal, "Failed to update article score"))
-				LogError("reanalyzeHandler: failed to update article score", err)
+				LogError(c, err, "reanalyzeHandler: failed to update article score")
 				return
 			}
 
@@ -917,26 +917,26 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		articleID, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil || articleID < 1 {
 			RespondError(c, NewAppError(ErrValidation, "Invalid article ID"))
-			LogError("biasHandler: invalid id", err)
+			LogError(c, err, "biasHandler: invalid id")
 			return
 		}
 
 		minScore, err := strconv.ParseFloat(c.DefaultQuery("min_score", "-1"), 64)
 		if err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid min_score"))
-			LogError("biasHandler: invalid min_score", err)
+			LogError(c, err, "biasHandler: invalid min_score")
 			return
 		}
 		maxScore, err := strconv.ParseFloat(c.DefaultQuery("max_score", "1"), 64)
 		if err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid max_score"))
-			LogError("biasHandler: invalid max_score", err)
+			LogError(c, err, "biasHandler: invalid max_score")
 			return
 		}
 		sortOrder := c.DefaultQuery("sort", SortDesc)
 		if sortOrder != SortAsc && sortOrder != SortDesc {
 			RespondError(c, NewAppError(ErrValidation, "Invalid sort order"))
-			LogError("biasHandler: invalid sort order", nil)
+			LogError(c, nil, "biasHandler: invalid sort order")
 			return
 		}
 
@@ -954,7 +954,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		scores, err := db.FetchLLMScores(dbConn, articleID)
 		if err != nil {
 			RespondError(c, NewAppError(ErrInternal, "Failed to fetch bias data"))
-			LogError("biasHandler: fetch scores", err)
+			LogError(c, err, "biasHandler: fetch scores")
 			return
 		}
 
@@ -1080,7 +1080,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		id, err := strconv.Atoi(idStr)
 		if err != nil || id < 1 {
 			RespondError(c, NewAppError(ErrValidation, "Invalid article ID"))
-			LogError("ensembleDetailsHandler: invalid id", err)
+			LogError(c, err, "ensembleDetailsHandler: invalid id")
 			return
 		}
 
@@ -1090,7 +1090,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			scores, err := db.FetchLLMScores(dbConn, int64(id))
 			if err != nil {
 				RespondError(c, NewAppError(ErrInternal, "Failed to fetch ensemble data"))
-				LogError("ensembleDetailsHandler: fetch scores", err)
+				LogError(c, err, "ensembleDetailsHandler: fetch scores")
 				return
 			}
 			details := processEnsembleScores(scores)
@@ -1120,7 +1120,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		scores, err := db.FetchLLMScores(dbConn, int64(id))
 		if err != nil {
 			RespondError(c, NewAppError(ErrInternal, "Failed to fetch ensemble data"))
-			LogError("ensembleDetailsHandler: fetch scores", err)
+			LogError(c, err, "ensembleDetailsHandler: fetch scores")
 			return
 		}
 
@@ -1266,7 +1266,7 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 			// Get config from the LLMClient associated with the handler
 			config := llmClient.GetConfig()
 			if config == nil {
-				LogError("feedbackHandler: LLM client config not loaded", fmt.Errorf("LLM client config not loaded"))
+				LogError(c, fmt.Errorf("LLM client config not loaded"), "feedbackHandler: LLM client config not loaded")
 				RespondError(c, NewAppError(ErrInternal, "Internal processing error [config]"))
 				return
 			}
@@ -1286,7 +1286,7 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 				err = db.UpdateArticleScore(dbConn, req.ArticleID, score, confidence)
 				if err != nil {
 					// Log error but don't fail the request since feedback was saved
-					LogError("feedbackHandler: update article confidence", err)
+					LogError(c, err, "feedbackHandler: update article confidence")
 				}
 			}
 		}
@@ -1311,7 +1311,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		id, err := strconv.Atoi(idStr)
 		if err != nil || id < 1 {
 			RespondError(c, NewAppError(ErrValidation, "Invalid article ID"))
-			LogError("manualScoreHandler: invalid id", err)
+			LogError(c, err, "manualScoreHandler: invalid id")
 			return
 		}
 		articleID := int64(id)
@@ -1322,13 +1322,13 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&raw); err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid JSON body"))
-			LogError("manualScoreHandler: invalid JSON body", err)
+			LogError(c, err, "manualScoreHandler: invalid JSON body")
 			return
 		}
 		// Only "score" is allowed
 		if len(raw) != 1 || raw["score"] == nil {
 			RespondError(c, NewAppError(ErrValidation, "Payload must contain only 'score' field"))
-			LogError("manualScoreHandler: payload missing or has extra fields", nil)
+			LogError(c, nil, "manualScoreHandler: payload missing or has extra fields")
 			return
 		}
 		// Validate score type and range
@@ -1339,13 +1339,13 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 				scoreVal = float64(intVal)
 			} else {
 				RespondError(c, NewAppError(ErrValidation, "'score' must be a number"))
-				LogError("manualScoreHandler: score not a number", nil)
+				LogError(c, nil, "manualScoreHandler: score not a number")
 				return
 			}
 		}
 		if scoreVal < -1.0 || scoreVal > 1.0 {
 			RespondError(c, NewAppError(ErrValidation, "Score must be between -1.0 and 1.0"))
-			LogError("manualScoreHandler: score out of range", nil)
+			LogError(c, nil, "manualScoreHandler: score out of range")
 			return
 		}
 
@@ -1357,7 +1357,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 				return
 			}
 			RespondError(c, NewAppError(ErrInternal, "Failed to fetch article"))
-			LogError("manualScoreHandler: failed to fetch article", err)
+			LogError(c, err, "manualScoreHandler: failed to fetch article")
 			return
 		}
 
@@ -1379,7 +1379,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			}
 			log.Printf("[manualScoreHandler] Unexpected DB error updating article score: %v", err)
 			RespondError(c, NewAppError(ErrInternal, "Failed to update article score"))
-			LogError("manualScoreHandler: failed to update article score", err)
+			LogError(c, err, "manualScoreHandler: failed to update article score")
 			return
 		}
 		log.Printf("[manualScoreHandler] Article score updated successfully: articleID=%d, score=%f", articleID, scoreVal)

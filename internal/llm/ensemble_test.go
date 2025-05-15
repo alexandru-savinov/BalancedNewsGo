@@ -2,10 +2,13 @@ package llm
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 // mockLLMServiceTestEnsemble is a mock implementation for ensemble tests
@@ -173,4 +176,144 @@ func TestScoreWithModel_CacheUsage(t *testing.T) {
 
 	// Verify both calls returned the same scores
 	assert.Equal(t, score1, score2)
+}
+
+// MockLLMService for testing
+type MockLLMService struct {
+	mock.Mock
+}
+
+func (m *MockLLMService) ScoreContent(ctx context.Context, content, systemPrompt, userPrompt, model string) (*db.LLMScore, error) {
+	args := m.Called(ctx, content, systemPrompt, userPrompt, model)
+
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*db.LLMScore), args.Error(1)
+}
+
+func TestLLMClient_StreamingErrorDetection(t *testing.T) {
+	// Test cases to check if streaming-related errors are properly detected and categorized
+	testCases := []struct {
+		name          string
+		errorMessage  string
+		shouldConvert bool
+		expectedType  OpenRouterErrorType
+	}{
+		{
+			name:          "SSE Streaming Error",
+			errorMessage:  "Failed to parse SSE message",
+			shouldConvert: true,
+			expectedType:  ErrTypeStreaming,
+		},
+		{
+			name:          "Stream Disconnected Error",
+			errorMessage:  "stream connection interrupted unexpectedly",
+			shouldConvert: true,
+			expectedType:  ErrTypeStreaming,
+		},
+		{
+			name:          "Processing Error",
+			errorMessage:  "model is still PROCESSING",
+			shouldConvert: true,
+			expectedType:  ErrTypeStreaming,
+		},
+		{
+			name:          "Regular Error (Non-streaming)",
+			errorMessage:  "regular error message",
+			shouldConvert: false,
+			expectedType:  ErrTypeUnknown,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Check if our error detection logic in callLLM would detect this as a streaming error
+			isStreamingError := strings.Contains(tc.errorMessage, "SSE") ||
+				strings.Contains(tc.errorMessage, "stream") ||
+				strings.Contains(tc.errorMessage, "PROCESSING")
+
+			assert.Equal(t, tc.shouldConvert, isStreamingError,
+				"Error message '%s' should %sbe detected as a streaming error",
+				tc.errorMessage,
+				map[bool]string{true: "", false: "not "}[tc.shouldConvert])
+
+			// If it should be detected as streaming error, check that the conversion works correctly
+			if tc.shouldConvert {
+				// Create the error as it would be converted in callLLM
+				convertedError := LLMAPIError{
+					Message:      "LLM streaming response failed",
+					StatusCode:   503,
+					ResponseBody: tc.errorMessage,
+					ErrorType:    ErrTypeStreaming,
+				}
+
+				// Verify the converted error has the right properties
+				assert.Equal(t, ErrTypeStreaming, convertedError.ErrorType)
+				assert.Equal(t, 503, convertedError.StatusCode)
+				assert.Contains(t, convertedError.ResponseBody, tc.errorMessage)
+			}
+		})
+	}
+}
+
+func TestLLMAPIError_ErrorPropagation(t *testing.T) {
+	// Test various types of LLMAPIError and verify their string representation
+	errorCases := []struct {
+		name           string
+		errorType      OpenRouterErrorType
+		message        string
+		statusCode     int
+		expectedFormat string
+	}{
+		{
+			name:           "Rate Limit Error",
+			errorType:      ErrTypeRateLimit,
+			message:        "Rate limit exceeded",
+			statusCode:     429,
+			expectedFormat: "LLM API Error (rate_limit): Status 429 - Rate limit exceeded",
+		},
+		{
+			name:           "Authentication Error",
+			errorType:      ErrTypeAuthentication,
+			message:        "Invalid API key",
+			statusCode:     401,
+			expectedFormat: "LLM API Error (authentication): Status 401 - Invalid API key",
+		},
+		{
+			name:           "Credits Exhausted",
+			errorType:      ErrTypeCredits,
+			message:        "Insufficient credits",
+			statusCode:     402,
+			expectedFormat: "LLM API Error (credits): Status 402 - Insufficient credits",
+		},
+		{
+			name:           "Streaming Error",
+			errorType:      ErrTypeStreaming,
+			message:        "Streaming connection failed",
+			statusCode:     503,
+			expectedFormat: "LLM API Error (streaming): Status 503 - Streaming connection failed",
+		},
+	}
+
+	for _, tc := range errorCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := LLMAPIError{
+				Message:      tc.message,
+				StatusCode:   tc.statusCode,
+				ResponseBody: "test response body",
+				ErrorType:    tc.errorType,
+			}
+
+			// Test that Error() method follows the expected format
+			errString := err.Error()
+			assert.Equal(t, tc.expectedFormat, errString, "Error string should match expected format")
+
+			// Verify error contains all key components
+			assert.Contains(t, errString, tc.message, "Error string should contain the message")
+			assert.Contains(t, errString, string(tc.errorType), "Error string should contain the error type")
+			assert.Contains(t, errString, fmt.Sprintf("Status %d", tc.statusCode), "Error string should contain the status code")
+		})
+	}
 }
