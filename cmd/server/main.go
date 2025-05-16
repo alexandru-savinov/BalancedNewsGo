@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -57,8 +58,25 @@ import (
 // @tag.name Analysis
 // @tag.description Operations related to article analysis and summaries
 
+var (
+	legacyHTML bool
+)
+
+func init() {
+	flag.BoolVar(&legacyHTML, "legacy-html", false, "Use legacy HTML rendering instead of static files with client-side JS")
+}
+
 func main() {
+	flag.Parse()
+
+	// Check environment variable override for legacy HTML flag
+	if os.Getenv("LEGACY_HTML") == "true" {
+		legacyHTML = true
+	}
+
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
+	log.Printf("Legacy HTML mode: %v", legacyHTML)
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found or error loading .env file:", err)
@@ -90,24 +108,43 @@ func main() {
 	// The SimpleCache provides in-memory caching for API responses.
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager, progressManager, simpleCache)
 
-	// @Summary Get Articles
-	// @Description Fetches a list of articles with optional filters.
-	// @Tags Articles
-	// @Param source query string false "Filter by source"
-	// @Param leaning query string false "Filter by political leaning"
-	// @Param offset query int false "Pagination offset"
-	// @Param limit query int false "Pagination limit"
-	// @Success 200 {array} db.Article
-	// @Router /articles [get]
-	router.GET("/articles", articlesHandler(dbConn))
+	// Register UI routes based on feature flag
+	if legacyHTML {
+		// Use legacy HTML rendering handlers
+		log.Println("Using legacy HTML rendering mode")
 
-	// @Summary Get Article Details
-	// @Description Fetches details of a specific article by ID.
-	// @Tags Articles
-	// @Param id path int true "Article ID"
-	// @Success 200 {object} db.Article
-	// @Router /article/{id} [get]
-	router.GET("/article/:id", articleDetailHandler(dbConn))
+		// @Summary Get Articles
+		// @Description Fetches a list of articles with optional filters.
+		// @Tags Articles
+		// @Param source query string false "Filter by source"
+		// @Param leaning query string false "Filter by political leaning"
+		// @Param offset query int false "Pagination offset"
+		// @Param limit query int false "Pagination limit"
+		// @Success 200 {array} db.Article
+		// @Router /articles [get]
+		router.GET("/articles", legacyArticlesHandler(dbConn))
+
+		// @Summary Get Article Details
+		// @Description Fetches details of a specific article by ID.
+		// @Tags Articles
+		// @Param id path int true "Article ID"
+		// @Success 200 {object} db.Article
+		// @Router /article/{id} [get]
+		router.GET("/article/:id", legacyArticleDetailHandler(dbConn))
+	} else {
+		// Use static file handlers with client-side JS
+		log.Println("Using static files with client-side JS mode")
+
+		// Serve static HTML for articles list, client-side JS will call API
+		router.GET("/articles", func(c *gin.Context) {
+			c.File("./web/index.html")
+		})
+
+		// Serve static HTML for article detail, client-side JS will call API
+		router.GET("/article/:id", func(c *gin.Context) {
+			c.File("./web/article.html")
+		})
+	}
 
 	// Metrics endpoints
 	router.GET("/metrics/validation", func(c *gin.Context) {

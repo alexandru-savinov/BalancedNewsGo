@@ -232,16 +232,19 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 	}
 }
 
-// Helper: Convert db.Article to Postman schema (TitleCase fields)
+// Helper: Convert db.Article to Postman schema (lowercase fields to match frontend)
 func articleToPostmanSchema(a *db.Article) map[string]interface{} {
 	return map[string]interface{}{
-		"article_id":     a.ID,
-		"Title":          a.Title,
-		"Content":        a.Content,
-		"URL":            a.URL,
-		"Source":         a.Source,
-		"CompositeScore": a.CompositeScore,
-		"Confidence":     a.Confidence,
+		"id":              a.ID,
+		"title":           a.Title,
+		"content":         a.Content,
+		"url":             a.URL,
+		"source":          a.Source,
+		"pub_date":        a.PubDate,
+		"created_at":      a.CreatedAt,
+		"composite_score": a.CompositeScore,
+		"confidence":      a.Confidence,
+		"score_source":    a.ScoreSource,
 	}
 }
 

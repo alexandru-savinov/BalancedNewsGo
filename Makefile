@@ -25,7 +25,7 @@ GOLANGCI        := golangci-lint
 SWAG            := swag
 
 # Paths
-SERVER_CMD      := ./cmd/server/main.go
+SERVER_CMD      := ./cmd/server/main.go ./cmd/server/legacy_handlers.go
 BIN_DIR         := ./bin
 COVER_DIR       := ./coverage
 MOCK_GO         := ./tools/mock_llm_service/main.go
@@ -62,7 +62,7 @@ $(COVER_DIR):
 	@go run ./tools/mkdir/main.go $(COVER_DIR)
 
 build: $(BIN_DIR) ## Compile backend server into ./bin
-	$(GO) build -o $(SERVER_BIN) $(SERVER_CMD)
+	$(GO) build -o $(SERVER_BIN) ./cmd/server/...
 
 run: build ## Build and run server
 	$(SERVER_BIN)
