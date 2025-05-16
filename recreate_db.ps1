@@ -125,6 +125,7 @@ try {
     # 7. Run tests to verify database functionality
     Write-Host "7. Running essential tests to verify database functionality..." -ForegroundColor Green
     $env:NO_AUTO_ANALYZE = 'true'
+    $testOutput = $null
     try {
         $testOutput = scripts/test.cmd essential 2>&1
         if ($LASTEXITCODE -ne 0) {
@@ -140,8 +141,10 @@ try {
     }
     finally {
         # Always write the test results
-        $testOutput | Out-File "backup/db_recreation_test_results_$timestamp.log"
-        Write-Host "   ✓ Test results saved to backup/db_recreation_test_results_$timestamp.log" -ForegroundColor Gray
+        if ($testOutput) {
+            $testOutput | Out-File -FilePath "backup/db_recreation_test_results_$timestamp.log"
+            Write-Host "   ✓ Test results saved to backup/db_recreation_test_results_$timestamp.log" -ForegroundColor Gray
+        }
     }
     
     # 8. Success message
@@ -150,8 +153,8 @@ try {
     Write-Host "   New database created with proper schema and verified with tests" -ForegroundColor Gray
     Write-Host "   Environment ready for further development and testing" -ForegroundColor Gray
     exit 0
-
-} catch {
+} 
+catch {
     # Handle errors
     Write-Host "`n❌ ERROR: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "   Process failed at step: $($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Red

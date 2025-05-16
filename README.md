@@ -146,7 +146,14 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
    Remove-Item news.db -Force
    ```
 
-3. **Missing Collections**: Some test suites require collections that may not be present. Focus on the `essential` and `backend` tests if you encounter missing collection errors.
+3. **Database Corruption**: If you encounter persistent database corruption issues, use the database recreation script:
+   ```powershell
+   # Reset the database automatically
+   ./recreate_db.ps1
+   ```
+   This script backs up existing data, resets the database with proper schema, and verifies integrity. See [Testing Guide](docs/testing.md) for more details on database maintenance.
+
+4. **Missing Collections**: Some test suites require collections that may not be present. Focus on the `essential` and `backend` tests if you encounter missing collection errors.
 
 ### Common Test Commands
 

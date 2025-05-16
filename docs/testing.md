@@ -160,6 +160,48 @@ Review these logs to diagnose failures. Common patterns to look for:
    - Ensure database schemas in code match what SQL queries expect
    - Test `ON CONFLICT` clauses against actual table constraints
 
+## Database Maintenance
+
+### Database Recreation
+
+If you encounter persistent database corruption issues or test failures related to the database, you may need to recreate the database. A PowerShell script (`recreate_db.ps1`) is available to automate this process.
+
+#### Prerequisites
+- PowerShell 5.1 or higher
+- SQLite3 command-line tool in your PATH
+- Go installed and in your PATH
+
+#### Running the Database Recreation Script
+
+```powershell
+./recreate_db.ps1
+```
+
+The script performs the following steps:
+1. Creates a backup of the existing database files with timestamps
+2. Stops any processes that might be using the database
+3. Removes corrupted database files
+4. Recreates the database using the application's built-in InitDB function
+5. Verifies the database creation and schema integrity
+6. Runs essential tests to confirm functionality
+
+#### Common Database Issues
+
+1. **Schema Corruption**: Indicated by `PRAGMA integrity_check` failures or unexpected schema changes
+2. **Lock Contention**: When multiple processes try to access the database simultaneously
+3. **Missing Constraints**: Particularly the `UNIQUE(article_id, model)` constraint on `llm_scores` table
+4. **WAL Mode Issues**: Problems with `-shm` and `-wal` files in Write-Ahead Logging mode
+
+#### Manual Database Reset
+
+If the script fails or you prefer to reset manually:
+
+1. Stop all running server instances
+2. Backup the current database (if needed)
+3. Delete `news.db`, `news.db-shm`, and `news.db-wal`
+4. Run `go run ./cmd/reset_test_db` to recreate the database
+5. Verify with `sqlite3 news.db "PRAGMA integrity_check;"`
+
 ## Outstanding Issues
 
 See `docs/pr/todo_llm_test_fixes.md` for a detailed plan to address:
