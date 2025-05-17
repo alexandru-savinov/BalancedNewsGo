@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"html/template"
 	"log"
 	"net/http"
@@ -57,7 +58,14 @@ import (
 // @tag.name Analysis
 // @tag.description Operations related to article analysis and summaries
 
+var legacyHTML bool
+
 func main() {
+	flag.Parse()
+
+	// Override the legacy HTML flag to always be false
+	legacyHTML = false
+
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
 
 	err := godotenv.Load()

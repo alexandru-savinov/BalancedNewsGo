@@ -112,9 +112,7 @@ async function loadArticle() {
             article = cachedArticle;
         } else {
             // Fetch article data from API
-            // Add cache busting parameter to avoid browser caching
-            const timestamp = new Date().getTime();
-            const response = await fetch(`/api/articles/${id}?_t=${timestamp}`);
+            const response = await fetch(`/api/articles/${id}`);
             if (!response.ok) {
                 if (response.status === 404) {
                     throw new Error('Article not found');
@@ -690,10 +688,8 @@ function setupReanalysisFeature() {
         eventSource.onmessage = function(event) {
             try {
                 const progress = JSON.parse(event.data);
-                const status = (progress.status || '').toLowerCase();
-                const message = (progress.message || '').toLowerCase();
-                // Treat 'complete', 'success', 'done', or message containing 'complete' as done
-                if (status === "complete" || status === "success" || status === "done" || message.includes("complete")) {
+                // Update status based on progress
+                if (progress.status === "Complete" || progress.status === "Success") {
                     showStatus('success', progress.message || 'Analysis complete!');
                     updateProgress(100);
 
@@ -702,11 +698,14 @@ function setupReanalysisFeature() {
                     eventSource = null;
                     setLoading(false);
 
-                    // Immediately reload the article data to show new scores
-                    const cacheKey = `article_${articleId}`;
-                    localStorage.removeItem(`${CACHE_PREFIX}${cacheKey}`);
-                    loadArticle(); // Reload the article with fresh data
-                } else if (status === "error") {
+                    // Reload the article data to show new scores
+                    setTimeout(() => {
+                        // Clear cache to ensure fresh data
+                        const cacheKey = `article_${articleId}`;
+                        localStorage.removeItem(`${CACHE_PREFIX}${cacheKey}`);
+                        loadArticle(); // Reload the article with fresh data
+                    }, 1000);
+                } else if (progress.status === "Error") {
                     showStatus('error', progress.message || 'Error during analysis');
                     setLoading(false);
                     eventSource.close();
@@ -720,14 +719,13 @@ function setupReanalysisFeature() {
                 console.error('Error parsing SSE data:', e);
             }
         };
-        // Fallback: if SSE closes and progress bar is still active, reload
-        eventSource.onclose = function() {
-            if (progressBar && progressBar.style.display === 'block') {
-                setLoading(false);
-                const cacheKey = `article_${articleId}`;
-                localStorage.removeItem(`${CACHE_PREFIX}${cacheKey}`);
-                loadArticle();
-            }
+
+        eventSource.onerror = function() {
+            console.error('SSE connection error');
+            eventSource.close();
+            eventSource = null;
+            showStatus('error', 'Lost connection to progress updates');
+            setLoading(false);
         };
     }
 
