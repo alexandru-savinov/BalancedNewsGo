@@ -42,7 +42,7 @@ This document provides a high-level overview and detailed documentation of the G
     *   *Debugging/Improvements: Check job logs (`cmd/score_articles`); verify LLM API keys/quota; examine `llm_scores.metadata`; add robust error handling/retries; make models/prompts configurable; monitor costs; improve response parsing.* `(From architecture.md Section 6)`
 5.  **Score Calculation & Persistence:** `internal/llm/composite_score_fix.go` and `internal/llm/score_calculator.go` calculate a composite score based on `configs/composite_score_config.json`. The `internal/llm/score_manager.go` orchestrates this, persists the final score via `internal/db`, invalidates caches, and updates progress. Caching of individual LLM responses is handled by `internal/llm/cache.go`.
     *   *Debugging/Improvements: Verify input scores/logic; check handling of missing/invalid scores (e.g., scores are ignored if `handle_invalid` is "ignore", or replaced by `default_missing` if "default"); watch for NaN/Inf; explore alternative algorithms; make calculation configurable; add confidence metric.* `(From architecture.md Section 4)`
-6.  **Presentation:** `cmd/server/main.go` runs the web server. `internal/api` exposes data via REST endpoints (e.g., `/articles`, `/articles/{id}/bias`) and potentially serves a web UI (`web/`). `internal/llm/progress_manager.go` tracks async task status for endpoints like `/llm/score-progress/:id`.
+6.  **Presentation:** `cmd/server/main.go` runs the web server. `internal/api` exposes data via REST endpoints (e.g., `/articles`, `/articles/{id}/bias`) and serves a modern client-side web UI (`web/`). `internal/llm/progress_manager.go` tracks async task status for endpoints like `/llm/score-progress/:id`.
     *   *Debugging/Improvements (API): Check API logs; verify JSON structure; monitor DB query performance; add API caching; strengthen input validation; standardize errors; tune pagination.* `(From architecture.md Section 3)`
     *   *Debugging/Improvements (Frontend): Check JS console/network tab; verify CSS/DOM rendering; implement caching; add loading indicators/error messages; add score confidence indicator.* `(From architecture.md Sections 1, 2)`
 
@@ -120,10 +120,17 @@ Configuration is crucial for adapting the application's behavior without code ch
         *   Loads HTML templates (`web/*.html`).
         *   Serves static files (`./web`).
         *   Defines API routes by calling `api.RegisterRoutes`.
-        *   Defines web interface routes (e.g., `/`, `/articles`, `/article/:id`) and metrics endpoints (`/metrics/*`).
+        *   **Web Interface Options:**
+            *   **Modern (Default):** Serves static HTML files (`index.html`, `article.html`) that use client-side JavaScript to consume API endpoints.
+            *   **Legacy (Optional):** A server-side rendering mode enabled via the `--legacy-html` flag or `LEGACY_HTML=true` environment variable. This uses the `legacyArticlesHandler` and `legacyArticleDetailHandler` functions.
+        *   Defines metrics endpoints (`/metrics/*`).
         *   Sets up Swagger UI (`/swagger/*any`).
 *   **Dependencies:** Gin, SQLx, godotenv, Swaggo, and most `internal/` packages (`db`, `llm`, `rss`, `api`, `metrics`).
 *   **Usage:** `go run cmd/server/main.go` - starts the server (default port 8080).
+*   **Note:** Several obsolete functions exist in the codebase related to the legacy web rendering:
+    *   `articleDetailHandler`: A placeholder function marked with a TODO that was never fully implemented
+    *   `articlesHandler`: Unused duplicate of the legacy handler functionality
+    *   A commented-out background reprocessing loop that was disabled for debugging
 
 ### 3.2. API Layer (`internal/api/`)
 
@@ -156,7 +163,40 @@ This package handles incoming HTTP requests, routes them to appropriate logic, i
 
 *(Note: `handlers.go` and `db_operations.go` in this package contain minimal or commented-out code).*
 
-### 3.3. LLM Analysis Core (`internal/llm/`)
+### 3.3. Web Interface (`web/`)
+
+The web interface provides a user-friendly way to interact with the NewsBalancer system. It consists of HTML templates and client-side JavaScript that interact with the backend API.
+
+*   **Implementation Approaches:**
+    *   **Modern (Default):** Client-side rendering using static HTML files and JavaScript. This is the primary implementation.
+    *   **Legacy:** Server-side rendering (enabled via the `--legacy-html` flag), which is maintained for backward compatibility but is no longer the recommended approach.
+
+*   **HTML Templates:**
+    *   **`index.html`:** The main page that displays a list of articles with their political bias scores. Includes filtering, sorting, and pagination controls.
+    *   **`article.html`:** Detailed view of a single article, showing its full content, bias analysis, ensemble details, and a feedback form.
+*   **JavaScript:**
+    *   **`web/js/list.js`:** 
+        *   **Purpose:** Handles the article list page functionality.
+        *   **Key Features:** Client-side caching, pagination, filtering (by source, leaning, confidence), sorting, and dynamic rendering of article cards.
+        *   **API Integration:** Fetches article data from `/api/articles` endpoint with pagination and filter parameters.
+    *   **`web/js/article.js`:** 
+        *   **Purpose:** Manages the article detail page.
+        *   **Key Features:** Displays article content, bias visualization, confidence indicators, ensemble details showing individual model scores, and user feedback submission.
+        *   **API Integration:** Fetches article data from `/api/articles/:id`, ensemble details from `/api/articles/:id/ensemble-details`, and submits feedback to `/api/feedback`.
+*   **Common Features:**
+    *   **Client-side Caching:** Both scripts implement a caching mechanism with expiry to reduce redundant API calls.
+    *   **Error Handling:** Comprehensive error handling with user-friendly messages.
+    *   **Loading States:** Visual indicators during data fetching operations.
+    *   **Responsive Design:** CSS styles adapt to different screen sizes.
+    *   **Visualization:** Bias slider with visual indicators for political leaning and confidence levels.
+*   **Debugging Points:**
+    *   Check browser console for JavaScript errors.
+    *   Verify network requests in browser developer tools to ensure proper API interaction.
+    *   Test caching functionality by refreshing the page and observing reduced API calls.
+    *   Validate proper rendering of bias indicators and confidence visualizations.
+    *   Ensure feedback submission is working correctly.
+
+### 3.4. LLM Analysis Core (`internal/llm/`)
 
 This package contains the core logic for interacting with LLMs, calculating bias scores, and managing the analysis process.
 
@@ -208,7 +248,7 @@ This package contains the core logic for interacting with LLMs, calculating bias
 
 *(Note: `internal/llm/configs/` contains JSON/text configuration files used by this package, see Section 2).*
 
-### 3.4. Database Layer (`internal/db/`)
+### 3.5. Database Layer (`internal/db/`)
 
 *   **Purpose:** Acts as the data access layer (DAL) / persistence layer for the application using SQLite. Defines data models and provides functions for all database interactions.
 *   **`db.go`:**
@@ -225,7 +265,7 @@ This package contains the core logic for interacting with LLMs, calculating bias
     *   Assess the performance of indexes, especially on `articles(url)` and `llm_scores(article_id)`.
     *   Check for SQLite locking issues (`SQLITE_BUSY`) if multiple processes write concurrently.
 
-### 3.5. Data Ingestion (`internal/rss/`)
+### 3.6. Data Ingestion (`internal/rss/`)
 
 *   **Purpose:** Responsible for fetching, parsing, validating, deduplicating, and storing articles from RSS feeds.
 *   **`rss.go`:**

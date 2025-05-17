@@ -405,6 +405,24 @@
                             <span class="label-right">Right</span>
                         </div>
                     </div>
+                    
+                    <!-- New re-analysis button component -->
+                    <div class="article-actions" style="margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background-color: var(--secondary-bg); border: 1px solid var(--border-color);">
+                        <button id="reanalyzeArticleBtn" style="background-color: var(--accent-color); color: white; border: none; border-radius: 4px; padding: 0.5rem 1rem; cursor: pointer; font-weight: 500; transition: background-color 0.2s;">
+                            <span id="reanalyzeArticleBtnText">Re-evaluate Bias</span>
+                            <span id="reanalyzeArticleBtnLoading" style="display: none;">
+                                <span style="display: inline-block; animation: pulse 1.5s infinite; margin-left: 0.3rem;">
+                                    Loading...
+                                </span>
+                            </span>
+                        </button>
+                        <div id="reanalyzeStatusContainer" style="margin-top: 0.75rem; display: none;">
+                            <div id="reanalyzeProgressBar" style="height: 6px; width: 100%; background-color: #eee; border-radius: 3px; margin-bottom: 0.5rem; overflow: hidden; display: none;">
+                                <div id="reanalyzeProgressBarInner" style="height: 100%; width: 0%; background-color: var(--accent-color); transition: width 0.3s;"></div>
+                            </div>
+                            <p id="reanalyzeStatusMessage" style="margin: 0; padding: 0.5rem; border-radius: 4px;"></p>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="ensemble-details" style="margin-top: 2rem;">

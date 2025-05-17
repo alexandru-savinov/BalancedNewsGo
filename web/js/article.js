@@ -231,7 +231,6 @@ async function loadEnsembleDetails(articleId) {
             
             for (const score of scores) {
                 const scorePosition = ((score.score + 1) / 2) * 100;
-                const confidenceClass = getConfidenceClass(score.confidence);
                 const confidenceColor = getConfidenceColor(score.confidence);
                 
                 html += `
@@ -459,4 +458,259 @@ async function submitFeedback(articleId) {
 }
 
 // Load article when page loads
-document.addEventListener('DOMContentLoaded', loadArticle); 
+document.addEventListener('DOMContentLoaded', () => {
+    loadArticle();
+    setupReanalysisFeature();
+});
+
+// Re-analysis feature - enhanced version
+function setupReanalysisFeature() {
+    const reanalyzeBtn = document.getElementById('reanalyzeArticleBtn');
+    const btnTextEl = document.getElementById('reanalyzeArticleBtnText');
+    const loadingEl = document.getElementById('reanalyzeArticleBtnLoading');
+    const statusContainer = document.getElementById('reanalyzeStatusContainer');
+    const statusMessageEl = document.getElementById('reanalyzeStatusMessage');
+    const progressBar = document.getElementById('reanalyzeProgressBar');
+    const progressBarInner = document.getElementById('reanalyzeProgressBarInner');
+    
+    if (!reanalyzeBtn || !statusMessageEl || !statusContainer) {
+        console.warn('Re-analysis UI elements not found in the DOM.');
+        return;
+    }
+    
+    // Get article ID from the current URL path, article container, or URL params
+    function getArticleId() {
+        // Try from URL path first (most common case)
+        const idFromPath = window.location.pathname.split('/').pop();
+        if (idFromPath && !isNaN(idFromPath)) {
+            return idFromPath;
+        }
+        
+        // Try from URL query params
+        const params = new URLSearchParams(window.location.search);
+        const idFromQuery = params.get('id');
+        if (idFromQuery && !isNaN(idFromQuery)) {
+            return idFromQuery;
+        }
+        
+        // Try from data attribute on article container
+        const articleContainer = document.getElementById('article-container');
+        if (articleContainer && articleContainer.dataset.articleId) {
+            return articleContainer.dataset.articleId;
+        }
+        
+        return null;
+    }
+    
+    // Update status message with appropriate styling
+    function showStatus(type, message, showProgress = false) {
+        statusMessageEl.textContent = message;
+        
+        // Reset previous styling
+        statusMessageEl.style.backgroundColor = '';
+        statusMessageEl.style.color = '';
+        statusMessageEl.style.border = '';
+        
+        // Apply styling based on message type
+        if (type === 'info') {
+            statusMessageEl.style.backgroundColor = '#e7f3fe';
+            statusMessageEl.style.color = '#0c5460';
+            statusMessageEl.style.border = '1px solid #b8daff';
+        } else if (type === 'success') {
+            statusMessageEl.style.backgroundColor = '#d4edda';
+            statusMessageEl.style.color = '#155724';
+            statusMessageEl.style.border = '1px solid #c3e6cb';
+        } else if (type === 'error') {
+            statusMessageEl.style.backgroundColor = '#f8d7da';
+            statusMessageEl.style.color = '#721c24';
+            statusMessageEl.style.border = '1px solid #f5c6cb';
+        }
+        
+        // Show/hide progress bar
+        if (progressBar) {
+            progressBar.style.display = showProgress ? 'block' : 'none';
+        }
+        
+        statusContainer.style.display = 'block';
+    }
+    
+    // Update progress bar
+    function updateProgress(percent) {
+        if (progressBarInner && !isNaN(percent)) {
+            // Clamp between 0-100
+            const clampedPercent = Math.max(0, Math.min(100, percent));
+            progressBarInner.style.width = `${clampedPercent}%`;
+        }
+    }
+    
+    // Toggle loading state
+    function setLoading(isLoading) {
+        if (!reanalyzeBtn || !btnTextEl || !loadingEl) return;
+        
+        reanalyzeBtn.disabled = isLoading;
+        btnTextEl.style.display = isLoading ? 'none' : 'inline';
+        loadingEl.style.display = isLoading ? 'inline' : 'none';
+        
+        if (!isLoading && progressBar) {
+            // Reset progress on completion
+            progressBar.style.display = 'none';
+            progressBarInner.style.width = '0%';
+        }
+    }
+    
+    // Error handler with detailed error classification
+    function handleError(error, response) {
+        let errorMessage = 'An unknown error occurred';
+        let errorDetail = '';
+        
+        if (response) {
+            // Server responded with an error
+            switch (response.status) {
+                case 400:
+                    errorMessage = 'Invalid request parameters';
+                    break;
+                case 401:
+                    errorMessage = 'LLM authentication failed';
+                    break;
+                case 402:
+                    errorMessage = 'LLM payment required or credits exhausted';
+                    break;
+                case 404:
+                    errorMessage = 'Article not found';
+                    break;
+                case 429:
+                    errorMessage = 'LLM rate limit exceeded';
+                    break;
+                case 503:
+                    errorMessage = 'LLM service unavailable';
+                    break;
+                default:
+                    errorMessage = `Error (${response.status})`;
+            }
+            
+            // Try to extract more details from response
+            try {
+                const data = response._bodyText || response._bodyInit || '';
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    if (parsed.error && parsed.error.message) {
+                        errorDetail = parsed.error.message;
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing error response:', e);
+            }
+        } else if (error) {
+            // Network or client-side error
+            errorMessage = error.message || 'Network error';
+        }
+        
+        // Combine messages if we have details
+        const fullMessage = errorDetail 
+            ? `${errorMessage}: ${errorDetail}` 
+            : errorMessage;
+        
+        showStatus('error', fullMessage);
+        console.error('Re-analysis error:', fullMessage);
+    }
+    
+    // Connect to SSE endpoint for progress updates
+    let eventSource = null;
+    
+    function connectProgressSSE(articleId) {
+        if (eventSource) {
+            eventSource.close();
+        }
+        
+        eventSource = new EventSource(`/api/llm/score-progress/${articleId}`);
+        
+        eventSource.onmessage = function(event) {
+            try {
+                const progress = JSON.parse(event.data);
+                // Update status based on progress
+                if (progress.status === "Complete" || progress.status === "Success") {
+                    showStatus('success', progress.message || 'Analysis complete!');
+                    updateProgress(100);
+                    
+                    // Disconnect SSE
+                    eventSource.close();
+                    eventSource = null;
+                    setLoading(false);
+                    
+                    // Reload the article data to show new scores
+                    setTimeout(() => {
+                        // Clear cache to ensure fresh data
+                        const cacheKey = `article_${articleId}`;
+                        localStorage.removeItem(`${CACHE_PREFIX}${cacheKey}`);
+                        loadArticle(); // Reload the article with fresh data
+                    }, 1000);
+                } else if (progress.status === "Error") {
+                    showStatus('error', progress.message || 'Error during analysis');
+                    setLoading(false);
+                    eventSource.close();
+                    eventSource = null;
+                } else {
+                    // Update in-progress state
+                    showStatus('info', progress.message || 'Processing...', true);
+                    updateProgress(progress.percent || 0);
+                }
+            } catch (e) {
+                console.error('Error parsing SSE data:', e);
+            }
+        };
+        
+        eventSource.onerror = function() {
+            console.error('SSE connection error');
+            eventSource.close();
+            eventSource = null;
+            showStatus('error', 'Lost connection to progress updates');
+            setLoading(false);
+        };
+    }
+    
+    // Clean up SSE connection when navigating away
+    window.addEventListener('beforeunload', () => {
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+    });
+    
+    // Handle button click
+    reanalyzeBtn.addEventListener('click', async () => {
+        const articleId = getArticleId();
+        if (!articleId) {
+            showStatus('error', 'Could not determine article ID');
+            return;
+        }
+        
+        setLoading(true);
+        showStatus('info', 'Sending re-analysis request...', true);
+        updateProgress(5); // Show initial progress
+        
+        try {
+            const response = await fetch(`/api/llm/reanalyze/${articleId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
+            });
+            
+            if (response.status === 202 || response.status === 200) {
+                await response.json();
+                showStatus('success', 'Re-analysis started. Tracking progress...', true);
+                updateProgress(10); // Update progress after successful request
+                
+                // Connect to SSE for progress updates
+                connectProgressSSE(articleId);
+            } else {
+                handleError(null, response);
+                setLoading(false);
+            }
+        } catch (error) {
+            handleError(error);
+            setLoading(false);
+        }
+    });
+} 

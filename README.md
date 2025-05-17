@@ -44,6 +44,34 @@ See `docs/pr/todo_llm_test_fixes.md` for detailed information about the remainin
 - Caching and database persistence
 - Real-time progress tracking via SSE
 
+## Web Interface
+
+NewsBalancer includes a modern web UI that allows users to browse, view, and provide feedback on articles. The interface consists of:
+
+### Home Page (Articles List)
+- Displays a paginated list of articles with summary information
+- Includes visual indicators for political bias (slider) and confidence levels
+- Provides filtering by source, political leaning, and confidence level
+- Offers sorting options (newest/oldest, most left/right, highest/lowest confidence)
+- Implements client-side caching to improve performance
+
+### Article Detail Page
+- Shows complete article content with metadata (source, publication date)
+- Displays political bias analysis with confidence indicators
+- Provides visualization of the ensemble analysis, showing scores from different LLM models and perspectives
+- Allows users to submit feedback on the article's political leaning
+- Implements comprehensive error handling and loading states
+
+The web interface uses a responsive design that works well on both desktop and mobile devices. It features:
+
+- Client-side caching for improved performance
+- Real-time confidence visualization with color-coded indicators
+- Detailed tooltips and explanations for technical concepts
+- Advanced filtering options for power users
+- Proper error handling and loading states
+
+All static assets are served from the `/web` directory, with HTML templates in the root folder and JavaScript/CSS in their respective subfolders.
+
 ## Project Structure
 
 Here's a breakdown of the project's directory structure:
@@ -54,7 +82,7 @@ Here's a breakdown of the project's directory structure:
 *   `internal/`: Private application logic, including business logic, data access, and core functionalities.
 *   `configs/`: Application configuration files (e.g., `feed_sources.json`).
 *   `go.mod`, `go.sum`: Go module definitions and dependencies.
-*   `web/`: Potentially contains frontend assets or templates served by the application (Needs confirmation by inspecting contents).
+*   `web/`: Frontend assets and templates served by the application, including HTML, JavaScript, and CSS.
 *   `.env`, `.env.example`: Environment variable configuration (Should not be committed directly, except for the example).
 
 **Testing Files & Infrastructure:**
@@ -270,3 +298,7 @@ Regularly running `make contract` and using the pre-commit hook helps catch API 
 
 Start the server:
 ```
+go run cmd/server/main.go
+```
+
+This will start the server on port 8080 by default. You can then access the web interface at http://localhost:8080.

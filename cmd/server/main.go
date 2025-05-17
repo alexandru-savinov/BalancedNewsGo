@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -342,13 +341,5 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		c.Header("Content-Type", "text/html")
 		c.String(200, html)
-	}
-}
-
-// TODO: Restore articleDetailHandler function definition
-func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
-	// Placeholder implementation
-	return func(c *gin.Context) {
-		c.String(http.StatusNotImplemented, "Handler not implemented yet")
 	}
 }

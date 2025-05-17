@@ -80,7 +80,7 @@ func RegisterRoutes(
 	// @Param limit query integer false "Number of items per page"
 	// @Success 200 {array} api.Article
 	// @Failure 500 {object} ErrorResponse
-	// @Router /articles [get]
+	// @Router /api/articles [get]
 	router.GET("/api/articles", SafeHandler(getArticlesHandler(dbConn)))
 
 	// @Summary Get article by ID
@@ -91,7 +91,7 @@ func RegisterRoutes(
 	// @Param id path integer true "Article ID"
 	// @Success 200 {object} api.Article
 	// @Failure 404 {object} ErrorResponse
-	// @Router /articles/{id} [get]
+	// @Router /api/articles/{id} [get]
 	router.GET("/api/articles/:id", SafeHandler(getArticleByIDHandler(dbConn)))
 
 	// @Summary Create article
@@ -102,7 +102,7 @@ func RegisterRoutes(
 	// @Param article body models.CreateArticleRequest true "Article object"
 	// @Success 200 {object} StandardResponse{data=api.Article}
 	// @Failure 400 {object} ErrorResponse
-	// @Router /articles [post]
+	// @Router /api/articles [post]
 	router.POST("/api/articles", SafeHandler(createArticleHandler(dbConn)))
 
 	// Feed management
@@ -113,7 +113,8 @@ func RegisterRoutes(
 	// @Produce json
 	// @Success 200 {object} StandardResponse
 	// @Failure 500 {object} ErrorResponse
-	// @Router /refresh [post]
+	// @Router /api/refresh [post]
+	// @ID triggerRssRefresh
 	router.POST("/api/refresh", SafeHandler(refreshHandler(rssCollector)))
 
 	// LLM Analysis
@@ -131,7 +132,7 @@ func RegisterRoutes(
 	// @Failure 429 {object} ErrorResponse "LLM rate limit exceeded"
 	// @Failure 500 {object} ErrorResponse "Server error"
 	// @Failure 503 {object} ErrorResponse "LLM service unavailable or streaming error"
-	// @Router /llm/reanalyze/{id} [post]
+	// @Router /api/llm/reanalyze/{id} [post]
 	// @ID reanalyzeArticle
 	router.POST("/api/llm/reanalyze/:id", SafeHandler(reanalyzeHandler(llmClient, dbConn, scoreManager)))
 
@@ -145,7 +146,7 @@ func RegisterRoutes(
 	// @Param score body api.ManualScoreRequest true "Score information"
 	// @Success 200 {object} StandardResponse
 	// @Failure 400 {object} ErrorResponse
-	// @Router /manual-score/{id} [post]
+	// @Router /api/manual-score/{id} [post]
 	// @ID addManualScore
 	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(dbConn)))
 
@@ -158,7 +159,8 @@ func RegisterRoutes(
 	// @Param id path integer true "Article ID"
 	// @Success 200 {object} api.StandardResponse
 	// @Failure 404 {object} ErrorResponse
-	// @Router /articles/{id}/summary [get]
+	// @Router /api/articles/{id}/summary [get]
+	// @ID getArticleSummary
 	handler := NewSummaryHandler(&db.DBInstance{DB: dbConn})
 	router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
 
@@ -170,7 +172,7 @@ func RegisterRoutes(
 	// @Param id path integer true "Article ID"
 	// @Success 200 {object} api.ScoreResponse
 	// @Failure 404 {object} ErrorResponse
-	// @Router /articles/{id}/bias [get]
+	// @Router /api/articles/{id}/bias [get]
 	router.GET("/api/articles/:id/bias", SafeHandler(biasHandler(dbConn)))
 
 	// @Summary Get ensemble details
@@ -179,7 +181,8 @@ func RegisterRoutes(
 	// @Param id path integer true "Article ID"
 	// @Success 200 {object} api.StandardResponse
 	// @Failure 404 {object} ErrorResponse
-	// @Router /articles/{id}/ensemble [get]
+	// @Router /api/articles/{id}/ensemble [get]
+	// @ID getArticleEnsemble
 	router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(dbConn)))
 
 	// Feedback
@@ -191,7 +194,8 @@ func RegisterRoutes(
 	// @Param feedback body models.FeedbackRequest true "Feedback information"
 	// @Success 200 {object} StandardResponse
 	// @Failure 400 {object} ErrorResponse
-	// @Router /feedback [post]
+	// @Router /api/feedback [post]
+	// @ID submitFeedback
 	router.POST("/api/feedback", SafeHandler(feedbackHandler(dbConn, llmClient)))
 
 	// Health checks
@@ -203,6 +207,7 @@ func RegisterRoutes(
 	// @Success 200 {object} map[string]bool "Feed health status mapping feed names to boolean status"
 	// @Failure 500 {object} ErrorResponse "Server error"
 	// @Router /api/feeds/healthz [get]
+	// @ID getFeedsHealth
 	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
 
 	// Progress tracking
@@ -213,7 +218,8 @@ func RegisterRoutes(
 	// @Produce text/event-stream
 	// @Param id path integer true "Article ID"
 	// @Success 200 {object} models.ProgressResponse
-	// @Router /llm/score-progress/{id} [get]
+	// @Router /api/llm/score-progress/{id} [get]
+	// @ID getScoreProgress
 	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler()))
 }
 
@@ -259,7 +265,7 @@ func articleToPostmanSchema(a *db.Article) map[string]interface{} {
 // @Failure 400 {object} ErrorResponse "Invalid request data"
 // @Failure 409 {object} ErrorResponse "Article URL already exists"
 // @Failure 500 {object} ErrorResponse "Server error"
-// @Router /articles [post]
+// @Router /api/articles [post]
 // @ID createArticle
 func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -394,7 +400,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @Param limit query integer false "Number of items per page (default: 20)"
 // @Success 200 {array} api.Article "List of articles"
 // @Failure 500 {object} ErrorResponse "Server error"
-// @Router /articles [get]
+// @Router /api/articles [get]
 // @ID getArticlesList
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -472,7 +478,7 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @Failure 400 {object} ErrorResponse "Invalid article ID"
 // @Failure 404 {object} ErrorResponse "Article not found"
 // @Failure 500 {object} ErrorResponse "Server error"
-// @Router /articles/{id} [get]
+// @Router /api/articles/{id} [get]
 // @ID getArticleById
 func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -556,7 +562,7 @@ func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 // @Failure 429 {object} ErrorResponse "LLM rate limit exceeded"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Failure 503 {object} ErrorResponse "LLM service unavailable or streaming error"
-// @Router /llm/reanalyze/{id} [post]
+// @Router /api/llm/reanalyze/{id} [post]
 // @ID reanalyzeArticle
 func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -916,7 +922,7 @@ func (h *SummaryHandler) Handle(c *gin.Context) {
 // @Failure 400 {object} ErrorResponse "Invalid parameters"
 // @Failure 404 {object} ErrorResponse "Article not found"
 // @Failure 500 {object} ErrorResponse "Server error"
-// @Router /articles/{id}/bias [get]
+// @Router /api/articles/{id}/bias [get]
 // @ID getArticleBias
 // If no valid LLM scores are available, the API responds with:
 //   - "composite_score": null
@@ -1207,7 +1213,7 @@ func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 // @Success 200 {object} StandardResponse "Feedback received"
 // @Failure 400 {object} ErrorResponse "Invalid request data"
 // @Failure 500 {object} ErrorResponse "Server error"
-// @Router /feedback [post]
+// @Router /api/feedback [post]
 // @ID submitFeedback
 func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
