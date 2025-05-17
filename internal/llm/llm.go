@@ -491,6 +491,22 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		log.Printf("[ReanalyzeArticle %d] Error updating article score post-commit: %v", articleID, err)
 		// Decide if this is fatal or just a warning
 		// return fmt.Errorf("failed to update article score: %w", err)
+	} else {
+		// Log success of article score update to help with debugging
+		log.Printf("[ReanalyzeArticle %d] Successfully updated article score in articles table: score=%.2f, confidence=%.2f",
+			articleID, finalScore, confidence)
+	}
+
+	// Verify that the score was updated
+	updatedArticle, err := db.FetchArticleByID(c.db, articleID)
+	if err != nil {
+		log.Printf("[ReanalyzeArticle %d] Error fetching article after update: %v", articleID, err)
+	} else {
+		if updatedArticle.CompositeScore != nil {
+			log.Printf("[ReanalyzeArticle %d] Verified article score: %.2f", articleID, *updatedArticle.CompositeScore)
+		} else {
+			log.Printf("[ReanalyzeArticle %d] Warning: article composite_score is still nil after update", articleID)
+		}
 	}
 
 	log.Printf("[ReanalyzeArticle %d] Completed successfully. Score: %.2f, Confidence: %.2f", articleID, finalScore, confidence)

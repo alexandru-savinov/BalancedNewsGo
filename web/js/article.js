@@ -112,7 +112,9 @@ async function loadArticle() {
             article = cachedArticle;
         } else {
             // Fetch article data from API
-            const response = await fetch(`/api/articles/${id}`);
+            // Add cache busting parameter to avoid browser caching
+            const timestamp = new Date().getTime();
+            const response = await fetch(`/api/articles/${id}?_t=${timestamp}`);
             if (!response.ok) {
                 if (response.status === 404) {
                     throw new Error('Article not found');

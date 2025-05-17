@@ -495,16 +495,23 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Check for cache busting parameter
+		_, skipCache := c.GetQuery("_t")
+
 		// Caching
 		cacheKey := "article:" + idStr
-		articlesCacheLock.RLock()
-		if cached, found := articlesCache.Get(cacheKey); found {
+		if !skipCache {
+			articlesCacheLock.RLock()
+			if cached, found := articlesCache.Get(cacheKey); found {
+				articlesCacheLock.RUnlock()
+				RespondSuccess(c, cached)
+				LogPerformance("getArticleByIDHandler (cache hit)", start)
+				return
+			}
 			articlesCacheLock.RUnlock()
-			RespondSuccess(c, cached)
-			LogPerformance("getArticleByIDHandler (cache hit)", start)
-			return
+		} else {
+			log.Printf("[getArticleByIDHandler] Cache busting requested for article %d", id)
 		}
-		articlesCacheLock.RUnlock()
 
 		article, err := db.FetchArticleByID(dbConn, id)
 		if err != nil {
@@ -1185,6 +1192,18 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			RespondError(c, NewAppError(ErrNotFound, "Ensemble data not found"))
 			LogPerformance("ensembleDetailsHandler", start)
 			return
+		}
+
+		// Add debug logging to help troubleshoot
+		log.Printf("[ensembleDetailsHandler] Found %d ensemble records for article %d", len(details), id)
+		for i, detail := range details {
+			subResults, _ := detail["sub_results"].([]map[string]interface{})
+			numResults := 0
+			if subResults != nil {
+				numResults = len(subResults)
+			}
+			log.Printf("[ensembleDetailsHandler] Ensemble #%d: score=%.2f, has %d sub_results",
+				i+1, detail["score"], numResults)
 		}
 
 		articlesCacheLock.Lock()
