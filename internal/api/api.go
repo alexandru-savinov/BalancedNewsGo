@@ -186,6 +186,9 @@ func RegisterRoutes(
 	// @ID getArticleEnsemble
 	router.GET("/api/articles/:id/ensemble", SafeHandler(ensembleDetailsHandler(dbConn)))
 
+	// For backward compatibility with the frontend
+	router.GET("/api/articles/:id/ensemble-details", SafeHandler(ensembleDetailsHandler(dbConn)))
+
 	// Feedback
 	// @Summary Submit feedback
 	// @Description Submit user feedback for an article analysis
@@ -1217,19 +1220,52 @@ func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 			continue
 		}
 
-		subResults, ok1 := meta["sub_results"].([]interface{})
-		if !ok1 {
-			subResults = []interface{}{}
+		// Process sub-results to make sure they're properly formatted
+		subResults, _ := meta["sub_results"].([]interface{})
+		processedResults := make([]map[string]interface{}, 0, len(subResults))
+
+		// Process each sub-result individually to ensure proper format
+		for _, sr := range subResults {
+			srMap, ok := sr.(map[string]interface{})
+			if !ok {
+				continue // Skip invalid entries
+			}
+
+			// Ensure all required fields exist with proper types
+			model, _ := srMap["model"].(string)
+			scoreVal, ok1 := srMap["score"].(float64)
+			confidence, ok2 := srMap["confidence"].(float64)
+			explanation, _ := srMap["explanation"].(string)
+			perspective, _ := srMap["perspective"].(string)
+
+			// Default values if not found or invalid
+			if !ok1 {
+				scoreVal = 0.0
+			}
+			if !ok2 {
+				confidence = 0.0
+			}
+			if perspective == "" {
+				perspective = "unknown"
+			}
+
+			processedResults = append(processedResults, map[string]interface{}{
+				"model":       model,
+				"score":       scoreVal,
+				"confidence":  confidence,
+				"explanation": explanation,
+				"perspective": perspective,
+			})
 		}
 
-		aggregation, ok2 := meta["aggregation"].(map[string]interface{})
+		aggregation, ok2 := meta["final_aggregation"].(map[string]interface{})
 		if !ok2 {
 			aggregation = map[string]interface{}{}
 		}
 
 		details = append(details, map[string]interface{}{
 			"score":       score.Score,
-			"sub_results": subResults,
+			"sub_results": processedResults,
 			"aggregation": aggregation,
 			"created_at":  score.CreatedAt,
 		})

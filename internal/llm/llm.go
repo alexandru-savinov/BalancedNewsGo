@@ -422,15 +422,54 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 	}
 
 	// Store ensemble score in llm_scores table
+	subResults := make([]map[string]interface{}, 0, len(scores))
+	for _, s := range scores {
+		// Skip ensemble model itself
+		if strings.ToLower(s.Model) == "ensemble" {
+			continue
+		}
+
+		// Extract confidence and explanation from metadata
+		var confidence float64 = 0.0
+		var explanation string = ""
+		var meta map[string]interface{}
+
+		if s.Metadata != "" {
+			if err := json.Unmarshal([]byte(s.Metadata), &meta); err == nil {
+				if confVal, ok := meta["confidence"].(float64); ok {
+					confidence = confVal
+				}
+				if explVal, ok := meta["explanation"].(string); ok {
+					explanation = explVal
+				}
+			}
+		}
+
+		// Map model to perspective
+		perspective := MapModelToPerspective(s.Model, cfg)
+		if perspective == "" {
+			perspective = "unknown"
+		}
+
+		subResults = append(subResults, map[string]interface{}{
+			"model":       s.Model,
+			"score":       s.Score,
+			"confidence":  confidence,
+			"explanation": explanation,
+			"perspective": perspective,
+		})
+	}
+
 	meta := map[string]interface{}{
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp":   time.Now().Format(time.RFC3339),
+		"sub_results": subResults,
 		"final_aggregation": map[string]interface{}{
 			"weighted_mean": finalScore,
-			"variance":      1.0 - confidence, // Example variance calculation
+			"variance":      1.0 - confidence,
 			"confidence":    confidence,
 		},
 	}
-	metaBytes, _ := json.Marshal(meta) // Error handling omitted for brevity
+	metaBytes, _ := json.Marshal(meta)
 	ensembleScore := &db.LLMScore{
 		ArticleID: articleID,
 		Model:     "ensemble",
@@ -568,8 +607,47 @@ func (c *LLMClient) StoreEnsembleScore(article *db.Article) (float64, error) {
 	}
 
 	// Store ensemble score in llm_scores table
+	subResults := make([]map[string]interface{}, 0, len(scores))
+	for _, s := range scores {
+		// Skip ensemble model itself
+		if strings.ToLower(s.Model) == "ensemble" {
+			continue
+		}
+
+		// Extract confidence and explanation from metadata
+		var confidence float64 = 0.0
+		var explanation string = ""
+		var meta map[string]interface{}
+
+		if s.Metadata != "" {
+			if err := json.Unmarshal([]byte(s.Metadata), &meta); err == nil {
+				if confVal, ok := meta["confidence"].(float64); ok {
+					confidence = confVal
+				}
+				if explVal, ok := meta["explanation"].(string); ok {
+					explanation = explVal
+				}
+			}
+		}
+
+		// Map model to perspective
+		perspective := MapModelToPerspective(s.Model, c.config)
+		if perspective == "" {
+			perspective = "unknown"
+		}
+
+		subResults = append(subResults, map[string]interface{}{
+			"model":       s.Model,
+			"score":       s.Score,
+			"confidence":  confidence,
+			"explanation": explanation,
+			"perspective": perspective,
+		})
+	}
+
 	meta := map[string]interface{}{
-		"timestamp": time.Now().Format(time.RFC3339),
+		"timestamp":   time.Now().Format(time.RFC3339),
+		"sub_results": subResults,
 		"final_aggregation": map[string]interface{}{
 			"weighted_mean": score,
 			"variance":      1.0 - confidence,

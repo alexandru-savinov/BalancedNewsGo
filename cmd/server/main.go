@@ -68,10 +68,8 @@ func init() {
 func main() {
 	flag.Parse()
 
-	// Check environment variable override for legacy HTML flag
-	if os.Getenv("LEGACY_HTML") == "true" {
-		legacyHTML = true
-	}
+	// Override the legacy HTML flag to always be false
+	legacyHTML = false
 
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
 	log.Printf("Legacy HTML mode: %v", legacyHTML)

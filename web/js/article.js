@@ -185,7 +185,7 @@ async function loadEnsembleDetails(articleId) {
     try {
         // Check cache first
         const cacheKey = `ensemble_${articleId}`;
-        const cachedDetails = getCachedItem(cacheKey);
+        const cachedDetails = null; // Disable cache temporarily for debugging
         
         let details;
         
@@ -193,21 +193,49 @@ async function loadEnsembleDetails(articleId) {
             console.log('Using cached ensemble details');
             details = cachedDetails;
         } else {
-            const response = await fetch(`/api/articles/${articleId}/ensemble-details`);
-            if (!response.ok) {
-                throw new Error(`Error fetching ensemble details: ${response.statusText}`);
+            // Try the new endpoint first, fall back to the old one if it fails
+            let response;
+            let data;
+            let success = false;
+            
+            try {
+                response = await fetch(`/api/articles/${articleId}/ensemble`);
+                if (response.ok) {
+                    data = await response.json();
+                    if (data.success) {
+                        details = data.scores;
+                        success = true;
+                    }
+                }
+            } catch (err) {
+                console.error('Error with primary endpoint, trying fallback:', err);
             }
             
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.error?.message || 'Failed to fetch ensemble details');
+            // If the first attempt failed, try the legacy endpoint
+            if (!success) {
+                try {
+                    response = await fetch(`/api/articles/${articleId}/ensemble-details`);
+                    if (!response.ok) {
+                        throw new Error(`Error fetching ensemble details: ${response.statusText}`);
+                    }
+                    
+                    data = await response.json();
+                    if (!data.success) {
+                        throw new Error(data.error?.message || 'Failed to fetch ensemble details');
+                    }
+                    
+                    details = data.data || data.scores;
+                } catch (fallbackErr) {
+                    throw fallbackErr; // Rethrow if both attempts fail
+                }
             }
-            
-            details = data.data;
             
             // Cache the details
             setCachedItem(cacheKey, details);
         }
+        
+        // Debug logging
+        console.log('Ensemble details:', JSON.stringify(details));
         
         // Format the ensemble details for display with visualizations
         let html = '<div class="ensemble-details">';
@@ -215,12 +243,39 @@ async function loadEnsembleDetails(articleId) {
         // Group by perspective
         const perspectives = {};
         
-        for (const score of details) {
-            const perspective = score.perspective || 'unknown';
-            if (!perspectives[perspective]) {
-                perspectives[perspective] = [];
+        if (details && Array.isArray(details) && details.length > 0) {
+            // Get the first ensemble result (most recent)
+            const latestEnsemble = details[0];
+            
+            if (latestEnsemble && latestEnsemble.sub_results && Array.isArray(latestEnsemble.sub_results)) {
+                console.log('Found sub_results:', latestEnsemble.sub_results.length);
+                // Group models by perspective
+                for (const score of latestEnsemble.sub_results) {
+                    // Skip invalid entries
+                    if (!score || typeof score !== 'object') continue;
+                    
+                    // Ensure we have valid data
+                    const perspective = score.perspective || 'unknown';
+                    const model = score.model || 'unknown model';
+                    const scoreValue = typeof score.score === 'number' ? score.score : 0;
+                    const confidence = typeof score.confidence === 'number' ? score.confidence : 0;
+                    
+                    if (!perspectives[perspective]) {
+                        perspectives[perspective] = [];
+                    }
+                    
+                    perspectives[perspective].push({
+                        model: model,
+                        score: scoreValue,
+                        confidence: confidence,
+                        explanation: score.explanation || ''
+                    });
+                }
+            } else {
+                console.error('No valid sub_results found in ensemble data');
             }
-            perspectives[perspective].push(score);
+        } else {
+            console.error('No valid ensemble details found');
         }
         
         // Format each perspective group
@@ -230,20 +285,26 @@ async function loadEnsembleDetails(articleId) {
             html += '<div class="perspective-scores">';
             
             for (const score of scores) {
-                const scorePosition = ((score.score + 1) / 2) * 100;
-                const confidenceColor = getConfidenceColor(score.confidence);
+                // Safety checks for score value
+                const validScore = !isNaN(score.score) ? score.score : 0;
+                const scorePosition = ((validScore + 1) / 2) * 100;
+                
+                // Safety checks for confidence
+                const validConfidence = !isNaN(score.confidence) ? score.confidence : 0;
+                const confidenceColor = getConfidenceColor(validConfidence);
+                const confidencePercent = (validConfidence * 100).toFixed(0);
                 
                 html += `
                     <div class="model-score">
-                        <h5>${score.model}</h5>
+                        <h5>${score.model || 'Unknown Model'}</h5>
                         <div class="score-details">
                             <div class="score-value">
-                                <span>Score: <strong>${score.score.toFixed(2)}</strong></span>
-                                <span data-tooltip="Political leaning score from -1 (left) to +1 (right)">${getScoreLabel(score.score)}</span>
+                                <span>Score: <strong>${validScore.toFixed(2)}</strong></span>
+                                <span data-tooltip="Political leaning score from -1 (left) to +1 (right)">${getScoreLabel(validScore)}</span>
                             </div>
                             <div class="confidence-value">
                                 <span>Confidence: <span class="confidence-indicator" style="background: ${confidenceColor}"></span>
-                                <strong>${(score.confidence * 100).toFixed(0)}%</strong></span>
+                                <strong>${confidencePercent}%</strong></span>
                             </div>
                         </div>
                         <div class="model-bias-slider">
@@ -685,16 +746,14 @@ function setupReanalysisFeature() {
         }
         
         setLoading(true);
-        showStatus('info', 'Sending re-analysis request...', true);
-        updateProgress(5); // Show initial progress
+        showStatus('info', 'Starting reanalysis...');
         
         try {
             const response = await fetch(`/api/llm/reanalyze/${articleId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({})
+                }
             });
             
             if (response.status === 202 || response.status === 200) {
