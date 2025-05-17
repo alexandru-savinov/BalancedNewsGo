@@ -566,3 +566,35 @@ func TestAnalyzeAndStore(t *testing.T) {
 	err = client2.AnalyzeAndStore(article2)
 	assert.Error(t, err, "AnalyzeAndStore should return error on DB failure")
 }
+
+func TestGetHTTPLLMTimeout(t *testing.T) {
+	t.Parallel()
+
+	// Create a test HTTP service with a specific timeout
+	testTimeout := 5 * time.Second
+	restyClient := resty.New()
+	restyClient.SetTimeout(testTimeout)
+	httpService := NewHTTPLLMService(restyClient, "test-key", "backup-key", "https://test-url.com")
+
+	// Create client with the service
+	client := &LLMClient{
+		llmService: httpService,
+	}
+
+	// Test getting the timeout
+	retrievedTimeout := client.GetHTTPLLMTimeout()
+	if retrievedTimeout != testTimeout {
+		t.Errorf("Expected timeout %v, got %v", testTimeout, retrievedTimeout)
+	}
+
+	// Test with nil service
+	clientWithNoService := &LLMClient{
+		llmService: nil,
+	}
+
+	// Should return default timeout when service is nil
+	defaultTimeout := clientWithNoService.GetHTTPLLMTimeout()
+	if defaultTimeout != defaultLLMTimeout {
+		t.Errorf("Expected default timeout %v for nil service, got %v", defaultLLMTimeout, defaultTimeout)
+	}
+}

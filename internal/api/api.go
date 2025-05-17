@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
@@ -667,27 +668,59 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 				return
 			}
 		} else {
-			originalTimeout := 10 * time.Second          // TODO: Make this configurable or use actual client timeout
-			llmClient.SetHTTPLLMTimeout(2 * time.Second) // Short timeout for health check
-
-			for _, modelConfig := range cfg.Models {
-				log.Printf("[reanalyzeHandler %d] Trying model: %s", articleID, modelConfig.ModelName)
-				_, healthErr = llmClient.ScoreWithModel(article, modelConfig.ModelName)
-				if healthErr == nil {
-					workingModel = modelConfig.ModelName
-					break
-				}
-				// If it's not a rate limit error, don't try other models for health check, assume primary service issue
-				if !errors.Is(healthErr, llm.ErrBothLLMKeysRateLimited) {
-					break
+			originalTimeout := llmClient.GetHTTPLLMTimeout()
+			healthCheckTimeout := 2 * time.Second                // Keep short timeout for individual health checks
+			if os.Getenv("HEALTH_CHECK_TIMEOUT_SECONDS") != "" { // Allow override for testing
+				if s, err := strconv.Atoi(os.Getenv("HEALTH_CHECK_TIMEOUT_SECONDS")); err == nil && s > 0 {
+					healthCheckTimeout = time.Duration(s) * time.Second
 				}
 			}
+			llmClient.SetHTTPLLMTimeout(healthCheckTimeout)
+
+			var lastHealthCheckError error
+
+			for _, modelConfig := range cfg.Models {
+				log.Printf("[reanalyzeHandler %d] Health checking model: %s", articleID, modelConfig.ModelName)
+				// 'article' object is already fetched in reanalyzeHandler; ScoreWithModel expects this object.
+				_, healthCheckErr := llmClient.ScoreWithModel(article, modelConfig.ModelName)
+
+				if healthCheckErr == nil {
+					workingModel = modelConfig.ModelName
+					lastHealthCheckError = nil
+					log.Printf("[reanalyzeHandler %d] Health check PASSED for model: %s", articleID, workingModel)
+					break
+				}
+
+				log.Printf("[reanalyzeHandler %d] Health check FAILED for model %s: %v. Trying next model.", articleID, modelConfig.ModelName, healthCheckErr)
+				lastHealthCheckError = healthCheckErr
+			}
 			llmClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
+
+			if workingModel == "" { // All models failed health check
+				healthErr = lastHealthCheckError
+				if healthErr == nil {
+					healthErr = apperrors.New("All models failed health check", "llm_service_unavailable")
+				}
+			}
 		}
 
 		if workingModel == "" {
-			log.Printf("[reanalyzeHandler %d] No working models found (health check failed or skipped with no models): %v", articleID, healthErr)
-			RespondError(c, healthErr) // Propagate the actual LLM error instead of generic error
+			log.Printf("[reanalyzeHandler %d] No working models found after checking all configured models. Last error: %v", articleID, healthErr)
+			// Ensure healthErr is an AppError or wrapped appropriately before RespondError
+			if healthErr != nil {
+				// Ensure it's an AppError; if not, wrap it.
+				appErr, ok := healthErr.(*apperrors.AppError)
+				if !ok {
+					// Determine appropriate app error type, e.g., ErrLLMService or ErrInternal
+					// For a timeout, ErrLLMService or a specific timeout error code might be best.
+					respondErr := NewAppError(ErrLLMService, fmt.Sprintf("All models failed health check. Last error: %v", healthErr.Error()))
+					RespondError(c, respondErr)
+				} else {
+					RespondError(c, appErr)
+				}
+			} else {
+				RespondError(c, NewAppError(ErrLLMService, "No working models found and no specific error recorded."))
+			}
 			return
 		}
 

@@ -46,7 +46,7 @@ type LLMScore struct {
 	Model     string    `db:"model" json:"model"`
 	Score     float64   `db:"score" json:"score"`
 	Metadata  string    `db:"metadata" json:"metadata"`
-	Version   string    `db:"version" json:"version"`
+	Version   int       `db:"version" json:"version"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
@@ -653,11 +653,13 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		model TEXT NOT NULL,
 		score REAL NOT NULL,
 		metadata TEXT,
-		version TEXT,
+		version INTEGER DEFAULT 1,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (article_id) REFERENCES articles (id),
 		UNIQUE(article_id, model)
 	);
+
+	CREATE INDEX IF NOT EXISTS idx_llm_scores_article_version ON llm_scores(article_id, version);
 
 	CREATE TABLE IF NOT EXISTS feedback (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

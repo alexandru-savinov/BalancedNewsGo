@@ -149,6 +149,19 @@ func (c *LLMClient) SetHTTPLLMTimeout(timeout time.Duration) {
 	}
 }
 
+// GetHTTPLLMTimeout returns the current HTTP timeout for the LLM service.
+// It defaults to defaultLLMTimeout if the specific service or client is not configured as expected.
+func (c *LLMClient) GetHTTPLLMTimeout() time.Duration {
+	httpService, ok := c.llmService.(*HTTPLLMService)
+	// Ensure all parts of the chain are non-nil before dereferencing
+	if ok && httpService != nil && httpService.client != nil && httpService.client.GetClient() != nil {
+		return httpService.client.GetClient().Timeout
+	}
+	// Fallback to the package-level default LLM timeout if not specifically set or accessible
+	log.Printf("[GetHTTPLLMTimeout] Warning: Could not retrieve specific timeout from HTTPLLMService, returning default: %v", defaultLLMTimeout)
+	return defaultLLMTimeout
+}
+
 func NewLLMClient(dbConn *sqlx.DB) (*LLMClient, error) {
 	cache := NewCache()
 
@@ -247,6 +260,7 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 		Score:     scoreVal,
 		Metadata:  meta,
 		CreatedAt: time.Now(),
+		Version:   1, // Set version explicitly as integer
 	}
 
 	c.cache.Set(contentHash, model, score)
@@ -359,8 +373,13 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		}
 		log.Printf("[ReanalyzeArticle %d] analyzeContent successful for: %s. Score: %.2f", articleID, modelConfig.ModelName, score.Score)
 
-		_, insertErr := tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata)
-			VALUES (:article_id, :model, :score, :metadata)`, score)
+		// Make sure the version is set to a proper integer value
+		if score.Version == 0 {
+			score.Version = 1 // Default version to 1 if not set
+		}
+
+		_, insertErr := tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, version)
+			VALUES (:article_id, :model, :score, :metadata, :version)`, score)
 		if insertErr != nil {
 			log.Printf("[ReanalyzeArticle %d] Error inserting score for %s: %v", articleID, modelConfig.ModelName, insertErr)
 			// Decide whether to continue or rollback/fail
@@ -387,6 +406,13 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		return fmt.Errorf("failed to fetch scores for ensemble calculation post-commit: %w", err)
 	}
 
+	// Debug logging to identify which scores are retrieved and their properties
+	log.Printf("[ReanalyzeArticle %d] Found %d scores for composite calculation:", articleID, len(scores))
+	for i, s := range scores {
+		log.Printf("[ReanalyzeArticle %d] Score[%d]: Model=%s, Score=%.4f, Metadata=%s, Version=%s",
+			articleID, i, s.Model, s.Score, s.Metadata, s.Version)
+	}
+
 	finalScore, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
 	if err != nil {
 		// Don't return error, just log. Store 0 if calculation fails.
@@ -411,14 +437,13 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 		Score:     finalScore,
 		Metadata:  string(metaBytes),
 		CreatedAt: time.Now(),
+		Version:   1, // Set version explicitly to match schema expectation (as an integer)
 	}
 
-	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
-		VALUES (:article_id, :model, :score, :metadata, :created_at) ON CONFLICT(article_id, model) DO UPDATE SET score = excluded.score, metadata = excluded.metadata, created_at = excluded.created_at`, ensembleScore)
+	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at, version)
+		VALUES (:article_id, :model, :score, :metadata, :created_at, :version)`, ensembleScore)
 	if err != nil {
 		log.Printf("[ReanalyzeArticle %d] Error inserting/updating ensemble score post-commit: %v", articleID, err)
-		// Decide if this is fatal or just a warning
-		// return fmt.Errorf("failed to insert/update ensemble score: %w", err)
 	}
 
 	// Update the main article score
@@ -504,6 +529,7 @@ func (c *LLMClient) ScoreWithModel(article *db.Article, modelName string) (float
 		Score:     score,
 		Metadata:  meta,
 		CreatedAt: time.Now(),
+		Version:   1, // Set version explicitly as integer
 	}
 
 	log.Printf("[DEBUG][CONFIDENCE] Successfully scored and stored: article=%d, model=%s, score=%.4f",
@@ -557,10 +583,11 @@ func (c *LLMClient) StoreEnsembleScore(article *db.Article) (float64, error) {
 		Score:     score,
 		Metadata:  string(metaBytes),
 		CreatedAt: time.Now(),
+		Version:   1, // Set version explicitly to match schema expectation (as an integer)
 	}
 
-	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
-		VALUES (:article_id, :model, :score, :metadata, :created_at) ON CONFLICT(article_id, model) DO UPDATE SET score = excluded.score, metadata = excluded.metadata, created_at = excluded.created_at`, ensembleScore)
+	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at, version)
+		VALUES (:article_id, :model, :score, :metadata, :created_at, :version)`, ensembleScore)
 	if err != nil {
 		return score, fmt.Errorf("inserting/updating ensemble score for article %d: %w", article.ID, err)
 	}
