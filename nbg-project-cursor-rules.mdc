@@ -1,20 +1,15 @@
 ---
-description:
-globs:
-alwaysApply: false
+description: 
+globs: 
+alwaysApply: true
 ---
 # Cursor Rules: NewsBalancer Go Project
 
 ## 1. Architecture & Data Flow
 - NewsBalancer fetches news from RSS feeds, analyzes political bias using LLMs, stores results in SQLite, and exposes data via a web API/UI.
 - Core flow: RSS ingestion → DB storage → LLM analysis (ensemble, composite scoring) → API/web presentation.
-- LLM analysis uses multiple models/prompts, combines results per config, and averages duplicate scores/confidences.
-- **Flow Details**: 
-  - RSS fetching occurs every 30 minutes via cron job in `internal/rss/rss.go`
-  - Articles are deduplicated by URL and similar title before storage
-  - LLM analysis can be triggered via API or batch processing in `cmd/score_articles`
-  - Async processing tracks progress via `ProgressManager` (SSE endpoint)
-  - Confidence metrics accompany all bias scores to indicate reliability
+- LLM analysis uses multiple models/prompts with different perspectives (left, center, right), combines results per config, and averages duplicate scores/confidences.
+- Scoring process is asynchronous with real-time progress tracking via Server-Sent Events (SSE).
 
 ## 2. Key Directories & Files
 - `cmd/server/main.go`: Main entry point, sets up Gin server, loads configs, initializes DB, LLM, RSS collector, and API routes.
@@ -22,175 +17,101 @@ alwaysApply: false
 - `internal/llm/`: LLM client, ensemble logic, composite scoring, caching, progress, and config loading.
 - `internal/db/`: SQLite DAL, schema, CRUD for articles, scores, feedback, labels.
 - `internal/rss/`: RSS feed fetching, parsing, deduplication, and storage.
+- `internal/models/`: Data models and shared types.
+- `internal/apperrors/`: Error handling and standardization.
 - `configs/`: Contains `feed_sources.json` (RSS URLs) and `composite_score_config.json` (LLM ensemble/scoring config).
+- `web/`: Static files for UI, HTML templates, JavaScript, and CSS.
 - `.env`: LLM API keys, DB path, and service URLs.
-- **Additional Critical Files**:
-  - `internal/llm/composite_score_fix.go`: Core score calculation algorithm
-  - `internal/api/api.go`: API route definitions and handlers
-  - `internal/db/db.go`: Database schema and CRUD operations
-  - `internal/llm/ensemble.go`: Implementation of multi-model/prompt scoring
-  - `configs/composite_score_config.json`: Configuration for ensemble models and scoring
+- `docs/`: Documentation files including Swagger API definitions.
 
-## 3. LLM Scoring & Config
+## 3. Environment Variables
+- `LLM_API_KEY`: Required API key for the LLM service.
+- `LLM_API_KEY_SECONDARY`: Optional backup API key for fallback.
+- `LLM_BASE_URL`: Optional override for the LLM service URL.
+- `LLM_HTTP_TIMEOUT`: Timeout for LLM service requests (default: 60s).
+- `NO_AUTO_ANALYZE`: When set to "true", disables background analysis (crucial for testing).
+- `DATABASE_URL`: Database file path (though most components default to `news.db`).
+- `GIN_MODE`: Set to "release" for production (reduces verbose logs).
+- `LEGACY_HTML`: Enable legacy server-side rendering mode.
+
+## 4. LLM Scoring & Config
 - LLM ensemble logic is driven by `configs/composite_score_config.json` (models, perspectives, formula, weights, confidence method).
-- Composite score calculation is in `internal/llm/composite_score_fix.go` and is highly configurable.
+- Composite score calculation is in `internal/llm/composite_score_fix.go` and supports multiple aggregation methods ("weighted", "average").
+- Multiple scoring perspectives (left, center, right) provide balanced viewpoints.
+- Confidence calculation offers multiple methods (average, min, max, spread_based).
 - Caching of LLM responses is handled in `internal/llm/cache.go`.
-- **Scoring Implementation**:
-  - Scores range from -1.0 (left) to 1.0 (right), with 0.0 as neutral
-  - Multiple LLM models provide perspective-based scores (left, center, right)
-  - Models mapped to perspectives via config file
-  - Score aggregation uses averaging for duplicates (same model/article)
-  - Confidence calculation methods: "average", "min", "max", "spread_based"
-  - Invalid scores (NaN/Inf) are handled via config ("ignore" or "default")
-  - Prompt variants are loaded from `internal/llm/configs/*.txt`
+- Duplicate score averaging is used when multiple results exist for the same model/perspective.
 
-## 4. API & Web
+## 5. API & Web
 - API endpoints are registered in `internal/api/api.go` via `RegisterRoutes`.
-- Progress of async LLM scoring is tracked by `ProgressManager` and exposed via API (e.g., SSE endpoint).
-- Web UI is served from `web/`.
-- **API Implementation Patterns**:
-  - All handlers use `SafeHandler` middleware for panic recovery
-  - Standard responses use `StandardResponse` and `ErrorResponse` structs
-  - Error responses map `apperrors.AppError` to HTTP status codes
-  - Caching implemented via `SimpleCache` with TTL 
-  - Pagination supported via query params (page, limit)
-  - SSE endpoint format: `/llm/score-progress/:id`
-  - Authentication handled via middleware (if implemented)
-  - Core endpoints: `/api/articles`, `/api/articles/{id}/bias`, `/api/ensemble-details/{id}`
+- Core API endpoints:
+  - `GET /api/articles`: List articles with optional filtering
+  - `GET /api/articles/:id`: Get specific article
+  - `POST /api/articles`: Create new article
+  - `GET /api/articles/:id/bias`: Get political bias analysis
+  - `GET /api/articles/:id/ensemble`: Get ensemble details
+  - `POST /api/llm/reanalyze/:id`: Trigger reanalysis
+  - `GET /api/llm/score-progress/:id`: SSE stream for progress
+  - `POST /api/feedback`: Submit user feedback
+  - `GET /api/feeds/healthz`: Check RSS feed health
+- Progress of async LLM scoring is tracked by `ProgressManager` and exposed via SSE endpoint.
+- API documentation is available via Swagger at `/swagger/index.html`.
+- Web UI is served from `web/` with routes including:
+  - `GET /`: Home page
+  - `GET /articles`: Article listing page
+  - `GET /article/:id`: Article detail page
+  - `GET /metrics/*`: Various metrics pages
 
-## 5. Database
+## 6. Database
 - Schema is defined in `internal/db/db.go` (tables: articles, llm_scores, feedback, labels).
-- `llm_scores` has a UNIQUE constraint on (article_id, model) for upserts.
-- **Database Implementation**:
-  - SQLite used for storage with `modernc.org/sqlite` and `github.com/jmoiron/sqlx`
-  - Schema created automatically via `createSchema()` function in `db.go`
-  - CRUD functions follow consistent naming pattern: `Insert*`, `Fetch*`, `Update*`
-  - Error handling via `handleError()` to wrap DB errors in `apperrors`
-  - Articles table stores basic metadata and final composite scores
-  - LLM scores table contains individual model scores and raw response metadata
-  - Query parameters use named parameters (e.g., `:article_id`)
-  - SQL transactions used for multi-step operations
+- Tables:
+  - `articles`: Stores news articles with metadata
+  - `llm_scores`: Stores individual model scores with UNIQUE(article_id, model) constraint
+  - `feedback`: User feedback on article bias
+  - `labels`: Ground truth labels for validation
+- `llm_scores` has a UNIQUE constraint on (article_id, model) for upserts, critical for ON CONFLICT clauses.
+- Default database file is `news.db` in the execution directory.
+- SQLite concurrency limitations require careful transaction handling.
 
-## 6. Testing & Utilities
-- Use `NO_AUTO_ANALYZE=true` for reliable test runs.
-- Mock LLM service: `mock_llm_service.go`.
+## 7. Testing & Utilities
+- Use `NO_AUTO_ANALYZE=true` for reliable test runs to prevent SQLite locks.
+- Mock LLM service: `tools/mock_llm_service/mock_llm_service.go` for testing without real LLM costs.
 - Batch/utility tools in `cmd/` (import, clear, score, fetch, validate, report, query, test).
-- **Testing Implementation**:
-  - Go unit tests cover all packages and use standard Go testing patterns
-  - Integration tests use Newman/Postman collections
-  - Test suites: `essential`, `backend`, `api`, `debug`, `confidence`, `all`
-  - `scripts/test.cmd` and `scripts/test.sh` run test suites with proper environment setup
-  - Common test failures: port conflicts, DB locks, missing test collections
-  - Test results stored in `test-results/` directory with timestamps
-  - Database reset between test runs to ensure isolation
+- Test suites:
+  - Go unit tests: `go test ./...`
+  - Backend integration tests: `scripts/test.cmd backend`
+  - API tests: `scripts/test.cmd api`
+  - Essential tests: `scripts/test.cmd essential`
+- Integration testing requires careful DB setup to avoid locks.
 
-## 7. Error Handling
+## 8. Error Handling
 - Standardized via `internal/apperrors/` (AppError, error codes, wrapping).
-- **Error Implementation Patterns**:
-  - All errors are wrapped using `apperrors.Wrap()` to maintain context
-  - Custom error types implement standard Go error interfaces
-  - Errors include both code and message properties
-  - Error codes are used to map errors to HTTP status codes
-  - Common error handling: validation, not found, unauthorized, service unavailable
-  - LLM-specific errors defined in `internal/llm/errors.go`
-  - Database errors wrapped in `handleError()` in `internal/db/db.go`
-  - Logging follows consistent format with error context
+- Client-facing errors are normalized through the API layer.
+- LLM service errors are handled gracefully with appropriate status codes.
+- Database errors (particularly UNIQUE constraint violations) are properly caught and handled.
 
-## 8. Metrics
+## 9. Metrics & Monitoring
 - Prometheus metrics in `internal/metrics/prom.go`.
 - Aggregated DB metrics in `internal/metrics/metrics.go`.
-- **Metrics Implementation**:
-  - LLM metrics track request counts, failures, and response times
-  - Database metrics include article counts, scoring rates, and confidence metrics
-  - Prometheus client used for real-time metrics exposure
-  - Metrics endpoint: `/metrics/*`
-  - Custom metrics types: `ValidationMetric`, `FeedbackSummary`, `UncertaintyRate`
-  - Reports generated via `cmd/generate_report/main.go`
+- Web UI metrics dashboards at `/metrics/*` endpoints.
+- Health checks available at `/healthz` and `/api/feeds/healthz`.
 
-## 9. Debugging Tips
-- Check logs for errors in API, LLM, RSS, and DB.
-- Validate config files and DB schema.
+## 10. Debugging Tips
+- Check logs for errors in API, LLM, RSS, and DB components.
+- Validate config files and DB schema (particularly the UNIQUE constraint on llm_scores).
 - Monitor LLM API key usage and quota.
 - Use job logs and progress endpoints for batch/async tasks.
-- **Common Issues and Solutions**:
-  - Port conflicts: Kill processes on port 8080 before running server
-  - Database locks: Use `NO_AUTO_ANALYZE=true`, kill lingering processes, delete DB file
-  - SQL errors: Verify schema constraints in `db.go` match query expectations
-  - LLM failures: Check API keys in .env, examine metadata in llm_scores table
-  - Slow API: Check caching implementation and database indexing
-  - Test failures: See `docs/testing.md` for specific test troubleshooting
-  - Score calculation issues: Debug in `internal/llm/composite_score_fix.go`
+- Port conflicts: The server runs on port 8080 by default. Ensure no other processes are using this port.
+- Database locks: SQLite has concurrency limitations. Use `NO_AUTO_ANALYZE=true` during testing to prevent background analysis tasks.
+- For server startup issues, check:
+  - Port availability (common error: `bind: Only one usage of each socket address is normally permitted`)
+  - Database file permissions and corruption
+  - API key validity
+  - Config file syntax
 
-## 10. Common Patterns & Implementation Practices
-- **API Handler Pattern**:
-  ```go
-  func handlerName(db *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc {
-    return SafeHandler(func(c *gin.Context) {
-      // Parse parameters
-      id := c.Param("id")
-      // Validate input
-      if id == "" {
-        RespondError(c, apperrors.New(ErrValidation, "Missing ID"))
-        return
-      }
-      // Perform DB operation
-      result, err := db.FetchSomething(id)
-      if err != nil {
-        RespondError(c, err)
-        return
-      }
-      // Return result
-      RespondSuccess(c, result, http.StatusOK)
-    })
-  }
-  ```
-
-- **Database Operation Pattern**:
-  ```go
-  func FetchSomething(db *sqlx.DB, id string) (*SomeModel, error) {
-    query := `SELECT * FROM some_table WHERE id = :id`
-    params := map[string]interface{}{"id": id}
-    
-    var result SomeModel
-    err := db.Get(&result, db.Rebind(query), params)
-    if err != nil {
-      if err == sql.ErrNoRows {
-        return nil, handleError(ErrNotFound, "Item not found", err)
-      }
-      return nil, handleError(ErrDatabase, "Database error", err)
-    }
-    
-    return &result, nil
-  }
-  ```
-
-- **LLM Scoring Pattern**:
-  ```go
-  func AnalyzeArticle(articleID int, content string) error {
-    // Fetch article from DB if ID provided
-    // For each model in composite_score_config.json:
-    //   1. Check cache for existing score
-    //   2. If not cached, call LLM API with appropriate prompt
-    //   3. Parse response and extract score
-    //   4. Store score in llm_scores table
-    // Calculate composite score using all model scores
-    // Update article with composite score
-    // Update progress status
-  }
-  ```
-
-## 11. Environment Setup & Dependencies
-- Required Environment Variables:
-  - `LLM_API_KEY`: Primary API key for LLM service (e.g., OpenRouter)
-  - `LLM_API_KEY_SECONDARY`: Backup key for rate limit fallback
-  - `LLM_BASE_URL`: Base URL for LLM API (defaults to OpenRouter)
-  - `DATABASE_URL`: Optional SQLite connection string (defaults to local file)
-  - `NO_AUTO_ANALYZE`: Set to "true" for testing to disable background processing
-- Key Dependencies:
-  - Gin: Web framework (`github.com/gin-gonic/gin`)
-  - SQLx: Enhanced database library (`github.com/jmoiron/sqlx`)
-  - SQLite: Database driver (`modernc.org/sqlite`)
-  - Gofeed: RSS parser (`github.com/mmcdole/gofeed`)
-  - Cron: Scheduler (`github.com/robfig/cron/v3`)
-  - Swaggo: API documentation (`github.com/swaggo/swag`)
-  - Prometheus: Metrics (`github.com/prometheus/client_golang`)
+## 11. Deployment
+- Production mode: Set `GIN_MODE=release` for performance.
+- Docker deployment is supported (see `docs/deployment.md`).
+- Consider using a reverse proxy (Nginx, Caddy) for production.
+- Database backup strategy is essential for production use.
+- Configure appropriate timeouts for LLM services based on observed performance.

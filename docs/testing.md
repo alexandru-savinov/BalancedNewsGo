@@ -21,7 +21,7 @@ Based on recent debugging efforts (documented in `docs/pr/`), the following impr
 | `api` | ✅ PASS | All API endpoints function correctly |
 | Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
 | Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
-| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation (see `docs/pr/todo_llm_test_fixes.md`) |
+| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures related to score calculation logic. Specific details are pending further investigation and documentation. |
 | `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
 | `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
 | `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
@@ -68,8 +68,8 @@ For successful test execution:
    - The `llm_scores` table must have the `UNIQUE(article_id, model)` constraint for `ON CONFLICT` clauses to work
 
 3. **Port Requirements**
-   - The server runs on port 8080 during tests
-   - Ensure no other processes are using this port
+   - The server runs on port 8080 during tests and for general local execution (e.g., via `make run` or `go run cmd/server/main.go`).
+   - Ensure no other processes are using this port. Failure to do so will result in a `bind: Only one usage of each socket address...` error, as observed in `make run` attempts when the port is occupied.
 
 ## Root Causes of Common Failures
 
@@ -87,6 +87,8 @@ Based on recent debugging (see `docs/pr/test_fixes_summary.md`), we identified t
 ### 1. Port Conflicts
 
 **Error:** `listen tcp :8080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted`
+
+This error indicates that port 8080 is already in use by another application. This can happen if a previous server instance did not shut down correctly, or if another service is using the same port. This is a common issue when trying to run the server via `make run` or `go run cmd/server/main.go` if the port is not free.
 
 **Solution:**
 ```powershell
@@ -204,11 +206,11 @@ If the script fails or you prefer to reset manually:
 
 ## Outstanding Issues
 
-See `docs/pr/todo_llm_test_fixes.md` for a detailed plan to address:
+Detailed investigation and documentation are pending for:
 
-1. **LLM Unit Test Failures**: Multiple unit tests in the `internal/llm` package need fixes related to score calculation
-2. **Missing Test Collections**: Several Newman test collections need to be created or acquired
-3. **Test Infrastructure Improvements**: Suggestions for improving the test process and automation
+1. **LLM Unit Test Failures**: Multiple unit tests in the `internal/llm` package are failing due to issues related to score calculation logic. A full breakdown of these issues needs to be documented.
+2. **Missing Test Collections**: Several Newman test collections (`extended_rescoring_collection.json`, `debug_collection.json`, `confidence_validation_tests.json`) need to be created or acquired to enable the `all`, `debug`, and `confidence` test suites.
+3. **Test Infrastructure Improvements**: Ongoing review for potential improvements to the test process and automation.
 
 ## Additional Test Suite: `updated_backend_tests.json`
 

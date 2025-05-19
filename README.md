@@ -8,8 +8,14 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 
 **Current Status:** Basic functionality is working, and the `essential`, `backend`, and `api` test suites now pass when run with the `NO_AUTO_ANALYZE=true` environment variable to prevent background LLM processing from interfering with tests due to SQLite concurrency limitations.
 
-**Test Status Update (May 2025):**
-- All Go unit, integration, and end-to-end tests now pass, including the previously failing `internal/llm` tests.
+**Key Architectural Principles:**
+*   **Data Flow:** Articles are ingested from RSS feeds (`internal/rss`), stored in a SQLite database (`internal/db`, typically `news.db`), and then analyzed for political bias.
+*   **LLM Analysis:** The `internal/llm` package manages LLM interactions. It uses an ensemble approach defined in `configs/composite_score_config.json`, leveraging multiple models and perspectives. A key feature is the averaging of duplicate scores and confidences if multiple results are found for the same model/perspective during an analysis pass. The composite score calculation is primarily handled by `internal/llm/composite_score_fix.go`.
+*   **Database:** SQLite is used for persistence. The `llm_scores` table has a `UNIQUE(article_id, model)` constraint, which is crucial for correctly upserting LLM scores using `ON CONFLICT` SQL clauses.
+*   **API & Web:** Results and functionalities are exposed via a RESTful API (`internal/api`) and a web interface (`web/`).
+
+**Latest Test Status:**
+- All Go unit, integration, and end-to-end tests now pass, *with the exception of some `internal/llm` unit tests (see status table below)*.
 - The codebase now uses **averaging everywhere** for duplicate model/perspective scores and confidences. This logic is fully covered by passing tests.
 - For reliable test runs, set the environment variable `NO_AUTO_ANALYZE=true` (see `docs/testing.md`).
 
@@ -28,12 +34,18 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 | `api` | ✅ PASS | All API endpoints function correctly |
 | Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
 | Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
-| Go Unit Tests: `internal/llm` | ✅ PASS | All LLM score calculation tests now pass |
+| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation logic. Detailed analysis of these failures is pending central documentation. |
 | `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
 | `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
 | `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
 
-See `docs/pr/todo_llm_test_fixes.md` for detailed information about the remaining issues and plans for fixing them.
+See `docs/testing.md` for more information on test statuses and execution.
+
+## Database Schema Highlights
+
+The application relies on a SQLite database (typically `news.db`) with a schema defined in `internal/db/db.go`. Key tables include `articles`, `llm_scores`, `feedback`, and `labels`.
+
+A critical aspect of the `llm_scores` table is the `UNIQUE(article_id, model)` constraint. This constraint is essential for the correct functioning of the LLM scoring pipeline, particularly when updating scores using `ON CONFLICT` SQL clauses, ensuring that scores for a given article and model are properly upserted (updated if existing, or inserted if new).
 
 ## Features
 
@@ -43,6 +55,25 @@ See `docs/pr/todo_llm_test_fixes.md` for detailed information about the remainin
 - RESTful API for article retrieval and analysis
 - Caching and database persistence
 - Real-time progress tracking via SSE
+
+## API Reference
+
+The application provides a comprehensive REST API for interacting with articles, bias analysis, and other features. Full API documentation is available in the [Swagger documentation](docs/swagger.json).
+
+Key endpoints include:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/articles` | GET | Fetch articles with optional filtering |
+| `/api/articles/{id}` | GET | Get a specific article by ID |
+| `/api/articles/{id}/bias` | GET | Get political bias analysis for an article |
+| `/api/articles/{id}/ensemble` | GET | Get detailed ensemble scoring information |
+| `/api/llm/reanalyze/{id}` | POST | Trigger reanalysis of an article |
+| `/api/llm/score-progress/{id}` | GET | SSE stream for real-time scoring progress |
+| `/api/feedback` | POST | Submit user feedback on article bias |
+| `/api/feeds/healthz` | GET | Check RSS feed health status |
+
+Detailed API documentation is available at `/swagger/index.html` when running the server.
 
 ## Web Interface
 
@@ -104,8 +135,11 @@ Here's a breakdown of the project's directory structure:
 *   `CHANGELOG.md`: Record of changes across versions.
 *   `docs/`: Contains detailed documentation:
     *   [Codebase Documentation](docs/codebase_documentation.md): Detailed breakdown of Go source files and structure.
+    *   [Testing Guide](docs/testing.md): Comprehensive guide on running, analyzing, and debugging tests.
+    *   [Configuration Reference](docs/configuration_reference.md): Details on environment variables and configuration files.
+    *   [Integration Testing Guide](docs/integration_testing.md): Guide for testing with external services like LLMs.
+    *   [Deployment Guide](docs/deployment.md): Instructions for production deployment and performance tuning.
     *   `architecture.md`: Describes the data flow and architecture (e.g., CompositeScore calculation).
-    *   `testing.md`: Comprehensive guide on running, analyzing, and debugging tests.
     *   `swagger.yaml`, `swagger.json`, `docs.go`: API documentation (Swagger/OpenAPI).
     *   `PR/handle_total_analysis_failure.md`: Technical recommendation for handling total analysis failure.
     *   [Potential Codebase Improvements](docs/plans/potential_improvements.md): Suggestions for future development and enhancements.
@@ -164,6 +198,7 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
       Select-Object -ExpandProperty OwningProcess | 
       ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
    ```
+   *Note: This error commonly occurs if another instance of the server is already running, or if another application is using port 8080. This can happen when using `make run` or `go run cmd/server/main.go` if the port is not free.*
 
 2. **Database Locks**:
    ```powershell
@@ -296,9 +331,14 @@ Regularly running `make contract` and using the pre-commit hook helps catch API 
 
 ### Running Locally
 
-Start the server:
+Start the server using the Go command:
 ```
 go run cmd/server/main.go
 ```
+Or using the Makefile, which typically builds the executable (e.g., to `./bin/newbalancer_server`) and then runs it:
+```
+make run
+```
 
 This will start the server on port 8080 by default. You can then access the web interface at http://localhost:8080.
+*Note: If you encounter a "port already in use" error (e.g., `listen tcp :8080: bind: Only one usage of each socket address...`), ensure no other processes are using port 8080. See "Port Conflicts" under "Common Test Issues and Solutions" above.*

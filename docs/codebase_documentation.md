@@ -4,8 +4,8 @@
 
 This document provides a high-level overview and detailed documentation of the Go codebase for the NewsBalancer project. The primary goal of NewsBalancer is to fetch news articles from various RSS feeds, analyze their political bias using Large Language Models (LLMs), store the results, and expose this data through a web interface and API.
 
-**Test Status Update (May 2025):**
-- All Go unit, integration, and end-to-end tests now pass, including the previously failing `internal/llm` tests.
+**Latest Test Status:**
+- Most Go unit, integration, and end-to-end tests pass. Notably, `internal/llm` unit tests have some outstanding failures (see `docs/testing.md`).
 - The codebase now uses **averaging everywhere** for duplicate model/perspective scores and confidences. This logic is fully covered by passing tests.
 - For reliable test runs, set the environment variable `NO_AUTO_ANALYZE=true` (see `docs/testing.md`).
 
@@ -35,14 +35,14 @@ This document provides a high-level overview and detailed documentation of the G
 
 1.  **Ingestion:** `internal/rss` fetches articles from configured RSS feeds (`configs/feed_sources.json`).
     *   *Debugging/Improvements: Check feed validity/parsing; add sources; improve content extraction/normalization; enhance duplicate detection.* `(From architecture.md Sections 7, 8)`
-2.  **Storage:** Articles and scores are stored in SQLite via `internal/db`.
-    *   *Debugging/Improvements: Check DB health/schema; check `llm_scores` consistency; optimize indexes; consider score versioning/pruning; evaluate DB scaling.* `(From architecture.md Section 5)`
+2.  **Storage:** Articles and scores are stored in SQLite (typically `news.db`) via `internal/db`.
+    *   *Debugging/Improvements: Check DB health/schema; check `llm_scores` consistency (especially the `UNIQUE(article_id, model)` constraint); optimize indexes; consider score versioning/pruning; evaluate DB scaling.* `(From architecture.md Section 5)`
 3.  **Analysis Trigger:** Analysis is triggered (e.g., via API call to `cmd/server`/`internal/api` or `cmd/score_articles`).
-4.  **LLM Interaction:** `internal/llm` manages calls to external LLMs using `internal/llm/service_http.go`. Ensemble methods (`internal/llm/ensemble.go`) use multiple models/prompts defined in `configs/composite_score_config.json`.
+4.  **LLM Interaction:** `internal/llm` manages calls to external LLMs using `internal/llm/service_http.go`. Ensemble methods (`internal/llm/ensemble.go`) use multiple models/prompts defined in `configs/composite_score_config.json`. The system **averages duplicate scores and confidences** if multiple results are found for the same model/perspective during an analysis pass.
     *   *Debugging/Improvements: Check job logs (`cmd/score_articles`); verify LLM API keys/quota; examine `llm_scores.metadata`; add robust error handling/retries; make models/prompts configurable; monitor costs; improve response parsing.* `(From architecture.md Section 6)`
-5.  **Score Calculation & Persistence:** `internal/llm/composite_score_fix.go` and `internal/llm/score_calculator.go` calculate a composite score based on `configs/composite_score_config.json`. The `internal/llm/score_manager.go` orchestrates this, persists the final score via `internal/db`, invalidates caches, and updates progress. Caching of individual LLM responses is handled by `internal/llm/cache.go`.
+5.  **Score Calculation & Persistence:** `internal/llm/composite_score_fix.go` contains the primary logic for calculating the final composite score and confidence from multiple individual `db.LLMScore` inputs, driven by `configs/composite_score_config.json`. `internal/llm/score_calculator.go` provides the interface and default implementation. The `internal/llm/score_manager.go` orchestrates this, persists the final score via `internal/db`, invalidates caches (`internal/llm/cache.go` for LLM responses, `internal/api/cache.go` for API responses), and updates progress.
     *   *Debugging/Improvements: Verify input scores/logic; check handling of missing/invalid scores (e.g., scores are ignored if `handle_invalid` is "ignore", or replaced by `default_missing` if "default"); watch for NaN/Inf; explore alternative algorithms; make calculation configurable; add confidence metric.* `(From architecture.md Section 4)`
-6.  **Presentation:** `cmd/server/main.go` runs the web server. `internal/api` exposes data via REST endpoints (e.g., `/articles`, `/articles/{id}/bias`) and serves a modern client-side web UI (`web/`). `internal/llm/progress_manager.go` tracks async task status for endpoints like `/llm/score-progress/:id`.
+6.  **Presentation:** `cmd/server/main.go` runs the web server. `internal/api` exposes data via REST endpoints (e.g., `/articles`, `/articles/{id}/bias`) and serves a modern client-side web UI (`web/`). `internal/llm/progress_manager.go` (used by `internal/api/api.go` and `internal/llm/score_manager.go`) tracks asynchronous task status for endpoints like `/api/llm/score-progress/:id` (SSE).
     *   *Debugging/Improvements (API): Check API logs; verify JSON structure; monitor DB query performance; add API caching; strengthen input validation; standardize errors; tune pagination.* `(From architecture.md Section 3)`
     *   *Debugging/Improvements (Frontend): Check JS console/network tab; verify CSS/DOM rendering; implement caching; add loading indicators/error messages; add score confidence indicator.* `(From architecture.md Sections 1, 2)`
 
@@ -58,7 +58,7 @@ Configuration is crucial for adapting the application's behavior without code ch
         *   `LLM_API_KEY`: Primary API key for the LLM service (e.g., OpenRouter).
         *   `LLM_API_KEY_SECONDARY`: (Optional) Backup API key for rate limit fallback.
         *   `LLM_BASE_URL`: Base URL for the LLM service (defaults to OpenRouter if not set).
-        *   `DATABASE_URL`: (Potentially, although `news.db` seems hardcoded often) Connection string or path for the database.
+        *   `DATABASE_URL`: This variable is listed as a possibility, but the main server (`cmd/server/main.go`) and most utility tools in `cmd/` currently default to using a SQLite database file named `news.db` located in the execution directory. Some tools might offer flags to specify a different DB path (e.g., `cmd/import_labels/main.go`).
 *   **`configs/feed_sources.json` (Project Root `/configs`):**
     *   **Purpose:** Defines the list of RSS feed URLs to be fetched by the `internal/rss.Collector` when run by the main server (`cmd/server/main.go`).
     *   **Expected Structure:** A JSON array of strings, where each string is a valid RSS/Atom feed URL.
@@ -127,6 +127,7 @@ Configuration is crucial for adapting the application's behavior without code ch
         *   Sets up Swagger UI (`/swagger/*any`).
 *   **Dependencies:** Gin, SQLx, godotenv, Swaggo, and most `internal/` packages (`db`, `llm`, `rss`, `api`, `metrics`).
 *   **Usage:** `go run cmd/server/main.go` - starts the server (default port 8080).
+    *   *Note: If running the server directly or via `make run`, ensure port 8080 is free. Port conflict errors (e.g., "Only one usage of each socket address") can occur if the port is already in use. Refer to `docs/testing.md` for troubleshooting port conflicts.*
 *   **Note:** Several obsolete functions exist in the codebase related to the legacy web rendering:
     *   `articleDetailHandler`: A placeholder function marked with a TODO that was never fully implemented
     *   `articlesHandler`: Unused duplicate of the legacy handler functionality
@@ -137,12 +138,12 @@ Configuration is crucial for adapting the application's behavior without code ch
 This package handles incoming HTTP requests, routes them to appropriate logic, interacts with backend services (LLM, DB, RSS), and formats responses.
 
 *   **`api.go`:**
-    *   **Purpose:** Defines the API structure, routes using Gin, and implements many request handlers. Orchestrates interactions between HTTP requests and backend logic.
-    *   **`RegisterRoutes`:** Central function defining all `/api/*` endpoints (articles, feeds, scoring, analysis, feedback) and mapping them to handlers. Injects dependencies (DB, RSS Collector, LLM Client, Score Manager) into handlers.
+    *   **Purpose:** Defines the API structure, routes using Gin, and implements many request handlers. Orchestrates interactions between HTTP requests and backend logic. It is the primary file for the API layer.
+    *   **`RegisterRoutes`:** Central function within `internal/api/api.go` defining all `/api/*` endpoints (articles, feeds, scoring, analysis, feedback) and mapping them to handlers. Injects dependencies (DB, RSS Collector, LLM Client, Score Manager, ProgressManager, APICache) into handlers.
     *   **Middleware:** Uses `SafeHandler` for panic recovery.
-    *   **Handlers:** Implements logic for endpoints like `getArticlesHandler`, `reanalyzeHandler` (triggers async scoring via `ScoreManager` and `ProgressManager`), `biasHandler`, `ensembleDetailsHandler`, `feedbackHandler`, `scoreProgressSSEHandler` (uses `ProgressManager` for SSE).
-    *   **Caching:** Uses `articlesCache` (instance of `SimpleCache`) for `/api/articles`.
-    *   **Progress Tracking:** Manages a `progressMap` for async scoring tasks.
+    *   **Handlers:** Implements logic for endpoints like `getArticlesHandler`, `reanalyzeHandler` (triggers async scoring via `ScoreManager` and `ProgressManager`), `biasHandler`, `ensembleDetailsHandler`, `feedbackHandler`, `scoreProgressSSEHandler` (uses `ProgressManager` for Server-Sent Events on `/api/llm/score-progress/:id`).
+    *   **Caching:** Uses `articlesCache` (instance of `SimpleCache` from `internal/api/cache.go`) for `/api/articles`.
+    *   **Progress Tracking:** The `ProgressManager` (from `internal/llm/progress_manager.go`) is injected and used by handlers (e.g., for re-analysis tasks) to track and expose progress, notably via the SSE endpoint.
 *   **`models.go`:**
     *   **Purpose:** Defines Data Transfer Objects (DTOs) for API request payloads (e.g., `CreateArticleRequest`, `FeedbackRequest`, `ManualScoreRequest`) and response bodies (e.g., `Article`, `ScoreResponse`, `StandardResponse`, `ErrorResponse`). Distinct from `internal/db` models.
     *   **Features:** Uses `json` tags for serialization, `binding` tags for validation, and Swagger annotations.
@@ -216,9 +217,9 @@ This package contains the core logic for interacting with LLMs, calculating bias
     *   **`ScoreContent`:** Orchestrates the API call, including sophisticated retry logic for rate limits (using backup key, trying alternative models from config). Calls `callLLMAPIWithKey`.
     *   **`callLLMAPIWithKey`:** Executes the HTTP POST request.
 *   **`composite_score_fix.go`:**
-    *   **Purpose:** Contains the primary logic (`ComputeCompositeScoreWithConfidenceFixed`) for calculating the final composite score and confidence from multiple individual `db.LLMScore` inputs, based on `CompositeScoreConfig`.
+    *   **Purpose:** Contains the primary logic (`ComputeCompositeScoreWithConfidenceFixed`) for calculating the final composite score and confidence from multiple individual `db.LLMScore` inputs. This calculation is highly configurable via the parameters in `configs/composite_score_config.json` (defining models, perspectives, formula, weights, confidence method, etc.).
     *   **Key Helpers:** `MapModelToPerspective`, `checkForAllZeroResponses`, `mapModelsToPerspectives`, `processScoresByPerspective`, `calculateCompositeScore`, `calculateConfidence`.
-    *   **Role:** Core calculation engine, highly configurable via `CompositeScoreConfig`.
+    *   **Role:** Core calculation engine for ensemble scoring.
 *   **`score_calculator.go`:**
     *   **Purpose:** Defines the `ScoreCalculator` interface and `DefaultScoreCalculator` implementation.
     *   **`DefaultScoreCalculator`:** Calculates an average score/confidence across perspectives ("left", "center", "right") after mapping models using `getPerspective` and extracting confidence via `extractConfidence`. Used by `ScoreManager`.
@@ -226,11 +227,12 @@ This package contains the core logic for interacting with LLMs, calculating bias
     *   **Purpose:** Defines `ScoreManager` to orchestrate the *final* stages of scoring: calculating the composite score (via `ScoreCalculator`), persisting it (`db.UpdateArticleScoreLLM`), invalidating caches (`InvalidateScoreCache`), and updating progress (`ProgressManager`).
     *   **`UpdateArticleScore`:** Primary method, called after individual LLM analyses are complete.
     *   **Dependencies:** DB, Cache, ScoreCalculator, ProgressManager.
-*   **`cache.go`:**
-    *   **Purpose:** Provides `Cache` (`sync.Map`-based) for storing/retrieving `db.LLMScore` JSON, keyed by content hash and model name.
-    *   **Usage:** Used by `LLMClient` to avoid redundant API calls and by `ScoreManager` for invalidation.
-*   **`progress_manager.go`:**
-    *   **Purpose:** Defines `ProgressManager` for in-memory tracking of asynchronous article scoring tasks (status, percentage, errors). Used by `ScoreManager` and exposed via API (e.g., SSE endpoint).
+*   **`cache.go` (`internal/llm/cache.go`):**
+    *   **Purpose:** Provides `Cache` (`sync.Map`-based) for storing/retrieving individual `db.LLMScore` JSON responses from the LLM service, keyed by content hash and model name.
+    *   **Usage:** Used by `LLMClient` to avoid redundant API calls to external LLM services. Invalidated by `ScoreManager` when scores are updated.
+*   **`progress_manager.go` (`internal/llm/progress_manager.go`):**
+    *   **Purpose:** Defines `ProgressManager` for in-memory tracking of asynchronous article scoring tasks (status, percentage, errors).
+    *   **Usage:** Used by `ScoreManager` to update progress during analysis and by `internal/api/api.go` to serve progress information, notably via the Server-Sent Events (SSE) endpoint `/api/llm/score-progress/:id`.
     *   **Features:** Thread-safe map (`progressMap`), automatic cleanup routine for completed/stale entries.
 *   **`composite_score_utils.go`:**
     *   **Purpose:** Utilities for loading `CompositeScoreConfig` from `configs/composite_score_config.json` (robust path finding) and numerical helpers (`minNonNil`, `maxNonNil`, `scoreSpread`).
@@ -250,12 +252,12 @@ This package contains the core logic for interacting with LLMs, calculating bias
 
 ### 3.5. Database Layer (`internal/db/`)
 
-*   **Purpose:** Acts as the data access layer (DAL) / persistence layer for the application using SQLite. Defines data models and provides functions for all database interactions.
+*   **Purpose:** Acts as the data access layer (DAL) / persistence layer for the application using SQLite. Defines data models and provides functions for all database interactions. The schema is defined within this package.
 *   **`db.go`:**
     *   **Data Models:** Defines core structs mapped to DB tables (`Article`, `LLMScore`, `Feedback`, `Label`) with `db` and `json` tags.
-    *   **Initialization (`InitDB`):** Opens connection and calls `createSchema`.
-    *   **Schema Management (`createSchema`):** Executes `CREATE TABLE IF NOT EXISTS` for all tables, defining columns, primary keys, foreign keys, UNIQUE constraints, and indexes.
-    *   **CRUD Operations:** Provides functions like `InsertArticle` (with `ON CONFLICT DO NOTHING`), `InsertLLMScore`, `InsertFeedback`, `InsertLabel`, `FetchArticles` (with filtering/pagination), `FetchArticleByID`, `FetchLLMScores`, `UpdateArticleScoreLLM`, `ArticleExistsByURL`, `ArticleExistsBySimilarTitle`.
+    *   **Initialization (`InitDB`):** Opens connection to a specified SQLite database file (typically `news.db` for the main server and tools) and calls `createSchema`.
+    *   **Schema Management (`createSchema`):** Executes `CREATE TABLE IF NOT EXISTS` for all tables: `articles`, `llm_scores`, `feedback`, `labels`. Defines columns, primary keys, foreign keys, and crucially, a `UNIQUE(article_id, model)` constraint on the `llm_scores` table to enable `ON CONFLICT` clauses for upserting scores. Also creates relevant indexes.
+    *   **CRUD Operations:** Provides functions like `InsertArticle` (with `ON CONFLICT DO NOTHING`), `InsertLLMScore` (uses `ON CONFLICT` to update), `InsertFeedback`, `InsertLabel`, `FetchArticles` (with filtering/pagination), `FetchArticleByID`, `FetchLLMScores`, `UpdateArticleScoreLLM`, `ArticleExistsByURL`, `ArticleExistsBySimilarTitle`.
     *   **Error Handling:** Uses `handleError` to wrap DB errors into `apperrors`.
     *   **Dependencies:** `modernc.org/sqlite`, `github.com/jmoiron/sqlx`, `internal/apperrors`.
 *   **Debugging Points:**
@@ -297,21 +299,21 @@ This package contains the core logic for interacting with LLMs, calculating bias
 
 ### 4.2. Application Errors (`internal/apperrors/`)
 
-*   **Purpose:** Provides a standardized way to represent and handle errors throughout the application.
+*   **Purpose:** Provides a standardized way to represent and handle errors throughout the application, ensuring consistent error structures for logging and API responses.
 *   **`errors.go`:**
-    *   **`AppError` Struct:** Custom error type with `Code`, `Message`, and `Cause` (for wrapping).
-    *   **Key Functions:** `New`, `Wrap`, `HandleError`, `Join`. Implements `error`, `errors.Is`, `errors.Unwrap` interfaces.
-    *   **Role:** Enables consistent error logging, checking, and mapping to API responses.
+    *   **`AppError` Struct:** Custom error type with `Code` (e.g., "not_found", "validation_error"), `Message` (user-friendly), and `Cause` (for wrapping underlying errors).
+    *   **Key Functions:** `New` (creates a new AppError), `Wrap` (wraps an existing error with AppError context), `HandleError` (often used in `internal/db` to convert DB errors to AppErrors), `Join` (combines multiple errors). Implements `error`, `errors.Is`, `errors.Unwrap` interfaces for compatibility with standard Go error handling.
+    *   **Role:** Enables consistent error logging, checking (e.g., `errors.Is(err, apperrors.ErrNotFound)`), and mapping to API responses (e.g., `internal/api/response.go` uses it to generate appropriate HTTP status codes and error JSON).
 
 ### 4.3. Metrics (`internal/metrics/`)
 
 *   **Purpose:** Defines structures and functions related to application metrics, both for Prometheus scraping and direct database querying.
-*   **`metrics.go`:**
-    *   **Purpose:** Defines structs for aggregated DB metrics (e.g., `ValidationMetric`, `FeedbackSummary`, `UncertaintyRate`) and functions to query corresponding DB tables/views (`GetValidationMetrics`, etc.).
-    *   **Usage:** Likely used by `/metrics/*` API endpoints. Assumes background population of metrics tables.
-*   **`prom.go`:**
-    *   **Purpose:** Sets up Prometheus metrics (Counters, Gauges) for LLM API interactions (`LLMRequestsTotal`, `LLMFailuresTotal`, `LLMFailureStreak`) using `prometheus/client_golang`.
-    *   **Usage:** Provides functions (`IncLLMRequest`, `IncLLMFailure`, etc.) to be called from the LLM interaction code. Requires `InitLLMMetrics` call at startup and a Prometheus scrape endpoint.
+*   **`prom.go` (`internal/metrics/prom.go`):**
+    *   **Purpose:** Sets up and exposes Prometheus metrics (Counters, Gauges, Histograms) for monitoring application behavior, particularly LLM API interactions (e.g., `LLMRequestsTotal`, `LLMFailuresTotal`, `LLMDurationSeconds`).
+    *   **Usage:** Provides functions like `IncLLMRequest`, `IncLLMFailure`, `ObserveLLMDuration` to be called from relevant parts of the LLM interaction code (`internal/llm/service_http.go`). Requires `InitLLMMetrics` call at application startup (typically in `cmd/server/main.go`) and a Prometheus scrape endpoint (usually `/metrics`, though the specific handler for Prometheus metrics might be part of a library or custom setup in `main.go`).
+*   **`metrics.go` (`internal/metrics/metrics.go`):**
+    *   **Purpose:** Defines structs for aggregated database-derived metrics (e.g., `ValidationMetric`, `FeedbackSummary`, `UncertaintyRate`) and functions to query corresponding DB tables or views (e.g., `GetValidationMetrics`, `GetFeedbackSummary`). These are distinct from the real-time Prometheus metrics.
+    *   **Usage:** These functions are typically called by specific API endpoints under `/metrics/*` (e.g., `/metrics/validation`, `/metrics/feedback`) defined in `cmd/server/main.go` to provide summary statistics based on persisted data.
 
 ---
 
@@ -364,8 +366,7 @@ The application uses SQLite as its database. The schema is defined in `internal/
 
 - **articles**: Stores article information and metadata, including composite scores.
 - **llm_scores**: Stores individual LLM model scores for articles.
-  - Contains a `UNIQUE(article_id, model)` constraint to enable `ON CONFLICT` clauses in SQL queries.
-  - This constraint is critical for the proper functioning of ensemble score updates.
+  - Contains a `UNIQUE(article_id, model)` constraint. This is critical for enabling `ON CONFLICT` clauses in SQL queries, allowing scores to be correctly upserted (updated if they exist, inserted if new) during ensemble score updates.
 - **feedback**: Stores user feedback on articles.
 - **labels**: Stores training labels for the system.
 

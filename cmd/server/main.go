@@ -105,43 +105,18 @@ func main() {
 	// The SimpleCache provides in-memory caching for API responses.
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager, progressManager, simpleCache)
 
-	// Register UI routes based on feature flag
-	if legacyHTML {
-		// Use legacy HTML rendering handlers
-		log.Println("Using legacy HTML rendering mode")
+	// Register UI routes - legacy mode is disabled
+	log.Println("Using static files with client-side JS mode")
 
-		// @Summary Get Articles
-		// @Description Fetches a list of articles with optional filters.
-		// @Tags Articles
-		// @Param source query string false "Filter by source"
-		// @Param leaning query string false "Filter by political leaning"
-		// @Param offset query int false "Pagination offset"
-		// @Param limit query int false "Pagination limit"
-		// @Success 200 {array} db.Article
-		// @Router /articles [get]
-		router.GET("/articles", legacyArticlesHandler(dbConn))
+	// Serve static HTML for articles list, client-side JS will call API
+	router.GET("/articles", func(c *gin.Context) {
+		c.File("./web/index.html")
+	})
 
-		// @Summary Get Article Details
-		// @Description Fetches details of a specific article by ID.
-		// @Tags Articles
-		// @Param id path int true "Article ID"
-		// @Success 200 {object} db.Article
-		// @Router /article/{id} [get]
-		router.GET("/article/:id", legacyArticleDetailHandler(dbConn))
-	} else {
-		// Use static file handlers with client-side JS
-		log.Println("Using static files with client-side JS mode")
-
-		// Serve static HTML for articles list, client-side JS will call API
-		router.GET("/articles", func(c *gin.Context) {
-			c.File("./web/index.html")
-		})
-
-		// Serve static HTML for article detail, client-side JS will call API
-		router.GET("/article/:id", func(c *gin.Context) {
-			c.File("./web/article.html")
-		})
-	}
+	// Serve static HTML for article detail, client-side JS will call API
+	router.GET("/article/:id", func(c *gin.Context) {
+		c.File("./web/article.html")
+	})
 
 	// Metrics endpoints
 	router.GET("/metrics/validation", func(c *gin.Context) {
