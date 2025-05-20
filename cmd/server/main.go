@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -38,9 +38,42 @@ import (
 
 // @host      localhost:8080
 // @BasePath  /api
+// @schemes   http https
+
+// @tag.name Articles
+// @tag.description Operations related to news articles
+// @tag.name Feedback
+// @tag.description Operations related to user feedback
+// @tag.name LLM
+// @tag.description Operations related to LLM processing and scoring
+// @tag.name Feeds
+// @tag.description Operations related to RSS feeds
+// @tag.name Admin
+// @tag.description Administrative operations
+// @tag.name Health
+// @tag.description Health check operations
+// @tag.name Scoring
+// @tag.description Operations related to article scoring and manual scoring
+// @tag.name Analysis
+// @tag.description Operations related to article analysis and summaries
+
+var (
+	legacyHTML bool
+)
+
+func init() {
+	flag.BoolVar(&legacyHTML, "legacy-html", false, "Use legacy HTML rendering instead of static files with client-side JS")
+}
 
 func main() {
+	flag.Parse()
+
+	// Override the legacy HTML flag to always be false
+	legacyHTML = false
+
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
+	log.Printf("Legacy HTML mode: %v", legacyHTML)
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found or error loading .env file:", err)
@@ -72,24 +105,18 @@ func main() {
 	// The SimpleCache provides in-memory caching for API responses.
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager, progressManager, simpleCache)
 
-	// @Summary Get Articles
-	// @Description Fetches a list of articles with optional filters.
-	// @Tags Articles
-	// @Param source query string false "Filter by source"
-	// @Param leaning query string false "Filter by political leaning"
-	// @Param offset query int false "Pagination offset"
-	// @Param limit query int false "Pagination limit"
-	// @Success 200 {array} db.Article
-	// @Router /articles [get]
-	router.GET("/articles", articlesHandler(dbConn))
+	// Register UI routes - legacy mode is disabled
+	log.Println("Using static files with client-side JS mode")
 
-	// @Summary Get Article Details
-	// @Description Fetches details of a specific article by ID.
-	// @Tags Articles
-	// @Param id path int true "Article ID"
-	// @Success 200 {object} db.Article
-	// @Router /article/{id} [get]
-	router.GET("/article/:id", articleDetailHandler(dbConn))
+	// Serve static HTML for articles list, client-side JS will call API
+	router.GET("/articles", func(c *gin.Context) {
+		c.File("./web/index.html")
+	})
+
+	// Serve static HTML for article detail, client-side JS will call API
+	router.GET("/article/:id", func(c *gin.Context) {
+		c.File("./web/article.html")
+	})
 
 	// Metrics endpoints
 	router.GET("/metrics/validation", func(c *gin.Context) {
@@ -287,13 +314,5 @@ func articlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		c.Header("Content-Type", "text/html")
 		c.String(200, html)
-	}
-}
-
-// TODO: Restore articleDetailHandler function definition
-func articleDetailHandler(dbConn *sqlx.DB) gin.HandlerFunc {
-	// Placeholder implementation
-	return func(c *gin.Context) {
-		c.String(http.StatusNotImplemented, "Handler not implemented yet")
 	}
 }

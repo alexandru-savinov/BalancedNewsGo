@@ -91,3 +91,15 @@ type StandardResponse struct {
 type ManualScoreRequest struct {
 	Score float64 `json:"score" example:"0.5" binding:"required"` // Score value between -1.0 and 1.0
 }
+
+type ArticleResponse struct {
+	ArticleID      int64    `json:"article_id"`
+	Title          string   `json:"title"`
+	Content        string   `json:"content"`
+	URL            string   `json:"url"`
+	Source         string   `json:"source"`
+	CompositeScore *float64 `json:"composite_score"`
+	Confidence     *float64 `json:"confidence"`
+	PubDate        string   `json:"pub_date"`
+	CreatedAt      string   `json:"created_at"`
+}

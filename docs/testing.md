@@ -6,7 +6,7 @@ This document provides information on how to test the NewsBalancer Go applicatio
 
 ## Recent Improvements
 
-Based on recent debugging efforts (documented in `docs/pr/`), the following improvements have been made:
+Based on recent debugging efforts (documented in `docs/PR/`), the following improvements have been made:
 
 1. **Schema Fix**: Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table to fix SQL `ON CONFLICT` issues
 2. **Enhanced Documentation**: Detailed troubleshooting steps for common test failures
@@ -21,10 +21,11 @@ Based on recent debugging efforts (documented in `docs/pr/`), the following impr
 | `api` | ✅ PASS | All API endpoints function correctly |
 | Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
 | Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
-| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation (see `docs/pr/todo_llm_test_fixes.md`) |
+| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures related to score calculation logic. Specific details are pending further investigation and documentation. |
 | `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
 | `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
 | `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
+| `updated_backend` | ❌ FAIL | Advanced, strict API and edge-case tests. Fails due to stricter status/schema checks, chained variables, and more endpoints. See below. |
 
 ## Test Suites
 
@@ -67,12 +68,12 @@ For successful test execution:
    - The `llm_scores` table must have the `UNIQUE(article_id, model)` constraint for `ON CONFLICT` clauses to work
 
 3. **Port Requirements**
-   - The server runs on port 8080 during tests
-   - Ensure no other processes are using this port
+   - The server runs on port 8080 during tests and for general local execution (e.g., via `make run` or `go run cmd/server/main.go`).
+   - Ensure no other processes are using this port. Failure to do so will result in a `bind: Only one usage of each socket address...` error, as observed in `make run` attempts when the port is occupied.
 
 ## Root Causes of Common Failures
 
-Based on recent debugging (see `docs/pr/test_fixes_summary.md`), we identified two primary issues that cause test failures:
+Based on recent debugging (see `docs/PR/test_system_analysis.md`), we identified two primary issues that cause test failures:
 
 1. **SQL Schema Constraint Mismatch**: Without a `UNIQUE(article_id, model)` constraint on the `llm_scores` table, SQL `ON CONFLICT` clauses fail with:
    ```
@@ -86,6 +87,8 @@ Based on recent debugging (see `docs/pr/test_fixes_summary.md`), we identified t
 ### 1. Port Conflicts
 
 **Error:** `listen tcp :8080: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted`
+
+This error indicates that port 8080 is already in use by another application. This can happen if a previous server instance did not shut down correctly, or if another service is using the same port. This is a common issue when trying to run the server via `make run` or `go run cmd/server/main.go` if the port is not free.
 
 **Solution:**
 ```powershell
@@ -159,10 +162,77 @@ Review these logs to diagnose failures. Common patterns to look for:
    - Ensure database schemas in code match what SQL queries expect
    - Test `ON CONFLICT` clauses against actual table constraints
 
+## Database Maintenance
+
+### Database Recreation
+
+If you encounter persistent database corruption issues or test failures related to the database, you may need to recreate the database. A PowerShell script (`recreate_db.ps1`) is available to automate this process.
+
+#### Prerequisites
+- PowerShell 5.1 or higher
+- SQLite3 command-line tool in your PATH
+- Go installed and in your PATH
+
+#### Running the Database Recreation Script
+
+```powershell
+./recreate_db.ps1
+```
+
+The script performs the following steps:
+1. Creates a backup of the existing database files with timestamps
+2. Stops any processes that might be using the database
+3. Removes corrupted database files
+4. Recreates the database using the application's built-in InitDB function
+5. Verifies the database creation and schema integrity
+6. Runs essential tests to confirm functionality
+
+#### Common Database Issues
+
+1. **Schema Corruption**: Indicated by `PRAGMA integrity_check` failures or unexpected schema changes
+2. **Lock Contention**: When multiple processes try to access the database simultaneously
+3. **Missing Constraints**: Particularly the `UNIQUE(article_id, model)` constraint on `llm_scores` table
+4. **WAL Mode Issues**: Problems with `-shm` and `-wal` files in Write-Ahead Logging mode
+
+#### Manual Database Reset
+
+If the script fails or you prefer to reset manually:
+
+1. Stop all running server instances
+2. Backup the current database (if needed)
+3. Delete `news.db`, `news.db-shm`, and `news.db-wal`
+4. Run `go run ./cmd/reset_test_db` to recreate the database
+5. Verify with `sqlite3 news.db "PRAGMA integrity_check;"`
+
 ## Outstanding Issues
 
-See `docs/pr/todo_llm_test_fixes.md` for a detailed plan to address:
+Detailed investigation and documentation are pending for:
 
-1. **LLM Unit Test Failures**: Multiple unit tests in the `internal/llm` package need fixes related to score calculation
-2. **Missing Test Collections**: Several Newman test collections need to be created or acquired
-3. **Test Infrastructure Improvements**: Suggestions for improving the test process and automation 
+1. **LLM Unit Test Failures**: Multiple unit tests in the `internal/llm` package are failing due to issues related to score calculation logic. A full breakdown of these issues needs to be documented.
+2. **Missing Test Collections**: Several Newman test collections (`extended_rescoring_collection.json`, `debug_collection.json`, `confidence_validation_tests.json`) need to be created or acquired to enable the `all`, `debug`, and `confidence` test suites.
+3. **Test Infrastructure Improvements**: Ongoing review for potential improvements to the test process and automation.
+
+## Additional Test Suite: `updated_backend_tests.json`
+
+A new, more comprehensive and strict test suite is available:
+- **File:** `postman/updated_backend_tests.json`
+- **Purpose:** Covers all endpoints, including advanced features (bias analysis, feed management, summary, SSE, etc.), and expects precise status codes, error messages, and response schemas.
+- **How to run:**
+  ```powershell
+  npx newman run postman/updated_backend_tests.json --reporters cli --timeout-request 5000 > test-results/updated_backend_cli.txt
+  ```
+- **Typical issues:**
+  - Fails if test data is not unique (e.g., duplicate article URLs)
+  - Fails if environment variables (like `articleId`) are not set due to earlier failures
+  - Fails if API error messages or status codes do not match exactly
+  - Fails on endpoints not present or not fully implemented in the backend
+  - More likely to expose bugs in chaining, error handling, and advanced flows
+
+### Troubleshooting `updated_backend_tests.json` failures
+- **Reset test data** before running (clean DB, unique URLs)
+- **Check environment variable chaining** (ensure each test sets up what the next needs)
+- **Align API error messages and status codes** with test expectations
+- **Implement all tested endpoints** (bias, ensemble, summary, SSE, etc.)
+- **Review `test-results/updated_backend_cli.txt`** for detailed failure reasons
+
+> **Note:** The `unified_backend_tests.json` suite is more forgiving and will pass even if some advanced features or strict error handling are missing. Use `updated_backend_tests.json` for full coverage and to catch subtle or edge-case bugs. 

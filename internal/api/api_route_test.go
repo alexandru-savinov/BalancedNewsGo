@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
@@ -117,7 +119,7 @@ func TestSafeHandler(t *testing.T) {
 	if okErrorField {
 		messageVal, okMessageVal := errorField["message"].(string)
 		assert.True(t, okMessageVal, "\"message\" field in error should be a string")
-		assert.Contains(t, messageVal, "Internal server error")
+		assert.Contains(t, strings.ToLower(messageVal), "internal server error")
 	} else {
 		t.Log("Skipping message check as error field was not a map")
 	}
@@ -338,34 +340,45 @@ func TestArticleToPostmanSchema(t *testing.T) {
 	// Create test article
 	score := 0.5
 	confidence := 0.8
+	scoreSource := "llm"
+	now := time.Now()
 	article := &db.Article{
 		ID:             123,
 		Title:          "Test Article",
 		Content:        "Test Content",
 		URL:            "http://test.com",
 		Source:         "Test Source",
+		PubDate:        now,
+		CreatedAt:      now,
 		CompositeScore: &score,
 		Confidence:     &confidence,
+		ScoreSource:    &scoreSource,
 	}
 
 	// Convert to schema
 	result := articleToPostmanSchema(article)
 
 	// Verify result
-	assert.Equal(t, int64(123), result["article_id"])
-	assert.Equal(t, "Test Article", result["Title"])
-	assert.Equal(t, "Test Content", result["Content"])
-	assert.Equal(t, "http://test.com", result["URL"])
-	assert.Equal(t, "Test Source", result["Source"])
+	assert.Equal(t, int64(123), result["id"])
+	assert.Equal(t, "Test Article", result["title"])
+	assert.Equal(t, "Test Content", result["content"])
+	assert.Equal(t, "http://test.com", result["url"])
+	assert.Equal(t, "Test Source", result["source"])
+	assert.Equal(t, now, result["pub_date"])
+	assert.Equal(t, now, result["created_at"])
 
 	// Fix pointer comparison - need to check the value, not the pointer
-	resultScore, ok := result["CompositeScore"].(*float64)
-	assert.True(t, ok, "CompositeScore should be a *float64")
+	resultScore, ok := result["composite_score"].(*float64)
+	assert.True(t, ok, "composite_score should be a *float64")
 	assert.Equal(t, score, *resultScore)
 
-	resultConfidence, ok := result["Confidence"].(*float64)
-	assert.True(t, ok, "Confidence should be a *float64")
+	resultConfidence, ok := result["confidence"].(*float64)
+	assert.True(t, ok, "confidence should be a *float64")
 	assert.Equal(t, confidence, *resultConfidence)
+
+	resultScoreSource, ok := result["score_source"].(*string)
+	assert.True(t, ok, "score_source should be a *string")
+	assert.Equal(t, scoreSource, *resultScoreSource)
 }
 
 // TestStrPtr tests the strPtr helper function

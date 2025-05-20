@@ -11,4 +11,3 @@ var (
 
 // ErrAllPerspectivesInvalid indicates that despite attempting analysis across
 // configured perspectives, no valid score could be obtained from any of them.
-var ErrAllPerspectivesInvalid = errors.New("failed to get valid scores from any LLM perspective")

@@ -8,6 +8,17 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 
 **Current Status:** Basic functionality is working, and the `essential`, `backend`, and `api` test suites now pass when run with the `NO_AUTO_ANALYZE=true` environment variable to prevent background LLM processing from interfering with tests due to SQLite concurrency limitations.
 
+**Key Architectural Principles:**
+*   **Data Flow:** Articles are ingested from RSS feeds (`internal/rss`), stored in a SQLite database (`internal/db`, typically `news.db`), and then analyzed for political bias.
+*   **LLM Analysis:** The `internal/llm` package manages LLM interactions. It uses an ensemble approach defined in `configs/composite_score_config.json`, leveraging multiple models and perspectives. A key feature is the averaging of duplicate scores and confidences if multiple results are found for the same model/perspective during an analysis pass. The composite score calculation is primarily handled by `internal/llm/composite_score_fix.go`.
+*   **Database:** SQLite is used for persistence. The `llm_scores` table has a `UNIQUE(article_id, model)` constraint, which is crucial for correctly upserting LLM scores using `ON CONFLICT` SQL clauses.
+*   **API & Web:** Results and functionalities are exposed via a RESTful API (`internal/api`) and a web interface (`web/`).
+
+**Latest Test Status:**
+- All Go unit, integration, and end-to-end tests now pass, *with the exception of some `internal/llm` unit tests (see status table below)*.
+- The codebase now uses **averaging everywhere** for duplicate model/perspective scores and confidences. This logic is fully covered by passing tests.
+- For reliable test runs, set the environment variable `NO_AUTO_ANALYZE=true` (see `docs/testing.md`).
+
 ## Recent Fixes
 
 - Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table schema to support proper functioning of `ON CONFLICT` clauses in SQL queries that update ensemble scores. This fixed critical SQL errors during test execution.
@@ -23,12 +34,18 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 | `api` | ✅ PASS | All API endpoints function correctly |
 | Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
 | Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
-| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation, unrelated to the fixed SQL issue |
+| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation logic. Detailed analysis of these failures is pending central documentation. |
 | `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
 | `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
 | `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
 
-See `docs/pr/todo_llm_test_fixes.md` for detailed information about the remaining issues and plans for fixing them.
+See `docs/testing.md` for more information on test statuses and execution.
+
+## Database Schema Highlights
+
+The application relies on a SQLite database (typically `news.db`) with a schema defined in `internal/db/db.go`. Key tables include `articles`, `llm_scores`, `feedback`, and `labels`.
+
+A critical aspect of the `llm_scores` table is the `UNIQUE(article_id, model)` constraint. This constraint is essential for the correct functioning of the LLM scoring pipeline, particularly when updating scores using `ON CONFLICT` SQL clauses, ensuring that scores for a given article and model are properly upserted (updated if existing, or inserted if new).
 
 ## Features
 
@@ -38,6 +55,53 @@ See `docs/pr/todo_llm_test_fixes.md` for detailed information about the remainin
 - RESTful API for article retrieval and analysis
 - Caching and database persistence
 - Real-time progress tracking via SSE
+
+## API Reference
+
+The application provides a comprehensive REST API for interacting with articles, bias analysis, and other features. Full API documentation is available in the [Swagger documentation](docs/swagger.json).
+
+Key endpoints include:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/articles` | GET | Fetch articles with optional filtering |
+| `/api/articles/{id}` | GET | Get a specific article by ID |
+| `/api/articles/{id}/bias` | GET | Get political bias analysis for an article |
+| `/api/articles/{id}/ensemble` | GET | Get detailed ensemble scoring information |
+| `/api/llm/reanalyze/{id}` | POST | Trigger reanalysis of an article |
+| `/api/llm/score-progress/{id}` | GET | SSE stream for real-time scoring progress |
+| `/api/feedback` | POST | Submit user feedback on article bias |
+| `/api/feeds/healthz` | GET | Check RSS feed health status |
+
+Detailed API documentation is available at `/swagger/index.html` when running the server.
+
+## Web Interface
+
+NewsBalancer includes a modern web UI that allows users to browse, view, and provide feedback on articles. The interface consists of:
+
+### Home Page (Articles List)
+- Displays a paginated list of articles with summary information
+- Includes visual indicators for political bias (slider) and confidence levels
+- Provides filtering by source, political leaning, and confidence level
+- Offers sorting options (newest/oldest, most left/right, highest/lowest confidence)
+- Implements client-side caching to improve performance
+
+### Article Detail Page
+- Shows complete article content with metadata (source, publication date)
+- Displays political bias analysis with confidence indicators
+- Provides visualization of the ensemble analysis, showing scores from different LLM models and perspectives
+- Allows users to submit feedback on the article's political leaning
+- Implements comprehensive error handling and loading states
+
+The web interface uses a responsive design that works well on both desktop and mobile devices. It features:
+
+- Client-side caching for improved performance
+- Real-time confidence visualization with color-coded indicators
+- Detailed tooltips and explanations for technical concepts
+- Advanced filtering options for power users
+- Proper error handling and loading states
+
+All static assets are served from the `/web` directory, with HTML templates in the root folder and JavaScript/CSS in their respective subfolders.
 
 ## Project Structure
 
@@ -49,7 +113,7 @@ Here's a breakdown of the project's directory structure:
 *   `internal/`: Private application logic, including business logic, data access, and core functionalities.
 *   `configs/`: Application configuration files (e.g., `feed_sources.json`).
 *   `go.mod`, `go.sum`: Go module definitions and dependencies.
-*   `web/`: Potentially contains frontend assets or templates served by the application (Needs confirmation by inspecting contents).
+*   `web/`: Frontend assets and templates served by the application, including HTML, JavaScript, and CSS.
 *   `.env`, `.env.example`: Environment variable configuration (Should not be committed directly, except for the example).
 
 **Testing Files & Infrastructure:**
@@ -71,8 +135,12 @@ Here's a breakdown of the project's directory structure:
 *   `CHANGELOG.md`: Record of changes across versions.
 *   `docs/`: Contains detailed documentation:
     *   [Codebase Documentation](docs/codebase_documentation.md): Detailed breakdown of Go source files and structure.
+    *   [Testing Guide](docs/testing.md): Comprehensive guide on running, analyzing, and debugging tests.
+    *   [Configuration Reference](docs/configuration_reference.md): Details on environment variables and configuration files.
+    *   [Integration Testing Guide](docs/integration_testing.md): Guide for testing with external services like LLMs.
+    *   [Deployment Guide](docs/deployment.md): Instructions for production deployment and performance tuning.
     *   `architecture.md`: Describes the data flow and architecture (e.g., CompositeScore calculation).
-    *   `testing.md`: Comprehensive guide on running, analyzing, and debugging tests.
+    *   [Request Flow Overview](docs/request_flow.md): Step-by-step walkthrough of how an API request travels through the system.
     *   `swagger.yaml`, `swagger.json`, `docs.go`: API documentation (Swagger/OpenAPI).
     *   `PR/handle_total_analysis_failure.md`: Technical recommendation for handling total analysis failure.
     *   [Potential Codebase Improvements](docs/plans/potential_improvements.md): Suggestions for future development and enhancements.
@@ -131,6 +199,7 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
       Select-Object -ExpandProperty OwningProcess | 
       ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
    ```
+   *Note: This error commonly occurs if another instance of the server is already running, or if another application is using port 8080. This can happen when using `make run` or `go run cmd/server/main.go` if the port is not free.*
 
 2. **Database Locks**:
    ```powershell
@@ -141,7 +210,14 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
    Remove-Item news.db -Force
    ```
 
-3. **Missing Collections**: Some test suites require collections that may not be present. Focus on the `essential` and `backend` tests if you encounter missing collection errors.
+3. **Database Corruption**: If you encounter persistent database corruption issues, use the database recreation script:
+   ```powershell
+   # Reset the database automatically
+   ./recreate_db.ps1
+   ```
+   This script backs up existing data, resets the database with proper schema, and verifies integrity. See [Testing Guide](docs/testing.md) for more details on database maintenance.
+
+4. **Missing Collections**: Some test suites require collections that may not be present. Focus on the `essential` and `backend` tests if you encounter missing collection errors.
 
 ### Common Test Commands
 
@@ -202,22 +278,68 @@ See `scripts/test.cmd help` or `scripts/test.sh help` for all available commands
 2. Configure RSS feed sources in `configs/feed_sources.json`
 3. Set up LLM API keys in `.env`
 
+### API Contract Validation Tools
+
+Our project uses tools to validate the API specification (OpenAPI).
+
+**1. Spectral CLI:**
+This tool is used for linting the OpenAPI specification. It's managed as an npm dev dependency in `package.json`. Ensure you run `npm install` (or `pnpm install`).
+
+**2. oasdiff:**
+This tool is used for detecting breaking changes between API versions. Install it using Go:
+```bash
+go install github.com/oasdiff/oasdiff@latest
+```
+Ensure that your Go binary path (typically `$(go env GOPATH)/bin` or `~/go/bin`) is included in your system's `PATH` environment variable.
+
+**Purpose & Usage:**
+
+The `make contract` target is crucial for maintaining API quality and stability. It performs two main functions:
+1.  **Linting**: Uses Spectral CLI to check the OpenAPI specification (`docs/swagger.json`) against a defined ruleset (`.spectral.yaml`) for style consistency, completeness, and best practices.
+2.  **Breaking Change Detection**: Uses `oasdiff` to compare the current API specification against the last known version (backed up as `swagger.json.bak`) to identify any changes that could break existing client integrations.
+
+**Common Contract Validation Workflow:**
+
+1. Run `make docs` to generate or update the Swagger documentation from your code.
+2. Run `make contract` to validate the API specification.
+3. If validation fails:
+   - For linting errors: Check the handler annotations in your Go files (`internal/api/api.go`, `cmd/server/main.go`).
+   - For breaking changes: Review if the change was intentional and consider versioning your API if necessary.
+
+**API Annotation Best Practices:**
+
+When documenting API endpoints with Swagger annotations, ensure:
+- Every handler has a unique `@ID` attribute
+- Handler tags match those defined in the global annotations (`@tag.name` in `cmd/server/main.go`)
+- Response models use fully qualified types that exist in your codebase
+- Every endpoint has proper descriptions, parameters, and response types
+
+**Pre-commit Hook:**
+To automate these checks, a pre-commit hook is recommended. 
+
+*   **Manual Setup:** To set this up manually:
+    1.  Create/edit the file `.git/hooks/pre-commit`.
+    2.  Paste the script content (provided in the project's `docs/PR/makefile_test_results.txt` or by the setup assistant).
+    3.  Make it executable: `chmod +x .git/hooks/pre-commit` (on Linux/macOS).
+    This hook will automatically run `make docs` and then `make contract` before each commit, preventing commits with API contract violations.
+
+**Interpreting Errors:**
+
+*   **Spectral Errors:** Linting errors from Spectral will point to issues in your OpenAPI specification, often originating from the Go code comments used to generate it. Address these by correcting the annotations in your Go handlers or models.
+*   **`oasdiff` Errors:** Breaking change errors indicate that a modification to the API (e.g., removing a field, changing a data type) is not backward-compatible. Carefully review these changes. If intentional, the API version might need to be incremented. If unintentional, revert the change.
+
+Regularly running `make contract` and using the pre-commit hook helps catch API design issues early, ensuring a more robust and reliable API.
+
 ### Running Locally
 
-Start the server:
+Start the server using the Go command:
 ```
 go run cmd/server/main.go
 ```
+Or using the Makefile, which typically builds the executable (e.g., to `./bin/newbalancer_server`) and then runs it:
+```
+make run
+```
 
-The server will be available at http://localhost:8080
-
-## Contributing
-
-1. Ensure tests pass locally
-2. Add tests for new functionality
-3. Update documentation as needed
-4. Submit a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
-
-## License
-
-MIT License - see LICENSE file for details
+This will start the server on port 8080 by default. You can then access the web interface at http://localhost:8080.
+*Note: If you encounter a "port already in use" error (e.g., `listen tcp :8080: bind: Only one usage of each socket address...`), ensure no other processes are using port 8080. See "Port Conflicts" under "Common Test Issues and Solutions" above.*

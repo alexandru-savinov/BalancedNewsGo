@@ -40,6 +40,10 @@ const (
 // MockLLMClient is a mock implementation of the llm.Client interface
 type MockLLMClient struct {
 	mock.Mock
+	scoreWithModelFunc    func(*db.Article, string) (float64, error)
+	getConfigFunc         func() *llm.CompositeScoreConfig
+	getHTTPLLMTimeoutFunc func() time.Duration
+	setHTTPLLMTimeoutFunc func(time.Duration)
 }
 
 // AnalyzeArticle mocks the llm.Client.AnalyzeArticle method
@@ -847,27 +851,97 @@ func TestGetArticlesHandlerWithDB(t *testing.T) {
 	assert.Len(t, dataVal, 0)
 }
 
-func TestGetArticleByIDHandlerWithDB(t *testing.T) {
-	t.Parallel()
-	mock := &MockDBOperations{}
-	mock.On("FetchArticleByID", Anything, Anything).Return(&db.Article{}, nil)
-	router := setupTestRouter(mock)
+func TestGetArticleByIDHandlerAdditional(t *testing.T) {
+	// Test successful retrieval
+	t.Run("successful retrieval", func(t *testing.T) {
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
 
-	// Valid request
-	req, _ := http.NewRequest("GET", articlesEndpoint+"/1", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	assert.Equal(t, http.StatusOK, w.Code)
+		article := db.Article{
+			ID:      1,
+			Title:   "Test Article",
+			URL:     "http://example.com/test",
+			Content: "This is test content",
+			Source:  "Test Source",
+			PubDate: time.Now(),
+		}
 
-	var body map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &body)
-	assert.NoError(t, err)
+		mockDB.On("FetchArticleByID", mock.Anything, int64(1)).Return(&article, nil)
 
-	successVal, okSuccess := body["success"].(bool)
-	assert.True(t, okSuccess, "\"success\" field should be a boolean")
-	assert.True(t, successVal, "\"success\" field should be true")
+		req, _ := http.NewRequest("GET", "/articles/1", nil)
 
-	dataVal, okData := body["data"].(map[string]interface{})
-	assert.True(t, okData, "\"data\" field should be a map[string]interface{}")
-	assert.NotEmpty(t, dataVal, "\"data\" field should not be empty")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		// Assert response
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		// Parse response body
+		var response map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		assert.NoError(t, err)
+
+		// Verify response contains article data
+		assert.Contains(t, response, "data")
+		articleData, ok := response["data"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, float64(1), articleData["id"])
+		assert.Equal(t, "Test Article", articleData["title"])
+
+		// Verify mock expectations
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test article not found
+	t.Run("article not found", func(t *testing.T) {
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
+
+		mockDB.On("FetchArticleByID", mock.Anything, int64(999)).Return(nil, db.ErrArticleNotFound)
+
+		req, _ := http.NewRequest("GET", "/articles/999", nil)
+
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+
+		mockDB.AssertExpectations(t)
+	})
+
+	// Test invalid ID
+	t.Run("invalid ID", func(t *testing.T) {
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
+
+		req, _ := http.NewRequest("GET", "/articles/invalid", nil)
+
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	// Test database error
+	t.Run("database error", func(t *testing.T) {
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
+
+		mockDB.On("FetchArticleByID", mock.Anything, int64(1)).Return(nil, errors.New("database error"))
+
+		req, _ := http.NewRequest("GET", "/articles/1", nil)
+
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+		mockDB.AssertExpectations(t)
+	})
 }
+
+// More tests can be added here if needed

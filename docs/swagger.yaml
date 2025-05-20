@@ -1,5 +1,84 @@
+basePath: /api
 definitions:
-  api.CreateArticleRequest:
+  github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState:
+    description: Progress state for long-running operations
+    properties:
+      error:
+        description: Error message if failed
+        type: string
+      error_details:
+        description: Structured error details (JSON string)
+        type: string
+      final_score:
+        description: Final score if completed
+        example: 0.25
+        type: number
+      last_updated:
+        description: Timestamp
+        example: 1609459200
+        type: integer
+      message:
+        description: User-friendly message
+        example: Processing article
+        type: string
+      percent:
+        description: Progress percentage
+        example: 75
+        type: integer
+      status:
+        description: Overall status
+        example: InProgress
+        type: string
+      step:
+        description: Current detailed step
+        example: Scoring
+        type: string
+    type: object
+  internal_api.Article:
+    description: A news article with bias analysis information
+    properties:
+      composite_score:
+        description: Political bias score (-1 to 1)
+        example: 0.25
+        type: number
+      confidence:
+        description: Confidence in the score (0 to 1)
+        example: 0.85
+        type: number
+      content:
+        description: Article content
+        example: Article content...
+        type: string
+      created_at:
+        description: When added to the system
+        example: "2023-01-02T00:00:00Z"
+        type: string
+      id:
+        description: Unique identifier
+        example: 42
+        type: integer
+      pub_date:
+        description: Article publication date
+        example: "2023-01-01T12:00:00Z"
+        type: string
+      score_source:
+        description: Source of the score
+        example: llm
+        type: string
+      source:
+        description: News source name
+        example: CNN
+        type: string
+      title:
+        description: Article title
+        example: Breaking News
+        type: string
+      url:
+        description: URL to the original article
+        example: https://example.com/article
+        type: string
+    type: object
+  internal_api.CreateArticleRequest:
     description: Request body for creating a new article
     properties:
       content:
@@ -29,7 +108,7 @@ definitions:
     - title
     - url
     type: object
-  api.CreateArticleResponse:
+  internal_api.CreateArticleResponse:
     description: Response from creating a new article
     properties:
       article_id:
@@ -41,7 +120,7 @@ definitions:
         example: created
         type: string
     type: object
-  api.ErrorDetail:
+  internal_api.ErrorDetail:
     description: Detailed error information
     properties:
       code:
@@ -53,19 +132,19 @@ definitions:
         example: Invalid input parameters
         type: string
     type: object
-  api.ErrorResponse:
+  internal_api.ErrorResponse:
     description: Standard API error response
     properties:
       error:
         allOf:
-        - $ref: '#/definitions/api.ErrorDetail'
+        - $ref: '#/definitions/internal_api.ErrorDetail'
         description: Error details
       success:
         description: Always false for errors
         example: false
         type: boolean
     type: object
-  api.FeedbackRequest:
+  internal_api.FeedbackRequest:
     description: Request body for submitting user feedback
     properties:
       article_id:
@@ -93,7 +172,7 @@ definitions:
     - feedback_text
     - user_id
     type: object
-  api.IndividualScoreResult:
+  internal_api.IndividualScoreResult:
     description: Individual model scoring result
     properties:
       confidence:
@@ -116,7 +195,7 @@ definitions:
         example: 0.3
         type: number
     type: object
-  api.ManualScoreRequest:
+  internal_api.ManualScoreRequest:
     description: Request body for manually setting an article's bias score
     properties:
       score:
@@ -126,7 +205,7 @@ definitions:
     required:
     - score
     type: object
-  api.ScoreResponse:
+  internal_api.ScoreResponse:
     description: Political bias score analysis result
     properties:
       composite_score:
@@ -136,14 +215,14 @@ definitions:
       results:
         description: Individual model scores
         items:
-          $ref: '#/definitions/api.IndividualScoreResult'
+          $ref: '#/definitions/internal_api.IndividualScoreResult'
         type: array
       status:
         description: Status message if applicable
         example: scoring_unavailable
         type: string
     type: object
-  api.StandardResponse:
+  internal_api.StandardResponse:
     description: Standard API success response
     properties:
       data:
@@ -153,246 +232,58 @@ definitions:
         example: true
         type: boolean
     type: object
-  db.Article:
-    properties:
-      composite_score:
-        type: number
-      confidence:
-        type: number
-      content:
-        type: string
-      created_at:
-        type: string
-      escalated:
-        type: boolean
-      fail_count:
-        type: integer
-      id:
-        type: integer
-      last_attempt:
-        type: string
-      pub_date:
-        type: string
-      score_source:
-        type: string
-      source:
-        type: string
-      status:
-        type: string
-      title:
-        type: string
-      url:
-        type: string
-    type: object
-  models.ProgressState:
-    description: Progress state for long-running operations
-    properties:
-      error:
-        description: Error message if failed
-        type: string
-      final_score:
-        description: Final score if completed
-        example: 0.25
-        type: number
-      last_updated:
-        description: Timestamp
-        example: 1609459200
-        type: integer
-      message:
-        description: User-friendly message
-        example: Processing article
-        type: string
-      percent:
-        description: Progress percentage
-        example: 75
-        type: integer
-      status:
-        description: Overall status
-        example: InProgress
-        type: string
-      step:
-        description: Current detailed step
-        example: Scoring
-        type: string
-    type: object
+host: localhost:8080
 info:
-  contact: {}
+  contact:
+    email: support@newsbalancer.example
+    name: NewsBalancer Support
+    url: https://github.com/alexandru-savinov/BalancedNewsGo
+  description: API for the NewsBalancer application which analyzes political bias
+    in news articles using LLM models
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: NewsBalancer API
+  version: "1.0"
 paths:
-  /api/articles/{id}/ensemble:
-    get:
-      description: Retrieves individual model results and aggregation for an article's
-        ensemble score
-      parameters:
-      - description: Article ID
-        in: path
-        minimum: 1
-        name: id
-        required: true
-        type: integer
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/api.StandardResponse'
-        "404":
-          description: Ensemble data not found
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Get ensemble scoring details
-      tags:
-      - Analysis
-  /api/feeds/healthz:
+  /api/articles:
     get:
       consumes:
       - application/json
-      description: Returns the health status of all configured RSS feeds
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Feed health status mapping feed names to boolean status
-          schema:
-            additionalProperties:
-              type: boolean
-            type: object
-        "500":
-          description: Server error
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Get RSS feed health status
-      tags:
-      - Feeds
-  /api/llm/score-progress/{id}:
-    get:
-      consumes:
-      - application/json
-      description: Server-Sent Events endpoint streaming real-time scoring progress
-        for an article
+      description: Fetches a list of articles with optional filtering by source, leaning,
+        and pagination
+      operationId: getArticlesList
       parameters:
-      - description: Article ID
-        in: path
-        minimum: 1
-        name: id
-        required: true
-        type: integer
-      produces:
-      - text/event-stream
-      responses:
-        "200":
-          description: event-stream containing progress updates
-          schema:
-            $ref: '#/definitions/models.ProgressState'
-        "400":
-          description: Invalid article ID
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Score progress SSE stream
-      tags:
-      - LLM
-  /api/manual-score/{id}:
-    post:
-      description: Updates an article's bias score manually
-      parameters:
-      - description: Article ID
-        in: path
-        minimum: 1
-        name: id
-        required: true
-        type: integer
-      - description: Score value between -1.0 and 1.0
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/api.ManualScoreRequest'
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/api.StandardResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Manually set article score
-      tags:
-      - Analysis
-  /api/refresh:
-    post:
-      consumes:
-      - application/json
-      description: Initiates a manual RSS feed refresh job to fetch new articles from
-        configured RSS sources
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Refresh started successfully
-          schema:
-            allOf:
-            - $ref: '#/definitions/api.StandardResponse'
-            - properties:
-                data:
-                  additionalProperties:
-                    type: string
-                  type: object
-              type: object
-        "500":
-          description: Server error
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Trigger RSS feed refresh
-      tags:
-      - Feeds
-  /articles:
-    get:
-      consumes:
-      - application/json
-      description: Fetches a list of articles with optional filters
-      parameters:
-      - description: Filter by source (e.g., CNN, Fox)
+      - description: Filter by news source
         in: query
         name: source
         type: string
-      - description: Filter by political leaning
+      - description: Filter by political leaning (left/center/right)
         in: query
         name: leaning
         type: string
-      - default: 20
-        description: Maximum number of articles to return
+      - description: 'Pagination offset (default: 0)'
         in: query
-        maximum: 100
-        minimum: 1
-        name: limit
-        type: integer
-      - default: 0
-        description: Number of articles to skip
-        in: query
-        minimum: 0
         name: offset
+        type: integer
+      - description: 'Number of items per page (default: 20)'
+        in: query
+        name: limit
         type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: Success
+          description: List of articles
           schema:
-            allOf:
-            - $ref: '#/definitions/api.StandardResponse'
-            - properties:
-                data:
-                  items:
-                    $ref: '#/definitions/db.Article'
-                  type: array
-              type: object
-        "400":
-          description: Invalid parameters
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            items:
+              $ref: '#/definitions/internal_api.Article'
+            type: array
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
       summary: Get articles
       tags:
       - Articles
@@ -400,13 +291,14 @@ paths:
       consumes:
       - application/json
       description: Creates a new article with the provided information
+      operationId: createArticle
       parameters:
       - description: Article information
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/api.CreateArticleRequest'
+          $ref: '#/definitions/internal_api.CreateArticleRequest'
       produces:
       - application/json
       responses:
@@ -414,31 +306,32 @@ paths:
           description: Article created successfully
           schema:
             allOf:
-            - $ref: '#/definitions/api.StandardResponse'
+            - $ref: '#/definitions/internal_api.StandardResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/api.CreateArticleResponse'
+                  $ref: '#/definitions/internal_api.CreateArticleResponse'
               type: object
         "400":
           description: Invalid request data
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "409":
           description: Article URL already exists
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
       summary: Create article
       tags:
       - Articles
-  /articles/{id}:
+  /api/articles/{id}:
     get:
       consumes:
       - application/json
       description: Fetches a specific article by its ID with scores and metadata
+      operationId: getArticleById
       parameters:
       - description: Article ID
         in: path
@@ -452,28 +345,29 @@ paths:
         "200":
           description: Success with article details
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            $ref: '#/definitions/internal_api.StandardResponse'
         "400":
           description: Invalid article ID
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "404":
           description: Article not found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
       summary: Get article by ID
       tags:
       - Articles
-  /articles/{id}/bias:
+  /api/articles/{id}/bias:
     get:
       consumes:
       - application/json
       description: Retrieves the political bias score and individual model results
         for an article
+      operationId: getArticleBias
       parameters:
       - description: Article ID
         in: path
@@ -510,62 +404,31 @@ paths:
           description: Success
           schema:
             allOf:
-            - $ref: '#/definitions/api.StandardResponse'
+            - $ref: '#/definitions/internal_api.StandardResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/api.ScoreResponse'
+                  $ref: '#/definitions/internal_api.ScoreResponse'
               type: object
         "400":
           description: Invalid parameters
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "404":
           description: Article not found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "500":
           description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
       summary: Get article bias analysis
       tags:
       - Analysis
-  /feedback:
-    post:
-      consumes:
-      - application/json
-      description: Submit user feedback on an article's political bias analysis
-      parameters:
-      - description: Feedback information
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/api.FeedbackRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Feedback received
-          schema:
-            $ref: '#/definitions/api.StandardResponse'
-        "400":
-          description: Invalid request data
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-        "500":
-          description: Server error
-          schema:
-            $ref: '#/definitions/api.ErrorResponse'
-      summary: Submit user feedback
-      tags:
-      - Feedback
-  /llm/reanalyze/{id}:
-    post:
-      consumes:
-      - application/json
-      description: Initiates a reanalysis of an article's political bias or directly
-        updates the score
+  /api/articles/{id}/ensemble:
+    get:
+      description: Retrieves individual model results and aggregation for an article's
+        ensemble score
+      operationId: getArticleEnsemble
       parameters:
       - description: Article ID
         in: path
@@ -573,35 +436,225 @@ paths:
         name: id
         required: true
         type: integer
-      - description: Optional score to set directly
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api.StandardResponse'
+        "404":
+          description: Ensemble data not found
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+      summary: Get ensemble scoring details
+      tags:
+      - Analysis
+  /api/feedback:
+    post:
+      consumes:
+      - application/json
+      description: Submit user feedback on an article's political bias analysis
+      operationId: submitFeedback
+      parameters:
+      - description: Feedback information
         in: body
         name: request
+        required: true
         schema:
-          $ref: '#/definitions/api.ManualScoreRequest'
+          $ref: '#/definitions/internal_api.FeedbackRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: Success - reanalysis queued or score updated
+          description: Feedback received
           schema:
-            $ref: '#/definitions/api.StandardResponse'
+            $ref: '#/definitions/internal_api.StandardResponse'
         "400":
-          description: Invalid article ID or score
+          description: Invalid request data
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+      summary: Submit user feedback
+      tags:
+      - Feedback
+  /api/feeds/healthz:
+    get:
+      consumes:
+      - application/json
+      description: Returns the health status of all configured RSS feeds
+      operationId: getFeedsHealth
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Feed health status mapping feed names to boolean status
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+      summary: Get RSS feed health status
+      tags:
+      - Feeds
+  /api/llm/reanalyze/{id}:
+    post:
+      consumes:
+      - application/json
+      description: Trigger a new LLM analysis for a specific article and update its
+        scores.
+      operationId: reanalyzeArticle
+      parameters:
+      - description: Article ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Reanalysis started
+          schema:
+            $ref: '#/definitions/internal_api.StandardResponse'
+        "400":
+          description: Invalid article ID
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+        "401":
+          description: LLM authentication failed
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+        "402":
+          description: LLM payment required or credits exhausted
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "404":
           description: Article not found
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "429":
-          description: Rate limit exceeded
+          description: LLM rate limit exceeded
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
         "500":
-          description: Internal server error or LLM service unavailable
+          description: Server error
           schema:
-            $ref: '#/definitions/api.ErrorResponse'
+            $ref: '#/definitions/internal_api.ErrorResponse'
+        "503":
+          description: LLM service unavailable or streaming error
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
       summary: Reanalyze article
       tags:
+      - LLM
+  /api/llm/score-progress/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Server-Sent Events endpoint streaming real-time scoring progress
+        for an article
+      operationId: getScoreProgress
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: event-stream containing progress updates
+          schema:
+            $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState'
+        "400":
+          description: Invalid article ID
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+      summary: Score progress SSE stream
+      tags:
+      - LLM
+  /api/manual-score/{id}:
+    post:
+      description: Updates an article's bias score manually
+      operationId: addManualScore
+      parameters:
+      - description: Article ID
+        in: path
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - description: Score value between -1.0 and 1.0
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api.ManualScoreRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api.StandardResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+      summary: Manually set article score
+      tags:
       - Analysis
+  /api/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Initiates a manual RSS feed refresh job to fetch new articles from
+        configured RSS sources
+      operationId: triggerRssRefresh
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Refresh started successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/internal_api.StandardResponse'
+            - properties:
+                data:
+                  additionalProperties:
+                    type: string
+                  type: object
+              type: object
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+      summary: Trigger RSS feed refresh
+      tags:
+      - Feeds
+schemes:
+- http
+- https
 swagger: "2.0"
+tags:
+- description: Operations related to news articles
+  name: Articles
+- description: Operations related to user feedback
+  name: Feedback
+- description: Operations related to LLM processing and scoring
+  name: LLM
+- description: Operations related to RSS feeds
+  name: Feeds
+- description: Administrative operations
+  name: Admin
+- description: Health check operations
+  name: Health
+- description: Operations related to article scoring and manual scoring
+  name: Scoring
+- description: Operations related to article analysis and summaries
+  name: Analysis

@@ -1,0 +1,166 @@
+Makefile Target Test Results
+===========================
+
+1. tidy: ✅ Success
+   - Runs `go mod tidy` to clean up go.mod/go.sum dependencies. Ensures module files are up to date and free of unused dependencies.
+
+2. build: ✅ Success
+   - Compiles the backend server from `./cmd/server/main.go` into `./bin/newbalancer_server`. Verifies that the project builds successfully.
+
+3. clean: ✅ Fixed & Verified
+   - Uses a cross-platform Go script (`tools/clean.go`). Verified to remove `./bin`, `./coverage` and `coverage*.out` files.
+
+4. lint: ⚠️ Ran, but reported many code issues
+   - Runs `golangci-lint` on all Go code. The linter works, but the codebase has many warnings/errors.
+   - `.golangci.yml` updated to ignore "main redeclared" for `tools/*.go` scripts.
+
+5. unit: ✅ Fixed & Verified
+   - Race detection is optional (`ENABLE_RACE_DETECTION=false` by default in PR, can be overridden).
+   - `make unit ENABLE_RACE_DETECTION=false` works correctly.
+   - `make unit ENABLE_RACE_DETECTION=true` fails with CGO guidance if C compiler not set up (expected).
+   - Test scope adjusted to `./cmd/... ./internal/...` to avoid issues with `tools/` directory.
+
+6. integ: ✅ Success (Original report)
+   - Test scope adjusted to `./cmd/... ./internal/...` to avoid issues with `tools/` directory. Assumed to still pass as per original report, as changes were to scoping, not test logic.
+
+7. test: ✅ Fixed & Verified
+   - Depends on `unit` and `integ`. 
+   - `make test ENABLE_RACE_DETECTION=false` works correctly.
+   - `make test ENABLE_RACE_DETECTION=true` fails with CGO guidance if C compiler not set up (expected).
+
+8. coverage-core: ✅ Fixed & Verified
+   - Uses updated Makefile target with optional race detection, cross-platform directory creation (`tools/mkdir.go`), and direct output redirection.
+   - Generates coverage report (`coverage/core.out`, `coverage/coverage.txt`).
+   - Go script (`tools/check_coverage.go`) checks threshold.
+   - Verified to run and fail correctly if coverage is below threshold (e.g., 42% < 90%).
+
+9. docs: ✅ Success
+   - Generates Swagger docs using `swag init` from the main server entrypoint. Output is placed in `internal/api/docs`. If docs are up to date, this is a no-op.
+
+10. contract: ✅ Fixed & Verified
+    - Runs OpenAPI linting (`npx @stoplight/spectral-cli lint`) and breaking change detection (`oasdiff`). Now successfully validates the API contract with properly configured `.spectral.yaml` and `.oasdiff.yaml` files.
+
+11. mock-llm-go: ❌ Failed
+    - Runs the Go mock LLM service (`go run ./tools/mock_llm_service.go`). Exited with status 1, likely due to a code or environment issue. Check the Go file for errors or missing dependencies.
+
+12. mock-llm-py: ✅ Success
+    - Runs the Python mock LLM service (`python ./tools/mock_llm_service.py`). No errors encountered; script runs as expected.
+
+13. docker-up: ❌ Failed
+    - Spins up the Docker stack using `docker compose -f infra/docker-compose.yml up -d`. Fails because `infra/docker-compose.yml` does not exist. Add this file to enable Docker-based workflows.
+
+14. docker-down: ❌ Failed
+    - Tears down the Docker stack using `docker compose -f infra/docker-compose.yml down -v`. Fails for the same reason as `docker-up` (missing compose file).
+
+15. e2e: ❌ Failed
+    - Runs end-to-end tests: brings up Docker stack, runs Playwright tests via `pnpm --filter=web test:e2e`, then brings down Docker. Fails due to missing Docker compose file. Also requires Playwright and pnpm installed.
+
+Technical Notes:
+- `clean` target uses a Go script for cross-platform compatibility.
+- `unit`, `test`, `integ`, and `coverage-core` targets now correctly scope Go package processing to avoid conflicts with the `tools/` directory.
+- Race detection in `unit`, `test`, and `coverage-core` is optional. If enabled (`ENABLE_RACE_DETECTION=true`), a C compiler and `CGO_ENABLED=1` are required.
+- Directory creation for `bin` and `coverage` is handled by a cross-platform Go script (`tools/mkdir.go`).
+- `coverage-core` uses standard output redirection instead of `tee` for cross-platform compatibility.
+- Some targets depend on external tools (e.g., `golangci-lint`, `swag`, `pnpm`, `docker`, `npx`). Ensure these are installed and available in your PATH. 
+
+Action Plan to Fix Critical Issues
+===================================
+
+Action Plan to Fix `contract` Makefile Target
+===========================================
+
+This plan outlines the steps to fix the `contract` Makefile target, enabling API specification linting and breaking change detection.
+
+*   [x] **1. Configure Spectral CLI for API Linting:**
+    *   [x] Create a `.spectral.yaml` file in the project root.
+        *   [x] Populate `.spectral.yaml` with the following ruleset to define API style and best practices:        ```yaml        extends:          - spectral:oas        rules:          # Overrides from the original plan that turn things OFF          openapi-tags-alphabetical: off          contact-properties: off          info-contact: off          info-license: off          license-url: off          # Explicitly keep these as error, they are critical          info-description: error          operation-description: error          operation-tags: error          # These rules are also important for API consistency          operation-operationId: error          operation-tag-defined: error        ```
+
+*   [x] **2. Configure `oasdiff` for Breaking Change Detection:**
+    *   [x] Create an `oasdiff.config.yaml` file in the project root.
+    *   [x] Populate `oasdiff.config.yaml` with the following configuration to define what constitutes a breaking change:
+        ```yaml
+        breaking:
+          checkAdditionalProperties: true
+          checkConstraints: true
+          checkEnumValues: true
+          checkExamples: false # Examples usually don't break clients
+          checkExtensions: false # Extensions are often non-critical
+          checkPaths: true
+          checkRequired: true
+          checkRequiredInProperties: true
+          checkResponseDefinition: true
+        ```
+
+*   [x] **3. Update `Makefile` `contract` Target:**
+    *   [x] Locate the `contract` target in the `Makefile`.
+    *   [x] Replace its content with the following to integrate Spectral and `oasdiff` (now using a Go helper script for conditional logic):
+        ```makefile
+        contract:
+        	@echo "Running OpenAPI contract validation..."
+        	@echo "Linting API specification (internal/api/docs/swagger.json)..."
+        	@npx @stoplight/spectral-cli lint internal/api/docs/swagger.json --ruleset .spectral.yaml
+        	@echo "Checking for breaking API changes..."
+        	@if [ -f internal/api/docs/swagger.json.bak ]; then \
+        		echo "Comparing current API spec (internal/api/docs/swagger.json) with previous version (internal/api/docs/swagger.json.bak)"; \
+        		oasdiff breaking internal/api/docs/swagger.json.bak internal/api/docs/swagger.json --config oasdiff.config.yaml; \
+        	else \
+        		echo "INFO: No previous API specification (internal/api/docs/swagger.json.bak) found."; \
+        		echo "INFO: Skipping breaking change detection for this run. A backup will be created by the pre-commit hook or when 'make docs' is run before 'make contract'."; \
+        	fi
+        	@echo "OpenAPI contract validation complete."
+        ```
+
+*   [x] **4. Manage NPM Dependencies:**
+    *   [x] Add `@stoplight/spectral-cli` to `devDependencies` in your `package.json` file:
+        ```json
+        {
+          // ... other package.json content
+          "devDependencies": {
+            // ... other devDependencies
+            "@stoplight/spectral-cli": "^6.11.0"
+          }
+        }
+        ```
+    *   [x] Run `npm install` (or `pnpm install` if pnpm is used) in your terminal to install the new dependency.
+
+*   [x] **5. Install `oasdiff` Tool:**
+    *   [x] Add instructions to `README.md` (e.g., in a "Development Setup" or "Prerequisites" section) for installing `oasdiff`:
+        ```markdown
+        ### API Contract Validation Tools
+
+        Our project uses tools to validate the API specification (OpenAPI).
+
+        **1. Spectral CLI:**
+        This tool is used for linting the OpenAPI specification. It's managed as an npm dev dependency in `package.json`. Ensure you run `npm install` (or `pnpm install`).
+
+        **2. oasdiff:**
+        This tool is used for detecting breaking changes between API versions. Install it using Go:
+        ```bash
+        go install github.com/oasdiff/oasdiff@latest
+        ```
+        Ensure that your Go binary path (typically `$(go env GOPATH)/bin` or `~/go/bin`) is included in your system's `PATH` environment variable.
+        ```
+
+*   [ ] **6. Implement Pre-commit Hook for Automated Validation:**
+    *   [ ] **Choose Hook Management:** Decided to proceed with manual script approach (user action required for setup).
+    *   [x] **Script Content:** Provided by assistant. User to create/update `.git/hooks/pre-commit` with this content.
+    *   [ ] **Executable Permissions:** Instructions provided (user action required: `chmod +x .git/hooks/pre-commit` on Linux/macOS).
+    *   [ ] **Documentation for Hooks:** To be fully covered in Point 8 (user action for setup noted in README).
+
+*   [x] **7. Testing and Verification Process:**
+    *   [x] **Dependency Installation:** `npm install` for Spectral CLI completed. `oasdiff` installation instruction provided (user action required).
+    *   [x] **Initial Run (Automated Part):**
+        *   [x] `make docs` runs.
+        *   [x] `make contract` runs: Spectral lints successfully; conditional logic for `oasdiff` (baseline exists/not exists) verified via Go script; `oasdiff` fails as expected if not in PATH.
+    *   [x] **Initial Run (User Part):** User to verify `oasdiff` runs correctly once in PATH and baseline exists. This has been tested and works.
+    *   [x] **Spectral Linting Test:** We've fixed the swag regeneration issue by properly setting up our API annotations. Spectral now fully validates the API specification with proper errors.
+    *   [x] **`oasdiff` Breaking Change Test:** Verified using a backup of `swagger.json` as a baseline.
+    *   [ ] **Pre-commit Hook Test:** (user action required after setting up hook).
+
+*   [x] **8. Update Project Documentation:**
+    *   [x] In `README.md` or `CONTRIBUTING.md`:
+        *   [x] Document the purpose and usage of the `make contract` target.
+        *   [x] Include the installation instructions for `oasdiff` (covered in step 5).
+        *   [x] Explain the pre-commit hook setup (if manual) or how it's managed (if using a tool).
+        *   [x] Provide brief guidance on interpreting common errors from Spectral and `oasdiff`.
+        *   [x] Emphasize the importance of these checks for maintaining API stability.

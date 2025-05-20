@@ -41,7 +41,31 @@ cypress/
 playwright-tests/
 frontend/
 cypress.config.js
-playwright.config.tsnews.db*
+playwright.config.ts
+# news.db* # Replaced by specific entries below
 
 # Junk / Archived Development Files
 junk/
+
+# Added/Ensured patterns from reorganization plan:
+
+# Build Artifacts (extending existing)
+# *.exe is already covered above
+/bin/
+/build/
+
+# Runtime Database Files
+news.db
+news.db-shm
+news.db-wal
+
+# Coverage & Test Reports (extending existing)
+# *.out is already covered above
+*.html
+# /test-results/ is already covered above
+# /playwright-report/ is already covered above
+
+# IDE / OS / Project Junk (extending existing)
+# /junk/ is already covered above
+.DS_Store
+*.log 

@@ -1,13 +1,27 @@
 package llm
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+var now = time.Now()
+
+func createScoreWithConfidence(model string, score float64, confidence float64, t ...time.Time) db.LLMScore {
+	createdAt := now
+	if len(t) > 0 {
+		createdAt = t[0]
+	}
+	metadata := fmt.Sprintf(`{"confidence":%.2f}`, confidence)
+	return db.LLMScore{Model: model, Score: score, Metadata: metadata, CreatedAt: createdAt}
+}
 
 // TestComputeCompositeScoreWithAllZeroResponses tests the critical edge case
 // where all LLMs return empty or zero-value responses, including ensemble results.
@@ -32,29 +46,38 @@ func TestComputeCompositeScoreWithAllZeroResponses(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name: "All models return 0 score and 0 confidence",
+			name: "All models return invalid scores",
 			scores: []db.LLMScore{
-				{Model: "model1", Score: 0.0, Metadata: `{"confidence": 0.0}`},
-				{Model: "model2", Score: 0.0, Metadata: `{"confidence": 0.0}`},
-				{Model: "model3", Score: 0.0, Metadata: `{"confidence": 0.0}`},
+				{Model: "model1", Score: math.NaN(), Metadata: `{"confidence": 0.0}`},
+				{Model: "model2", Score: math.Inf(1), Metadata: `{"confidence": 0.0}`},
+				{Model: "model3", Score: -2.0, Metadata: `{"confidence": 0.0}`}, // Out of bounds
 			},
 			expectError:   true,
-			errorContains: "all LLMs returned empty or zero-confidence responses",
+			errorContains: ErrAllPerspectivesInvalid.Error(),
 		},
 		{
-			name: "Only ensemble score with non-zero confidence in meta",
+			name: "All models return zero confidence",
+			scores: []db.LLMScore{
+				{Model: "model1", Score: 0.1, Metadata: `{"confidence": 0.0}`},
+				{Model: "model2", Score: 0.2, Metadata: `{"confidence": 0.0}`},
+				{Model: "model3", Score: 0.3, Metadata: `{"confidence": 0.0}`},
+			},
+			expectError:   true,
+			errorContains: ErrAllPerspectivesInvalid.Error(),
+		},
+		{
+			name: "Only ensemble score with valid confidence",
 			scores: []db.LLMScore{
 				{
 					Model:    "ensemble",
-					Score:    0.7, // Use a non-zero score for clarity
+					Score:    0.7,
 					Metadata: `{"all_sub_results":[{"model":"model1","score":0.1,"confidence":0.8},{"model":"model2","score":-0.1,"confidence":0.7}],"confidence":0.9,"final_aggregation":{"weighted_mean":0,"variance":0.1,"uncertainty_flag":false},"per_model_results":{},"per_model_aggregation":{},"timestamp":"2024-04-28T12:00:00Z"}`,
 				},
 			},
-			expectError: false, // Expect no error, function returns ensemble score
-			// errorContains: "only ensemble scores found", // Commented out as no error is returned
+			expectError: false,
 		},
 		{
-			name: "Only ensemble score with zero confidence in meta",
+			name: "Only ensemble score with zero confidence",
 			scores: []db.LLMScore{
 				{
 					Model:    "ensemble",
@@ -63,16 +86,17 @@ func TestComputeCompositeScoreWithAllZeroResponses(t *testing.T) {
 				},
 			},
 			expectError:   true,
-			errorContains: "failed to get valid scores from any LLM perspective",
+			errorContains: ErrAllPerspectivesInvalid.Error(),
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := ComputeCompositeScoreWithConfidenceFixed(tc.scores, testCfg) // Pass testCfg
+			_, _, err := ComputeCompositeScoreWithConfidenceFixed(tc.scores, testCfg)
 			if tc.expectError {
 				assert.Error(t, err)
-				if err != nil && tc.errorContains != "" { // Check error is not nil before calling Contains
+				if err != nil && tc.errorContains != "" {
+					assert.ErrorIs(t, err, ErrAllPerspectivesInvalid)
 					assert.Contains(t, err.Error(), tc.errorContains)
 				}
 			} else {
@@ -95,186 +119,254 @@ func TestComputeCompositeScoreWithConfidence(t *testing.T) {
 	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, testCfg) // Pass testCfg
 	assert.NoError(t, err)
 	assert.InDelta(t, 0.0, score, 1e-9)
-	assert.InDelta(t, 1.0, confidence, 1e-9) // Assert confidence based on method
+	assert.InDelta(t, 0.85, confidence, 1e-9) // (0.9+0.8+0.85)/3 = 0.85
 }
 
 func TestComputeCompositeScoreEdgeCases(t *testing.T) {
-	tests := []struct {
-		name           string
-		scores         []db.LLMScore
-		expected       float64
-		configOverride *CompositeScoreConfig
-		description    string
-		expectError    bool
+	testCases := []struct {
+		name             string
+		scores           []db.LLMScore
+		configOverride   *CompositeScoreConfig
+		expectedScore    float64
+		expectedConf     float64
+		expectError      bool
+		expectedErrorIs  error
+		description      string
+		customAssertions func(t *testing.T, score float64, conf float64, err error)
 	}{
 		{
-			name:        "empty scores array",
-			scores:      []db.LLMScore{},
-			expected:    0.0,
-			description: "Empty scores array should return the default (0.0)",
-			expectError: true,
-		},
-		{
-			name: "extreme values within bounds",
-			scores: []db.LLMScore{
-				{Model: "left", Score: -1.0, Metadata: `{"confidence":0.9}`},
-				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: 1.0, Metadata: `{"confidence":0.85}`},
-			},
-			expected:    0.0,
-			description: "Extreme values within bounds should be averaged correctly",
+			name:            "empty scores array",
+			scores:          []db.LLMScore{},
+			expectedScore:   0.0,
+			expectedConf:    0.0,
+			expectError:     true,
+			expectedErrorIs: ErrAllPerspectivesInvalid,
+			description:     "Empty scores array should result in an error and default/zero values",
 		},
 		{
 			name: "values outside bounds",
 			scores: []db.LLMScore{
-				{Model: "left", Score: -2.0, Metadata: `{"confidence":0.9}`},
-				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: 2.0, Metadata: `{"confidence":0.85}`},
+				createScoreWithConfidence("left", -1.5, 0.9), // Outside default -1 to 1
+				createScoreWithConfidence("center", 0.1, 0.8),
+				createScoreWithConfidence("right", 1.5, 0.85), // Outside default -1 to 1
 			},
-			expected:    0.0,
-			description: "Values outside bounds should use default value (0.0)",
+			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:  0.1, // Only center score is valid
+			expectedConf:   0.8, // Only center confidence is valid
+			expectError:    false,
+		},
+		{
+			name: "all zero confidence",
+			scores: []db.LLMScore{
+				createScoreWithConfidence("left", 0.0, 0.0),
+				createScoreWithConfidence("center", 0.0, 0.0),
+				createScoreWithConfidence("right", 0.0, 0.0),
+			},
+			configOverride:  &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:   0.0,
+			expectedConf:    0.0,
+			expectError:     true,
+			expectedErrorIs: ErrAllPerspectivesInvalid,
+		},
+		{
+			name: "extreme values within bounds",
+			scores: []db.LLMScore{
+				createScoreWithConfidence("left", -1.0, 0.9),
+				createScoreWithConfidence("center", 0.0, 0.8),
+				createScoreWithConfidence("right", 1.0, 0.85),
+			},
+			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:  0.0,  // Avg(-1, 0, 1) = 0
+			expectedConf:   0.85, // (0.9+0.8+0.85)/3 = 0.85
+			expectError:    false,
 		},
 		{
 			name: "non-standard model names",
 			scores: []db.LLMScore{
-				{Model: "unknown-model-1", Score: -0.5, Metadata: `{"confidence":0.9}`},
-				{Model: "unknown-model-2", Score: 0.3, Metadata: `{"confidence":0.8}`},
+				createScoreWithConfidence("custom-left-model", -0.5, 0.9),
+				createScoreWithConfidence("custom-center-model", 0.0, 0.8),
+				createScoreWithConfidence("custom-right-model", 0.5, 0.85),
 			},
-			expected:    0.0, // DefaultMissing is 0.0 when no valid scores are found
-			description: "Non-standard model names should result in an error and default score",
-			expectError: true, // Should expect an error: "no valid scores found"
+			configOverride: &CompositeScoreConfig{
+				Models: []ModelConfig{
+					{ModelName: "custom-left-model", Perspective: "left"},
+					{ModelName: "custom-center-model", Perspective: "center"},
+					{ModelName: "custom-right-model", Perspective: "right"},
+				},
+				Formula: "average", HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, ConfidenceMethod: "count_valid",
+			},
+			expectedScore: 0.0,  // Avg(-0.5, 0, 0.5) = 0
+			expectedConf:  0.85, // (0.9+0.8+0.85)/3 = 0.85
+			expectError:   false,
 		},
 		{
 			name: "case insensitive model names",
 			scores: []db.LLMScore{
-				{Model: "LEFT", Score: -0.6, Metadata: `{"confidence":0.9}`},
-				{Model: "Center", Score: 0.0, Metadata: `{"confidence":0.8}`},
-				{Model: "RIGHT", Score: 0.6, Metadata: `{"confidence":0.85}`},
+				createScoreWithConfidence("LeFt", -0.5, 0.9),
+				createScoreWithConfidence("cEnTeR", 0.0, 0.8),
+				createScoreWithConfidence("RIGHT", 0.5, 0.85),
 			},
-			expected:    0.0,
-			description: "Model names should be case-insensitive",
+			configOverride: &CompositeScoreConfig{
+				Models: []ModelConfig{
+					{ModelName: "left", Perspective: "left"},
+					{ModelName: "center", Perspective: "center"},
+					{ModelName: "right", Perspective: "right"},
+				},
+				Formula: "average", HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, ConfidenceMethod: "count_valid",
+			},
+			expectedScore: 0.0,  // Avg(-0.5, 0, 0.5) = 0
+			expectedConf:  0.85, // (0.9+0.8+0.85)/3 = 0.85
+			expectError:   false,
 		},
 		{
-			name: "NaN values",
+			name: "NaN values - ignored",
 			scores: []db.LLMScore{
-				{Model: "left", Score: math.NaN()},
-				{Model: "center", Score: 0.2, Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`},
+				createScoreWithConfidence("left", math.NaN(), 0.9),
+				createScoreWithConfidence("center", 0.2, 0.8),
+				createScoreWithConfidence("right", 0.4, 0.85),
 			},
-			expected:    0.2, // Avg of (0.0, 0.2, 0.4) = 0.2
-			description: "NaN values should be replaced with default (0.0)",
+			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:  0.3,   // (0.2+0.4)/2 = 0.3. Left is ignored.
+			expectedConf:   0.825, // (0.8+0.85)/2 = 0.825
+			expectError:    false,
 		},
 		{
-			name: "Infinity values",
+			name: "All Infinity values - ignored",
 			scores: []db.LLMScore{
-				{Model: "left", Score: math.Inf(-1), Metadata: `{"confidence":0.9}`},
-				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: math.Inf(1), Metadata: `{"confidence":0.85}`},
+				createScoreWithConfidence("left", math.Inf(1), 0.9),
+				createScoreWithConfidence("center", math.Inf(-1), 0.8),
+				createScoreWithConfidence("right", math.Inf(1), 0.85),
 			},
-			description: "Infinity values should result in ErrAllPerspectivesInvalid",
-			expectError: true,
+			configOverride:  &CompositeScoreConfig{HandleInvalid: "ignore", MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:   0.0,
+			expectedConf:    0.0,
+			expectError:     true,
+			expectedErrorIs: ErrAllPerspectivesInvalid,
+		},
+		{
+			name: "Out-of-range ignored with one valid score",
+			scores: []db.LLMScore{
+				createScoreWithConfidence("left", 2.0, 0.9, now.Add(time.Second*1)),    // Invalid, ignored
+				createScoreWithConfidence("center", -2.0, 0.8, now.Add(time.Second*2)), // Invalid, ignored
+				createScoreWithConfidence("right", 0.5, 0.85, now.Add(time.Second*3)),  // Valid
+			},
+			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:  0.5,  // Only right (0.5) is used. Avg(0.5)/1 = 0.5
+			expectedConf:   0.85, // Only right confidence is valid
+			expectError:    false,
 		},
 		{
 			name: "weighted formula with config override",
 			scores: []db.LLMScore{
-				{Model: "left", Score: -0.2, Metadata: `{"confidence":0.9}`},
-				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`},
+				createScoreWithConfidence("left", 0.1, 0.9),
+				createScoreWithConfidence("center", 0.2, 0.8),
+				createScoreWithConfidence("right", 0.3, 0.85),
 			},
 			configOverride: &CompositeScoreConfig{
 				Formula:          "weighted",
-				Weights:          map[string]float64{"left": 0.2, "center": 0.3, "right": 0.5},
+				Weights:          map[string]float64{"left": 1, "center": 2, "right": 3},
+				HandleInvalid:    "default",
+				DefaultMissing:   0.0,
 				MinScore:         -1.0,
 				MaxScore:         1.0,
-				DefaultMissing:   0.0,
-				HandleInvalid:    "default",
 				ConfidenceMethod: "count_valid",
 			},
-			expected:    0.16,
-			description: "Weighted formula should apply weights correctly",
+			expectedScore: (0.1*1 + 0.2*2 + 0.3*3) / (1 + 2 + 3), // (0.1 + 0.4 + 0.9) / 6 = 1.4 / 6 = 0.2333...
+			expectedConf:  0.85,                                  // (0.9+0.8+0.85)/3 = 0.85
+			expectError:   false,
 		},
 		{
-			name: "ignore invalid with config override",
+			name: "ignore invalid with config override", // Effectively all invalid and ignored
 			scores: []db.LLMScore{
-				{Model: "left", Score: math.NaN()},
-				{Model: "center", Score: 0.2, Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: 0.4, Metadata: `{"confidence":0.85}`},
+				createScoreWithConfidence("left", math.NaN(), 0.9),
+				createScoreWithConfidence("center", math.Inf(1), 0.8),
+				createScoreWithConfidence("right", -2.0, 0.85), // out of bound if min is -1
 			},
-			configOverride: &CompositeScoreConfig{
-				Formula:          "average",
-				HandleInvalid:    "ignore",
-				MinScore:         -1.0,
-				MaxScore:         1.0,
-				DefaultMissing:   0.0,
-				ConfidenceMethod: "count_valid",
-			},
-			expected:    0.3,
-			description: "With ignore_invalid, only valid scores should be used",
+			configOverride:  &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:   0.0, // No valid scores, should trigger ErrAllPerspectivesInvalid, score should be DefaultMissing from top func
+			expectedConf:    0.0, // No valid scores
+			expectError:     true,
+			expectedErrorIs: ErrAllPerspectivesInvalid,
 		},
 		{
 			name: "duplicate model scores - should use last one",
 			scores: []db.LLMScore{
-				{Model: "left", Score: 0.1, CreatedAt: time.Now().Add(-time.Minute), Metadata: `{"confidence":0.7}`},
-				{Model: "center", Score: 0.2, CreatedAt: time.Now(), Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: 0.3, CreatedAt: time.Now(), Metadata: `{"confidence":0.85}`},
-				{Model: "left", Score: 0.4, CreatedAt: time.Now(), Metadata: `{"confidence":0.9}`}, // Newer score for left
+				createScoreWithConfidence("left", 0.1, 0.9, now.Add(time.Millisecond*100)), // Older
+				createScoreWithConfidence("center", 0.2, 0.8, now.Add(time.Millisecond*200)),
+				createScoreWithConfidence("right", 0.3, 0.85, now.Add(time.Millisecond*300)),
+				createScoreWithConfidence("left", 0.4, 0.92, now.Add(time.Millisecond*400)),   // Newer left
+				createScoreWithConfidence("center", 0.5, 0.82, now.Add(time.Millisecond*500)), // Newer center
+				createScoreWithConfidence("right", 0.6, 0.88, now.Add(time.Millisecond*600)),  // Newer right
 			},
-			expected:    0.3, // Uses left=0.4, center=0.2, right=0.3 -> Avg = 0.3
-			description: "When duplicate models exist, last one should be used",
+			configOverride: &CompositeScoreConfig{HandleInvalid: "default", DefaultMissing: 0.0, Formula: "average", ConfidenceMethod: "count_valid", MinScore: -1, MaxScore: 1},
+			expectedScore:  0.35,               // left: (0.1+0.4)/2=0.25, center: (0.2+0.5)/2=0.35, right: (0.3+0.6)/2=0.45, avg=0.35
+			expectedConf:   0.8616666666666667, // (0.9+0.8+0.85+0.92+0.82+0.88)/6 = 0.861666...
+			expectError:    false,
 		},
 		{
 			name: "custom min/max bounds",
 			scores: []db.LLMScore{
-				{Model: "left", Score: -3.0, Metadata: `{"confidence":0.9}`},
-				{Model: "center", Score: 0.0, Metadata: `{"confidence":0.8}`},
-				{Model: "right", Score: 3.0, Metadata: `{"confidence":0.85}`},
+				createScoreWithConfidence("left", -3.0, 0.9),
+				createScoreWithConfidence("center", 0.0, 0.8),
+				createScoreWithConfidence("right", 3.0, 0.85),
 			},
-			configOverride: &CompositeScoreConfig{
-				Formula:          "average",
-				MinScore:         -2.0,
-				MaxScore:         2.0,
-				DefaultMissing:   0.0,
-				HandleInvalid:    "default",
-				ConfidenceMethod: "count_valid",
-			},
-			expected:    0.0,
-			description: "Custom min/max bounds should be respected",
+			configOverride: &CompositeScoreConfig{HandleInvalid: "default", DefaultMissing: -100.0, MinScore: -5.0, MaxScore: 5.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore:  0.0,  // All scores are valid with these bounds. Avg(-3.0, 0.0, 3.0) = 0.0/3 = 0.0
+			expectedConf:   0.85, // (0.9+0.8+0.85)/3 = 0.85
+			expectError:    false,
 		},
 	}
 
-	for _, tc := range tests {
+	// Load default config for tests that don't override it
+	defaultCfg, err := LoadCompositeScoreConfig()
+	require.NoError(t, err, "Failed to load default test config")
+
+	for _, tc := range testCases {
+		t := t // Capture range variable
 		t.Run(tc.name, func(t *testing.T) {
-			// Set config override if provided
-			// If no override, use a default test config
-			cfgToUse := tc.configOverride
-			if cfgToUse == nil {
-				// Create a default test config if no override is provided
-				// This assumes a basic structure; adjust as needed for the test's logic
-				cfgToUse = &CompositeScoreConfig{
-					Formula:          "average",
-					Weights:          map[string]float64{"left": 1.0, "center": 1.0, "right": 1.0},
-					MinScore:         -1.0,
-					MaxScore:         1.0,
-					DefaultMissing:   0.0,
-					HandleInvalid:    "default",
-					ConfidenceMethod: "count_valid",
-					Models:           []ModelConfig{{Perspective: "left", ModelName: "left"}, {Perspective: "center", ModelName: "center"}, {Perspective: "right", ModelName: "right"}},
+			t.Parallel() // Run test cases in parallel
+
+			cfgToUse := defaultCfg
+			if tc.configOverride != nil {
+				// If specific fields aren't set in override, copy from defaultCfg to ensure a complete config.
+				// This is a shallow copy, modify if deep copy is needed for nested structs/maps.
+				tempCfg := *tc.configOverride // Corrected typo empCfg to tempCfg
+				if tempCfg.Models == nil {    // Essential for perspective mapping
+					tempCfg.Models = defaultCfg.Models
 				}
+				// Ensure MinScore/MaxScore are set if not in override, to prevent NaN comparisons with 0
+				if tempCfg.MinScore == 0 && tempCfg.MaxScore == 0 && (defaultCfg.MinScore != 0 || defaultCfg.MaxScore != 0) {
+					// Only copy if default has them and override doesn't (avoids overwriting intentional 0s)
+					// For safety, if an override *doesn't* set them, use defaults.
+					if tc.configOverride.MinScore == 0.0 && defaultCfg.MinScore != 0.0 {
+						tempCfg.MinScore = defaultCfg.MinScore
+					}
+					if tc.configOverride.MaxScore == 0.0 && defaultCfg.MaxScore != 0.0 {
+						tempCfg.MaxScore = defaultCfg.MaxScore
+					}
+				}
+				cfgToUse = &tempCfg
 			}
 
-			// Pass the config explicitly to ComputeCompositeScore
-			score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(tc.scores, cfgToUse)
+			score, conf, err := ComputeCompositeScoreWithConfidenceFixed(tc.scores, cfgToUse)
 
-			if tc.name == "Infinity values" { // Specific handling for "Infinity values"
-				assert.Error(t, err, tc.description)
-				assert.EqualError(t, err, ErrAllPerspectivesInvalid.Error(), tc.description)
-				assert.Equal(t, 0.0, score, "Score should be 0.0 on ErrAllPerspectivesInvalid")
-				assert.Equal(t, 0.0, confidence, "Confidence should be 0.0 on ErrAllPerspectivesInvalid")
-			} else if tc.expectError {
-				assert.Error(t, err)
+			if tc.expectError {
+				assert.Error(t, err, fmt.Sprintf("%s: Expected error", tc.name))
+				if tc.expectedErrorIs != nil {
+					assert.True(t, errors.Is(err, tc.expectedErrorIs), fmt.Sprintf("%s: Expected error type %T, got %T (%v)", tc.name, tc.expectedErrorIs, err, err))
+				}
+				// When an error is expected (especially ErrAllPerspectivesInvalid), the returned score/conf might be defaults from the top-level function.
+				// Assert these explicitly if they differ from typical non-error case expectations.
+				assert.InDelta(t, tc.expectedScore, score, 1e-9, fmt.Sprintf("%s: Expected score %f, got %f with error", tc.name, tc.expectedScore, score))
+				assert.InDelta(t, tc.expectedConf, conf, 1e-9, fmt.Sprintf("%s: Expected confidence %f, got %f with error", tc.name, tc.expectedConf, conf))
 			} else {
-				assert.NoError(t, err)
-				assert.InDelta(t, tc.expected, score, 0.001, tc.description)
+				assert.NoError(t, err, fmt.Sprintf("%s: Expected no error, got %v", tc.name, err))
+				assert.InDelta(t, tc.expectedScore, score, 1e-9, fmt.Sprintf("%s: Expected score %f, got %f", tc.name, tc.expectedScore, score))
+				assert.InDelta(t, tc.expectedConf, conf, 1e-9, fmt.Sprintf("%s: Expected confidence %f, got %f", tc.name, tc.expectedConf, conf))
+			}
+
+			if tc.customAssertions != nil {
+				tc.customAssertions(t, score, conf, err)
 			}
 		})
 	}

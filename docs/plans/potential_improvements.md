@@ -53,3 +53,37 @@ This document outlines potential areas for improvement and future development wi
 *   **Error Handling & Reporting:** Logging of fetch/store errors is in place. For better operational insight, consider adding specific Prometheus metrics for RSS fetching (e.g., feeds successfully fetched/failed, articles added).
 *   **Logging:** Current logging provides good traceability. Minor enhancements could include unique IDs for fetch cycles if needed for very detailed debugging.
 *   **Performance:** The current sequential fetching of feeds and items can be a bottleneck for a large number of sources. Explore parallelizing feed fetching (e.g., using a worker pool) and potentially batching database insertions if performance becomes an issue. 
+
+## Web Interface (`web/`)
+
+*   **API Integration:**
+    *   Implement the missing `/api/sources` endpoint to support dynamic source filtering in the UI (currently the endpoint returns 404 as seen in the server logs).
+    *   Add proper error handling for all API calls with user-friendly error messages and retry mechanisms for transient failures.
+*   **User Experience:**
+    *   Add a source management page for administrators to add, edit, or remove news sources.
+    *   Implement user accounts and saved preferences (favorite sources, preferred sorting options, etc.).
+    *   Add a search functionality to find articles by keywords, topics, or content.
+    *   Enhance the feedback system to allow users to see aggregated feedback from other users.
+*   **Performance:**
+    *   Optimize client-side caching strategies to reduce redundant API calls, especially for frequently accessed data.
+    *   Implement service workers for offline capabilities and faster loading times.
+    *   Add lazy loading for article contents in the list view to improve initial page load times.
+*   **Visualization:**
+    *   Create more advanced visualizations for bias analysis, such as historical trends for sources or topics.
+    *   Add interactive charts showing the distribution of political leanings across different news sources.
+    *   Implement a "balance view" feature that presents articles from different perspectives on the same topic.
+*   **Accessibility:**
+    *   Conduct a thorough accessibility audit and implement WCAG 2.1 AA compliance.
+    *   Add keyboard navigation support for all interactive elements.
+    *   Ensure proper contrast ratios and text scaling for better readability.
+*   **Responsiveness:**
+    *   Further optimize the mobile experience with touch-friendly controls and simplified layouts.
+    *   Implement a progressive web app (PWA) configuration for better mobile integration.
+*   **Testing:**
+    *   Develop comprehensive end-to-end tests for the web interface using Playwright or similar tools.
+    *   Add automated visual regression testing to catch unexpected UI changes.
+    *   Create user testing scenarios to validate usability improvements.
+*   **Code Structure:**
+    *   Consider migrating the client-side JavaScript to a modern framework (React, Vue, or Svelte) for better maintainability.
+    *   Implement TypeScript for improved type safety and developer experience.
+    *   Organize CSS using a methodology like BEM or a CSS-in-JS approach. 

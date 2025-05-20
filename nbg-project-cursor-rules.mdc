@@ -1,0 +1,117 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Cursor Rules: NewsBalancer Go Project
+
+## 1. Architecture & Data Flow
+- NewsBalancer fetches news from RSS feeds, analyzes political bias using LLMs, stores results in SQLite, and exposes data via a web API/UI.
+- Core flow: RSS ingestion → DB storage → LLM analysis (ensemble, composite scoring) → API/web presentation.
+- LLM analysis uses multiple models/prompts with different perspectives (left, center, right), combines results per config, and averages duplicate scores/confidences.
+- Scoring process is asynchronous with real-time progress tracking via Server-Sent Events (SSE).
+
+## 2. Key Directories & Files
+- `cmd/server/main.go`: Main entry point, sets up Gin server, loads configs, initializes DB, LLM, RSS collector, and API routes.
+- `internal/api/`: API layer (routes, handlers, DTOs, caching, progress tracking).
+- `internal/llm/`: LLM client, ensemble logic, composite scoring, caching, progress, and config loading.
+- `internal/db/`: SQLite DAL, schema, CRUD for articles, scores, feedback, labels.
+- `internal/rss/`: RSS feed fetching, parsing, deduplication, and storage.
+- `internal/models/`: Data models and shared types.
+- `internal/apperrors/`: Error handling and standardization.
+- `configs/`: Contains `feed_sources.json` (RSS URLs) and `composite_score_config.json` (LLM ensemble/scoring config).
+- `web/`: Static files for UI, HTML templates, JavaScript, and CSS.
+- `.env`: LLM API keys, DB path, and service URLs.
+- `docs/`: Documentation files including Swagger API definitions.
+
+## 3. Environment Variables
+- `LLM_API_KEY`: Required API key for the LLM service.
+- `LLM_API_KEY_SECONDARY`: Optional backup API key for fallback.
+- `LLM_BASE_URL`: Optional override for the LLM service URL.
+- `LLM_HTTP_TIMEOUT`: Timeout for LLM service requests (default: 60s).
+- `NO_AUTO_ANALYZE`: When set to "true", disables background analysis (crucial for testing).
+- `DATABASE_URL`: Database file path (though most components default to `news.db`).
+- `GIN_MODE`: Set to "release" for production (reduces verbose logs).
+- `LEGACY_HTML`: Enable legacy server-side rendering mode.
+
+## 4. LLM Scoring & Config
+- LLM ensemble logic is driven by `configs/composite_score_config.json` (models, perspectives, formula, weights, confidence method).
+- Composite score calculation is in `internal/llm/composite_score_fix.go` and supports multiple aggregation methods ("weighted", "average").
+- Multiple scoring perspectives (left, center, right) provide balanced viewpoints.
+- Confidence calculation offers multiple methods (average, min, max, spread_based).
+- Caching of LLM responses is handled in `internal/llm/cache.go`.
+- Duplicate score averaging is used when multiple results exist for the same model/perspective.
+
+## 5. API & Web
+- API endpoints are registered in `internal/api/api.go` via `RegisterRoutes`.
+- Core API endpoints:
+  - `GET /api/articles`: List articles with optional filtering
+  - `GET /api/articles/:id`: Get specific article
+  - `POST /api/articles`: Create new article
+  - `GET /api/articles/:id/bias`: Get political bias analysis
+  - `GET /api/articles/:id/ensemble`: Get ensemble details
+  - `POST /api/llm/reanalyze/:id`: Trigger reanalysis
+  - `GET /api/llm/score-progress/:id`: SSE stream for progress
+  - `POST /api/feedback`: Submit user feedback
+  - `GET /api/feeds/healthz`: Check RSS feed health
+- Progress of async LLM scoring is tracked by `ProgressManager` and exposed via SSE endpoint.
+- API documentation is available via Swagger at `/swagger/index.html`.
+- Web UI is served from `web/` with routes including:
+  - `GET /`: Home page
+  - `GET /articles`: Article listing page
+  - `GET /article/:id`: Article detail page
+  - `GET /metrics/*`: Various metrics pages
+
+## 6. Database
+- Schema is defined in `internal/db/db.go` (tables: articles, llm_scores, feedback, labels).
+- Tables:
+  - `articles`: Stores news articles with metadata
+  - `llm_scores`: Stores individual model scores with UNIQUE(article_id, model) constraint
+  - `feedback`: User feedback on article bias
+  - `labels`: Ground truth labels for validation
+- `llm_scores` has a UNIQUE constraint on (article_id, model) for upserts, critical for ON CONFLICT clauses.
+- Default database file is `news.db` in the execution directory.
+- SQLite concurrency limitations require careful transaction handling.
+
+## 7. Testing & Utilities
+- Use `NO_AUTO_ANALYZE=true` for reliable test runs to prevent SQLite locks.
+- Mock LLM service: `tools/mock_llm_service/mock_llm_service.go` for testing without real LLM costs.
+- Batch/utility tools in `cmd/` (import, clear, score, fetch, validate, report, query, test).
+- Test suites:
+  - Go unit tests: `go test ./...`
+  - Backend integration tests: `scripts/test.cmd backend`
+  - API tests: `scripts/test.cmd api`
+  - Essential tests: `scripts/test.cmd essential`
+- Integration testing requires careful DB setup to avoid locks.
+
+## 8. Error Handling
+- Standardized via `internal/apperrors/` (AppError, error codes, wrapping).
+- Client-facing errors are normalized through the API layer.
+- LLM service errors are handled gracefully with appropriate status codes.
+- Database errors (particularly UNIQUE constraint violations) are properly caught and handled.
+
+## 9. Metrics & Monitoring
+- Prometheus metrics in `internal/metrics/prom.go`.
+- Aggregated DB metrics in `internal/metrics/metrics.go`.
+- Web UI metrics dashboards at `/metrics/*` endpoints.
+- Health checks available at `/healthz` and `/api/feeds/healthz`.
+
+## 10. Debugging Tips
+- Check logs for errors in API, LLM, RSS, and DB components.
+- Validate config files and DB schema (particularly the UNIQUE constraint on llm_scores).
+- Monitor LLM API key usage and quota.
+- Use job logs and progress endpoints for batch/async tasks.
+- Port conflicts: The server runs on port 8080 by default. Ensure no other processes are using this port.
+- Database locks: SQLite has concurrency limitations. Use `NO_AUTO_ANALYZE=true` during testing to prevent background analysis tasks.
+- For server startup issues, check:
+  - Port availability (common error: `bind: Only one usage of each socket address is normally permitted`)
+  - Database file permissions and corruption
+  - API key validity
+  - Config file syntax
+
+## 11. Deployment
+- Production mode: Set `GIN_MODE=release` for performance.
+- Docker deployment is supported (see `docs/deployment.md`).
+- Consider using a reverse proxy (Nginx, Caddy) for production.
+- Database backup strategy is essential for production use.
+- Configure appropriate timeouts for LLM services based on observed performance.

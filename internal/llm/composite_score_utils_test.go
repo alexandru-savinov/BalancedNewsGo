@@ -1,194 +1,147 @@
 package llm
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
+func TestGetConfigDir(t *testing.T) {
+	dir, err := getConfigDir()
+	require.NoError(t, err, "getConfigDir should not return an error")
+
+	// Verify the directory exists
+	_, err = os.Stat(dir)
+	assert.NoError(t, err, "Directory returned by getConfigDir should exist")
+
+	// Verify configs directory exists underneath it
+	configsDir := filepath.Join(dir, "configs")
+	_, err = os.Stat(configsDir)
+	assert.NoError(t, err, "configs directory should exist under the returned directory")
+
+	// Verify composite_score_config.json exists
+	configFile := filepath.Join(configsDir, "composite_score_config.json")
+	_, err = os.Stat(configFile)
+	assert.NoError(t, err, "composite_score_config.json should exist in the configs directory")
+}
+
 func TestMinNonNil(t *testing.T) {
-	testCases := []struct {
+	tests := []struct {
 		name     string
-		values   map[string]float64
-		def      float64
+		input    map[string]float64
+		default_ float64
 		expected float64
 	}{
 		{
-			name: "All values provided",
-			values: map[string]float64{
-				"a": 0.5,
-				"b": 0.1,
-				"c": 0.8,
-			},
-			def:      0.0,
-			expected: 0.1,
+			name:     "empty map returns default",
+			input:    map[string]float64{},
+			default_: 5.0,
+			expected: 5.0,
 		},
 		{
-			name: "Single value",
-			values: map[string]float64{
-				"a": -0.3,
-			},
-			def:      0.0,
-			expected: -0.3,
+			name:     "single value returns that value",
+			input:    map[string]float64{"a": 3.0},
+			default_: 5.0,
+			expected: 3.0,
 		},
 		{
-			name:     "Empty map",
-			values:   map[string]float64{},
-			def:      0.5,
-			expected: 0.5,
+			name:     "multiple values returns minimum",
+			input:    map[string]float64{"a": 3.0, "b": 1.0, "c": 7.0},
+			default_: 5.0,
+			expected: 1.0,
 		},
 		{
-			name: "Negative values",
-			values: map[string]float64{
-				"a": -0.3,
-				"b": -0.1,
-				"c": -0.8,
-			},
-			def:      0.0,
-			expected: -0.8,
-		},
-		{
-			name: "Mixed positive and negative",
-			values: map[string]float64{
-				"a": 0.5,
-				"b": -0.2,
-				"c": 0.1,
-			},
-			def:      0.0,
-			expected: -0.2,
+			name:     "negative values handled correctly",
+			input:    map[string]float64{"a": -3.0, "b": 1.0, "c": -7.0},
+			default_: 0.0,
+			expected: -7.0,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := minNonNil(tc.values, tc.def)
-			assert.Equal(t, tc.expected, result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := minNonNil(tt.input, tt.default_)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
 func TestMaxNonNil(t *testing.T) {
-	testCases := []struct {
+	tests := []struct {
 		name     string
-		values   map[string]float64
-		def      float64
+		input    map[string]float64
+		default_ float64
 		expected float64
 	}{
 		{
-			name: "All values provided",
-			values: map[string]float64{
-				"a": 0.5,
-				"b": 0.1,
-				"c": 0.8,
-			},
-			def:      0.0,
-			expected: 0.8,
+			name:     "empty map returns default",
+			input:    map[string]float64{},
+			default_: 5.0,
+			expected: 5.0,
 		},
 		{
-			name: "Single value",
-			values: map[string]float64{
-				"a": -0.3,
-			},
-			def:      0.0,
-			expected: -0.3,
+			name:     "single value returns that value",
+			input:    map[string]float64{"a": 3.0},
+			default_: 5.0,
+			expected: 3.0,
 		},
 		{
-			name:     "Empty map",
-			values:   map[string]float64{},
-			def:      0.5,
-			expected: 0.5,
+			name:     "multiple values returns maximum",
+			input:    map[string]float64{"a": 3.0, "b": 1.0, "c": 7.0},
+			default_: 5.0,
+			expected: 7.0,
 		},
 		{
-			name: "Negative values",
-			values: map[string]float64{
-				"a": -0.3,
-				"b": -0.1,
-				"c": -0.8,
-			},
-			def:      0.0,
-			expected: -0.1,
-		},
-		{
-			name: "Mixed positive and negative",
-			values: map[string]float64{
-				"a": 0.5,
-				"b": -0.2,
-				"c": 0.1,
-			},
-			def:      0.0,
-			expected: 0.5,
+			name:     "negative values handled correctly",
+			input:    map[string]float64{"a": -3.0, "b": 1.0, "c": -7.0},
+			default_: 0.0,
+			expected: 1.0,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := maxNonNil(tc.values, tc.def)
-			assert.Equal(t, tc.expected, result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := maxNonNil(tt.input, tt.default_)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
 func TestScoreSpread(t *testing.T) {
-	testCases := []struct {
+	tests := []struct {
 		name     string
-		values   map[string]float64
+		input    map[string]float64
 		expected float64
 	}{
 		{
-			name: "Standard spread",
-			values: map[string]float64{
-				"a": 0.5,
-				"b": 0.1,
-				"c": 0.8,
-			},
-			expected: 0.7, // 0.8 - 0.1 = 0.7
+			name:     "empty map returns 0",
+			input:    map[string]float64{},
+			expected: 0.0,
 		},
 		{
-			name: "Single value",
-			values: map[string]float64{
-				"a": -0.3,
-			},
-			expected: 0.0, // No spread with a single value
+			name:     "single value returns 0",
+			input:    map[string]float64{"a": 3.0},
+			expected: 0.0,
 		},
 		{
-			name:     "Empty map",
-			values:   map[string]float64{},
-			expected: 0.0, // No spread with no values
+			name:     "multiple values returns max-min",
+			input:    map[string]float64{"a": 3.0, "b": 1.0, "c": 7.0},
+			expected: 6.0, // 7.0 - 1.0
 		},
 		{
-			name: "Negative values",
-			values: map[string]float64{
-				"a": -0.3,
-				"b": -0.1,
-				"c": -0.8,
-			},
-			expected: 0.7, // -0.1 - (-0.8) = 0.7
-		},
-		{
-			name: "Mixed positive and negative",
-			values: map[string]float64{
-				"a": 0.5,
-				"b": -0.2,
-				"c": 0.1,
-			},
-			expected: 0.7, // 0.5 - (-0.2) = 0.7
-		},
-		{
-			name: "Same values",
-			values: map[string]float64{
-				"a": 0.5,
-				"b": 0.5,
-				"c": 0.5,
-			},
-			expected: 0.0, // No spread with identical values
+			name:     "negative values handled correctly",
+			input:    map[string]float64{"a": -3.0, "b": 1.0, "c": -7.0},
+			expected: 8.0, // 1.0 - (-7.0)
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := scoreSpread(tc.values)
-			// Use delta comparison for floating point values
-			assert.InDelta(t, tc.expected, result, 0.0001)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := scoreSpread(tt.input)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }

@@ -57,7 +57,7 @@ Based on the test results, the following areas require attention:
         *   Verify the `CalculateScore` method of the `ScoreCalculator` (likely `DefaultScoreCalculator`) returns the expected score and confidence based on the test's input `LLMScore` data.
         *   Check `ProgressManager` interactions within `ScoreManager` to ensure status, step, and percentage are updated as expected by the test.
         *   **`TestIntegrationUpdateArticleScoreCalculationError` & `TestScoreManagerIntegrationCalculateScoreError`:** Examine how errors from `ScoreCalculator.CalculateScore` are propagated and handled within `ScoreManager.UpdateArticleScore`. Ensure error messages are correctly set in `ProgressManager` and that the overall function returns an error that matches the test's expectation.
-- **Supporting Documentation:** `docs/pr/todo_llm_test_fixes.md` already outlines a plan for LLM test fixes, which should be consulted and updated.
+ - **Supporting Documentation:** A dedicated LLM test fixes plan should be created and referenced here.
 
 ### 2.2 Medium Priority: `scripts/test.cmd` Script Error
 

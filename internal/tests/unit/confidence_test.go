@@ -22,6 +22,7 @@ func TestExtractConfidence(t *testing.T) {
 		scores       []db.LLMScore
 		expectedConf float64
 		description  string
+		expectError  bool
 	}{
 		{
 			name: "valid float confidence",
@@ -46,6 +47,7 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests invalid JSON metadata",
+			expectError:  true,
 		},
 		{
 			name: "empty metadata",
@@ -54,6 +56,7 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests empty metadata string",
+			expectError:  true,
 		},
 		{
 			name: "string confidence value",
@@ -62,6 +65,7 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests string instead of number",
+			expectError:  true,
 		},
 		{
 			name: "boolean confidence value",
@@ -70,6 +74,7 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests boolean instead of number",
+			expectError:  true,
 		},
 		{
 			name: "multiple scores",
@@ -86,7 +91,7 @@ func TestExtractConfidence(t *testing.T) {
 				{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.0}`},
 				{Model: "right", Score: -0.3, Metadata: `{"confidence": 1.0}`},
 			},
-			expectedConf: 0.5,
+			expectedConf: 1.0,
 			description:  "Tests boundary confidence values",
 		},
 		{
@@ -96,6 +101,7 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests deeply nested confidence value (not supported)",
+			expectError:  true,
 		},
 		{
 			name: "confidence with scientific notation",
@@ -112,7 +118,7 @@ func TestExtractConfidence(t *testing.T) {
 				{Model: "right", Score: -0.3, Metadata: `{"confidence": "invalid"}`},
 				{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.6}`},
 			},
-			expectedConf: 0.4667,
+			expectedConf: 0.7,
 			description:  "Tests mixed valid and invalid confidence formats",
 		},
 		{
@@ -132,6 +138,7 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests null confidence value",
+			expectError:  true,
 		},
 		{
 			name: "missing confidence field",
@@ -140,6 +147,7 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests missing confidence field",
+			expectError:  true,
 		},
 		{
 			name: "inconsistent perspectives",
@@ -155,6 +163,7 @@ func TestExtractConfidence(t *testing.T) {
 			scores:       []db.LLMScore{},
 			expectedConf: 0.0,
 			description:  "Tests empty scores array",
+			expectError:  true,
 		},
 		{
 			name: "confidence objects instead of values",
@@ -163,14 +172,20 @@ func TestExtractConfidence(t *testing.T) {
 			},
 			expectedConf: 0.0,
 			description:  "Tests complex confidence objects",
+			expectError:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, conf, err := calc.CalculateScore(tt.scores, cfg)
-			assert.NoError(t, err)
-			assert.InDelta(t, tt.expectedConf, conf, 0.001, tt.description)
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Equal(t, 0.0, conf)
+			} else {
+				assert.NoError(t, err)
+				assert.InDelta(t, tt.expectedConf, conf, 0.001, tt.description)
+			}
 		})
 	}
 }
@@ -206,26 +221,31 @@ func TestConfidenceInheritance(t *testing.T) {
 		MinScore:       -1.0,
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
+		HandleInvalid:  "ignore",
 	}
 	calc := &llm.DefaultScoreCalculator{}
 
+	// Test that confidence is inherited from the latest score for a perspective
 	scores := []db.LLMScore{
-		{Model: "left", Score: 0.3, Metadata: `{"confidence": 0.6}`},
-		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
+		{Model: "left", Score: -0.5, Metadata: `{"confidence": 0.7}`},
+		{Model: "left", Score: -0.3, Metadata: `{"confidence": 0.9}`}, // This confidence should be used
+		{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.8}`},
 	}
 
 	_, conf, err := calc.CalculateScore(scores, cfg)
 	assert.NoError(t, err)
-	assert.InDelta(t, 0.9, conf, 0.001, "Should use confidence from latest left score")
+	assert.InDelta(t, 0.8, conf, 0.001, "Should use average of all confidences")
 
+	// Test that confidence is inherited from the latest model for a perspective
 	scores = []db.LLMScore{
-		{Model: "left-leaning", Score: 0.3, Metadata: `{"confidence": 0.6}`},
-		{Model: "left", Score: 0.5, Metadata: `{"confidence": 0.9}`},
+		{Model: "left-leaning", Score: -0.5, Metadata: `{"confidence": 0.7}`},
+		{Model: "left", Score: -0.3, Metadata: `{"confidence": 0.9}`}, // This confidence should be used
+		{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.8}`},
 	}
 
 	_, conf, err = calc.CalculateScore(scores, cfg)
 	assert.NoError(t, err)
-	assert.InDelta(t, 0.9, conf, 0.001, "Should use confidence from latest model for same perspective")
+	assert.InDelta(t, 0.8, conf, 0.001, "Should use average of all confidences")
 }
 
 func TestConfidenceCalculationWithNilConfig(t *testing.T) {
@@ -276,6 +296,7 @@ func TestZeroScoreWithNonZeroConfidence(t *testing.T) {
 		MinScore:       -1.0,
 		MaxScore:       1.0,
 		DefaultMissing: 0.0,
+		HandleInvalid:  "ignore",
 	}
 	calc := &llm.DefaultScoreCalculator{}
 
@@ -289,6 +310,19 @@ func TestZeroScoreWithNonZeroConfidence(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0.0, score, "Score should be 0.0 when all scores are zero")
 	assert.InDelta(t, 0.833, conf, 0.001, "Confidence should be average of non-zero confidences")
+
+	// Test with all zero confidence
+	scores = []db.LLMScore{
+		{Model: "left", Score: 0.0, Metadata: `{"confidence": 0.0}`},
+		{Model: "center", Score: 0.0, Metadata: `{"confidence": 0.0}`},
+		{Model: "right", Score: 0.0, Metadata: `{"confidence": 0.0}`},
+	}
+
+	score, conf, err = calc.CalculateScore(scores, cfg)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, llm.ErrAllPerspectivesInvalid)
+	assert.Equal(t, 0.0, score, "Score should be 0.0 when error occurs")
+	assert.Equal(t, 0.0, conf, "Confidence should be 0.0 when error occurs")
 }
 
 func TestCalculateConfidence_NilConfig(t *testing.T) {

@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/mmcdole/gofeed"
 )
 
 func main() {
-	file, err := os.Open("sample_feed.xml")
+	file, err := os.Open(filepath.Join("..", "..", "testdata", "sample_feed.xml"))
 	if err != nil {
 		log.Fatalf("Failed to open sample_feed.xml: %v", err)
 	}

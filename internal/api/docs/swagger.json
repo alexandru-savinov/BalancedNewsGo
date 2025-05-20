@@ -483,6 +483,18 @@
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
+                    "401": {
+                        "description": "LLM service authentication failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "402": {
+                        "description": "LLM service payment required or credits exhausted",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
                     "404": {
                         "description": "Article not found",
                         "schema": {
@@ -490,13 +502,19 @@
                         }
                     },
                     "429": {
-                        "description": "Rate limit exceeded",
+                        "description": "LLM service rate limit exceeded",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error or LLM service unavailable",
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "LLM service unavailable or streaming error",
                         "schema": {
                             "$ref": "#/definitions/api.ErrorResponse"
                         }

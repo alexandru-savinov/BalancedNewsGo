@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -164,6 +165,38 @@ func (m *IntegrationMockLLMClient) FetchScores(articleID int64) ([]db.LLMScore, 
 	return val, originalError
 }
 
+// ScoreWithModel mocks the LLMClient.ScoreWithModel method
+func (m *IntegrationMockLLMClient) ScoreWithModel(article *db.Article, modelName string) (float64, error) {
+	args := m.Called(article, modelName)
+	return args.Get(0).(float64), args.Error(1)
+}
+
+// GetConfig mocks the LLMClient.GetConfig method
+func (m *IntegrationMockLLMClient) GetConfig() *llm.CompositeScoreConfig {
+	args := m.Called()
+	if cfg, ok := args.Get(0).(*llm.CompositeScoreConfig); ok {
+		return cfg
+	}
+	return nil
+}
+
+// GetHTTPLLMTimeout mocks the LLMClient.GetHTTPLLMTimeout method
+func (m *IntegrationMockLLMClient) GetHTTPLLMTimeout() time.Duration {
+	args := m.Called()
+	return args.Get(0).(time.Duration)
+}
+
+// SetHTTPLLMTimeout mocks the LLMClient.SetHTTPLLMTimeout method
+func (m *IntegrationMockLLMClient) SetHTTPLLMTimeout(timeout time.Duration) {
+	m.Called(timeout)
+}
+
+// ReanalyzeArticle mocks the LLMClient.ReanalyzeArticle method
+func (m *IntegrationMockLLMClient) ReanalyzeArticle(articleID int64) error {
+	args := m.Called(articleID)
+	return args.Error(0)
+}
+
 // Helper function to create a test server with real API handlers and mocked dependencies
 func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *MockProgressManager, *MockCache, *MockScoreCalculator, *IntegrationMockLLMClient) {
 	gin.SetMode(gin.TestMode)
@@ -175,6 +208,14 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *
 	mockCalculator := new(MockScoreCalculator)
 	mockLLMClient := new(IntegrationMockLLMClient)
 
+	// Provide default expectations for LLM client to avoid panics in tests
+	defaultCfg := &llm.CompositeScoreConfig{Models: []llm.ModelConfig{{ModelName: "model-A"}}}
+	mockLLMClient.On("GetConfig").Return(defaultCfg)
+	mockLLMClient.On("GetHTTPLLMTimeout").Return(2 * time.Second)
+	mockLLMClient.On("SetHTTPLLMTimeout", mock.Anything).Return()
+	mockLLMClient.On("ScoreWithModel", mock.Anything, mock.Anything).Return(0.0, nil)
+	mockLLMClient.On("ReanalyzeArticle", mock.AnythingOfType("int64")).Return(nil)
+
 	// Create a router with our API endpoints
 	router := gin.New()
 	router.Use(gin.Recovery()) // Ensure panics are recovered
@@ -182,35 +223,87 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *
 	// Register API routes - we'll use a simplified version for testing
 	api := router.Group("/api")
 	{
-		// Mock the reanalyze endpoint
+		// For tests of the updated reanalyzeHandler fallback mechanism
+		// we'll replace the mock handler with one that uses our mocked methods
 		api.POST("/llm/reanalyze/:id", func(c *gin.Context) {
 			idStr := c.Param("id")
-			id, err := strconv.ParseInt(idStr, 10, 64)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid ID"})
+			id, err := strconv.Atoi(idStr)
+			if err != nil || id < 1 {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid article ID"})
 				return
 			}
+			articleID := int64(id)
 
-			// Get the article
-			article, err := mockDB.GetArticleByID(context.TODO(), id)
+			// Check if article exists
+			article, err := mockDB.GetArticleByID(context.TODO(), articleID)
 			if err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"success": false, "error": "Article not found"})
 				return
 			}
 
-			// Update progress
-			progressState := &models.ProgressState{
-				Step:        "Starting",
-				Message:     "Processing article...",
-				Status:      "InProgress",
-				Percent:     0,
-				LastUpdated: time.Now().Unix(),
+			// Parse raw JSON body
+			var raw map[string]interface{}
+			if err := c.ShouldBindJSON(&raw); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "Invalid request payload"})
+				return
 			}
-			mockProgress.SetProgress(id, progressState)
+
+			// Load composite score config to get the models
+			cfg := mockLLMClient.GetConfig()
+			if cfg == nil || len(cfg.Models) == 0 {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "Failed to load LLM configuration"})
+				return
+			}
+
+			// Try each model in sequence until we find one that works
+			var workingModel string
+
+			originalTimeout := mockLLMClient.GetHTTPLLMTimeout()
+			healthCheckTimeout := 2 * time.Second // Keep short timeout for individual health checks
+			mockLLMClient.SetHTTPLLMTimeout(healthCheckTimeout)
+
+			for _, modelConfig := range cfg.Models {
+				_, healthCheckErr := mockLLMClient.ScoreWithModel(article, modelConfig.ModelName)
+
+				if healthCheckErr == nil {
+					workingModel = modelConfig.ModelName
+					break
+				}
+			}
+			mockLLMClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
+
+			if workingModel == "" {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": "No working models found"})
+				return
+			}
+
+			// Start the reanalysis process
+			mockProgress.SetProgress(articleID, &models.ProgressState{
+				Status:  "InProgress",
+				Step:    "Starting",
+				Message: fmt.Sprintf("Starting analysis with model %s", workingModel),
+			})
+
+			go func() {
+				err := mockLLMClient.ReanalyzeArticle(articleID)
+				if err != nil {
+					mockProgress.SetProgress(articleID, &models.ProgressState{
+						Status:  "Error",
+						Step:    "Error",
+						Message: fmt.Sprintf("Error during analysis: %v", err),
+					})
+					return
+				}
+				mockProgress.SetProgress(articleID, &models.ProgressState{
+					Status:  "Complete",
+					Step:    "Done",
+					Message: "Analysis complete",
+				})
+			}()
 
 			c.JSON(http.StatusOK, gin.H{"success": true, "data": map[string]interface{}{
-				"article_id": article.ID,
 				"status":     "reanalysis queued",
+				"article_id": articleID,
 			}})
 		})
 
@@ -276,7 +369,7 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *
 // Test that the ScoreManager's progress tracking is integrated with the reanalyze endpoint
 func TestReanalyzeEndpointProgressTracking(t *testing.T) {
 	// Setup test server
-	router, mockDB, mockProgress, _, _, _ := setupIntegrationTestServer(t)
+	router, mockDB, mockProgress, _, _, mockLLM := setupIntegrationTestServer(t)
 
 	// Setup test data
 	testArticleID := int64(123)
@@ -290,8 +383,15 @@ func TestReanalyzeEndpointProgressTracking(t *testing.T) {
 	// Mock dependencies behavior
 	mockDB.On("GetArticleByID", mock.Anything, testArticleID).Return(testArticle, nil)
 
+	cfg := &llm.CompositeScoreConfig{Models: []llm.ModelConfig{{ModelName: "model-A"}}}
+	mockLLM.On("GetConfig").Return(cfg)
+	mockLLM.On("GetHTTPLLMTimeout").Return(2 * time.Second)
+	mockLLM.On("SetHTTPLLMTimeout", mock.Anything).Return()
+	mockLLM.On("ScoreWithModel", testArticle, "model-A").Return(0.0, nil)
+	mockLLM.On("ReanalyzeArticle", testArticleID).Return(nil)
+
 	// We need to accept any ProgressState struct that's passed to SetProgress
-	mockProgress.On("SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState")).Return()
+	mockProgress.On("SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState")).Return().Twice()
 
 	// Create a request to trigger the reanalyze endpoint
 	req, _ := http.NewRequest("POST", fmt.Sprintf(reanalyzeURLPath, testArticleID), bytes.NewBuffer([]byte("{}")))
@@ -563,7 +663,7 @@ func TestConcurrentRequestsThreadSafety(t *testing.T) {
 // Test that database errors during scoring are properly handled and reported
 func TestDatabaseErrorsErrorHandling(t *testing.T) {
 	// Setup test server
-	router, mockDB, mockProgress, _, _, _ := setupIntegrationTestServer(t)
+	router, mockDB, mockProgress, _, _, mockLLM := setupIntegrationTestServer(t)
 
 	// Setup test data
 	testArticleID := int64(999)
@@ -575,6 +675,14 @@ func TestDatabaseErrorsErrorHandling(t *testing.T) {
 
 	// Mock dependencies behavior
 	mockDB.On("GetArticleByID", mock.Anything, testArticleID).Return(testArticle, nil)
+
+	// Provide simple config so handler can proceed
+	cfg := &llm.CompositeScoreConfig{Models: []llm.ModelConfig{{ModelName: "model-A"}}}
+	mockLLM.On("GetConfig").Return(cfg)
+	mockLLM.On("GetHTTPLLMTimeout").Return(2 * time.Second)
+	mockLLM.On("SetHTTPLLMTimeout", mock.Anything).Return()
+	mockLLM.On("ScoreWithModel", testArticle, "model-A").Return(0.0, nil)
+	mockLLM.On("ReanalyzeArticle", testArticleID).Return(nil)
 
 	// Accept any progress state for the "Starting" status
 	mockProgress.On("SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState")).Return()
@@ -592,4 +700,194 @@ func TestDatabaseErrorsErrorHandling(t *testing.T) {
 
 	// Verify that progress tracking was called
 	mockProgress.AssertCalled(t, "SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState"))
+}
+
+// Test that LLMAPIError is properly propagated through the reanalyze endpoint
+func TestReanalyzeEndpointLLMErrorPropagation(t *testing.T) {
+	// Setup test server
+	router, mockDB, mockProgress, _, _, mockLLM := setupIntegrationTestServer(t)
+	mockLLM.ExpectedCalls = nil
+
+	// Setup test data
+	testArticleID := int64(456)
+	mockProgress.On("SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState")).Return()
+	testArticle := &db.Article{
+		ID:      testArticleID,
+		Title:   "LLM Error Test Article",
+		Content: "This is a test article for LLM error propagation.",
+		URL:     "https://example.com/test-error",
+	}
+
+	// Mock dependencies behavior
+	mockDB.On("GetArticleByID", mock.Anything, testArticleID).Return(testArticle, nil)
+
+	// Create a LLMAPIError for authentication failure
+	llmAuthError := llm.LLMAPIError{
+		Message:      "Invalid API key",
+		StatusCode:   401,
+		ResponseBody: "Authentication failed",
+		ErrorType:    llm.ErrTypeAuthentication,
+	}
+
+	// Provide LLM config and simulate authentication failure during health check
+	cfg := &llm.CompositeScoreConfig{Models: []llm.ModelConfig{{ModelName: "model-A"}}}
+	mockLLM.On("GetConfig").Return(cfg)
+	mockLLM.On("GetHTTPLLMTimeout").Return(2 * time.Second)
+	mockLLM.On("SetHTTPLLMTimeout", mock.Anything).Return()
+	mockLLM.On("ScoreWithModel", testArticle, "model-A").Return(0.0, llmAuthError)
+
+	// Create a request to trigger the reanalyze endpoint
+	req, _ := http.NewRequest("POST", fmt.Sprintf(reanalyzeURLPath, testArticleID), bytes.NewBuffer([]byte("{}")))
+	req.Header.Set(contentTypeHeader, applicationJSON)
+	w := httptest.NewRecorder()
+
+	// Serve the request
+	router.ServeHTTP(w, req)
+
+	// All models fail the health check, resulting in service unavailable
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+// TestReanalyzeHandlerFallbackMechanismIntegration tests the improved fallback mechanism in reanalyzeHandler
+// that tries all configured models before giving up.
+func TestReanalyzeHandlerFallbackMechanismIntegration(t *testing.T) {
+	// Setup test server with mocks
+	router, mockDB, mockProgress, _, _, mockLLMClient := setupIntegrationTestServer(t)
+	// Clear default expectations so we can define custom behavior
+	mockLLMClient.ExpectedCalls = nil
+
+	// Ensure background reanalysis runs during this test
+	os.Setenv("NO_AUTO_ANALYZE", "false")
+	defer os.Unsetenv("NO_AUTO_ANALYZE")
+
+	// Test article ID
+	articleID := int64(42)
+
+	// Create a test article
+	testArticle := &db.Article{
+		ID:      articleID,
+		Title:   "Test Article",
+		Content: "Test content for article reanalysis fallback test",
+	}
+
+	// Setup mock DB to return our test article
+	mockDB.On("GetArticleByID", mock.Anything, articleID).Return(testArticle, nil)
+
+	// Configure the mock LLM client to simulate first model failing, second model succeeding
+	mockLLMClient.On("ScoreWithModel", testArticle, "model-A").Return(0.0, fmt.Errorf("simulated error for model-A"))
+	mockLLMClient.On("ScoreWithModel", testArticle, "model-B").Return(0.5, nil)
+
+	// Mock the GetConfig method to return a test configuration with two models
+	cfg := &llm.CompositeScoreConfig{
+		Models: []llm.ModelConfig{
+			{ModelName: "model-A"},
+			{ModelName: "model-B"},
+		},
+	}
+	mockLLMClient.On("GetConfig").Return(cfg)
+
+	// Mock the GetHTTPLLMTimeout and SetHTTPLLMTimeout methods
+	testTimeout := 5 * time.Second
+	mockLLMClient.On("GetHTTPLLMTimeout").Return(testTimeout)
+	mockLLMClient.On("SetHTTPLLMTimeout", mock.Anything).Return()
+
+	// For the actual reanalysis, mock to succeed if triggered
+	// (NO_AUTO_ANALYZE may skip this call, so mark as Maybe)
+	mockLLMClient.On("ReanalyzeArticle", articleID).Return(nil).Maybe()
+
+	// Progress tracking should be set to show it's working
+	mockProgress.On("SetProgress", articleID, mock.Anything).Return()
+
+	// Create request to the reanalyze endpoint
+	uri := fmt.Sprintf("/api/llm/reanalyze/%d", articleID)
+	req := httptest.NewRequest(http.MethodPost, uri, bytes.NewBuffer([]byte("{}")))
+	req.Header.Set(contentTypeHeader, applicationJSON)
+
+	// Create a response recorder
+	w := httptest.NewRecorder()
+
+	// Perform the request
+	router.ServeHTTP(w, req)
+
+	// Verify the response
+	assert.Equal(t, http.StatusOK, w.Code, "Should return 200 OK")
+
+	// Parse response body
+	var resp map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err, "Should parse response JSON")
+
+	// Verify we got "reanalyze queued" status
+	assert.Equal(t, true, resp["success"], "Response should indicate success")
+	data, hasData := resp["data"].(map[string]interface{})
+	assert.True(t, hasData, "Response should have a data field")
+	assert.Equal(t, "reanalysis queued", data["status"], "Status should be 'reanalysis queued'")
+
+	// Verify all mock expectations
+	mockDB.AssertExpectations(t)
+	mockLLMClient.AssertExpectations(t)
+	mockProgress.AssertExpectations(t)
+}
+
+// TestReanalyzeHandlerAllModelsFail tests the case where all models fail the health check.
+func TestReanalyzeHandlerAllModelsFail(t *testing.T) {
+	// Setup test server with mocks
+	router, mockDB, mockProgress, _, _, mockLLMClient := setupIntegrationTestServer(t)
+	// Clear default expectations so we can define custom behavior
+	mockLLMClient.ExpectedCalls = nil
+
+	// Test article ID
+	articleID := int64(43)
+
+	// Create a test article
+	testArticle := &db.Article{
+		ID:      articleID,
+		Title:   "Test Article - All Models Fail",
+		Content: "Test content for all models failing test case",
+	}
+
+	// Setup mock DB to return our test article
+	mockDB.On("GetArticleByID", mock.Anything, articleID).Return(testArticle, nil)
+
+	// Configure the mock LLM client to simulate all models failing
+	mockLLMClient.On("ScoreWithModel", testArticle, "model-A").Return(0.0, fmt.Errorf("simulated error for model-A"))
+	mockLLMClient.On("ScoreWithModel", testArticle, "model-B").Return(0.0, fmt.Errorf("simulated error for model-B"))
+
+	// Expect progress to be set when analysis starts
+	mockProgress.On("SetProgress", articleID, mock.AnythingOfType("*models.ProgressState")).Return()
+
+	// Mock the GetConfig method to return a test configuration with two models
+	cfg := &llm.CompositeScoreConfig{
+		Models: []llm.ModelConfig{
+			{ModelName: "model-A"},
+			{ModelName: "model-B"},
+		},
+	}
+	mockLLMClient.On("GetConfig").Return(cfg)
+
+	// Mock the GetHTTPLLMTimeout and SetHTTPLLMTimeout methods
+	testTimeout := 5 * time.Second
+	mockLLMClient.On("GetHTTPLLMTimeout").Return(testTimeout)
+	mockLLMClient.On("SetHTTPLLMTimeout", mock.Anything).Return()
+
+	// We should NOT call ReanalyzeArticle if all models fail
+	// No need to mock mockLLMClient.On("ReanalyzeArticle", ...) here
+
+	// Create request to the reanalyze endpoint
+	uri := fmt.Sprintf("/api/llm/reanalyze/%d", articleID)
+	req := httptest.NewRequest(http.MethodPost, uri, bytes.NewBuffer([]byte("{}")))
+	req.Header.Set(contentTypeHeader, applicationJSON)
+
+	// Create a response recorder
+	w := httptest.NewRecorder()
+
+	// Perform the request
+	router.ServeHTTP(w, req)
+
+	// Verify the response
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code, "Should return 503 Service Unavailable")
+
+	// Verify all mock expectations
+	mockDB.AssertExpectations(t)
+	mockLLMClient.AssertExpectations(t)
 }
