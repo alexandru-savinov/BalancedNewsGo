@@ -156,11 +156,10 @@ func TestSomething(t *testing.T) {
 The test framework creates an in-memory SQLite database by default. For persistent tests, you can:
 
 ```bash
-# Reset the test database
+# Reset the test database (PowerShell)
 ./recreate_db.ps1  # Windows
-./recreate_db.sh   # Linux/macOS
 
-# Manually clear specific test data
+# Manually clear specific test data or recreate the DB on other platforms
 go run cmd/reset_test_db/main.go
 ```
 
