@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -853,16 +852,12 @@ func TestGetArticlesHandlerWithDB(t *testing.T) {
 }
 
 func TestGetArticleByIDHandlerAdditional(t *testing.T) {
-	// Setup mock database
-	mockDB := &MockDBOperations{}
-
-	// Setup test server with the handler
-	router := gin.Default()
-	router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
-
 	// Test successful retrieval
 	t.Run("successful retrieval", func(t *testing.T) {
-		// Setup mock article
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
+
 		article := db.Article{
 			ID:      1,
 			Title:   "Test Article",
@@ -872,13 +867,10 @@ func TestGetArticleByIDHandlerAdditional(t *testing.T) {
 			PubDate: time.Now(),
 		}
 
-		// Setup mock expectations
-		mockDB.On("FetchArticleByID", int64(1)).Return(&article, nil)
+		mockDB.On("FetchArticleByID", mock.Anything, int64(1)).Return(&article, nil)
 
-		// Create test request
 		req, _ := http.NewRequest("GET", "/articles/1", nil)
 
-		// Perform request
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
@@ -903,52 +895,51 @@ func TestGetArticleByIDHandlerAdditional(t *testing.T) {
 
 	// Test article not found
 	t.Run("article not found", func(t *testing.T) {
-		// Setup mock expectations
-		mockDB.On("FetchArticleByID", int64(999)).Return(nil, sql.ErrNoRows)
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
 
-		// Create test request
+		mockDB.On("FetchArticleByID", mock.Anything, int64(999)).Return(nil, db.ErrArticleNotFound)
+
 		req, _ := http.NewRequest("GET", "/articles/999", nil)
 
-		// Perform request
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
-		// Assert response
 		assert.Equal(t, http.StatusNotFound, w.Code)
 
-		// Verify mock expectations
 		mockDB.AssertExpectations(t)
 	})
 
 	// Test invalid ID
 	t.Run("invalid ID", func(t *testing.T) {
-		// Create test request with invalid ID
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
+
 		req, _ := http.NewRequest("GET", "/articles/invalid", nil)
 
-		// Perform request
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
-		// Assert response
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	// Test database error
 	t.Run("database error", func(t *testing.T) {
-		// Setup mock expectations
-		mockDB.On("FetchArticleByID", int64(1)).Return(nil, errors.New("database error"))
+		mockDB := &MockDBOperations{}
+		router := gin.Default()
+		router.GET("/articles/:id", getArticleByIDHandlerWithDB(mockDB))
 
-		// Create test request
+		mockDB.On("FetchArticleByID", mock.Anything, int64(1)).Return(nil, errors.New("database error"))
+
 		req, _ := http.NewRequest("GET", "/articles/1", nil)
 
-		// Perform request
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
-		// Assert response
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 
-		// Verify mock expectations
 		mockDB.AssertExpectations(t)
 	})
 }

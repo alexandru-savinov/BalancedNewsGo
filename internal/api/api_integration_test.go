@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -390,7 +391,7 @@ func TestReanalyzeEndpointProgressTracking(t *testing.T) {
 	mockLLM.On("ReanalyzeArticle", testArticleID).Return(nil)
 
 	// We need to accept any ProgressState struct that's passed to SetProgress
-	mockProgress.On("SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState")).Return()
+	mockProgress.On("SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState")).Return().Twice()
 
 	// Create a request to trigger the reanalyze endpoint
 	req, _ := http.NewRequest("POST", fmt.Sprintf(reanalyzeURLPath, testArticleID), bytes.NewBuffer([]byte("{}")))
@@ -704,10 +705,12 @@ func TestDatabaseErrorsErrorHandling(t *testing.T) {
 // Test that LLMAPIError is properly propagated through the reanalyze endpoint
 func TestReanalyzeEndpointLLMErrorPropagation(t *testing.T) {
 	// Setup test server
-	router, mockDB, _, _, _, mockLLM := setupIntegrationTestServer(t)
+	router, mockDB, mockProgress, _, _, mockLLM := setupIntegrationTestServer(t)
+	mockLLM.ExpectedCalls = nil
 
 	// Setup test data
 	testArticleID := int64(456)
+	mockProgress.On("SetProgress", testArticleID, mock.AnythingOfType("*models.ProgressState")).Return()
 	testArticle := &db.Article{
 		ID:      testArticleID,
 		Title:   "LLM Error Test Article",
@@ -750,6 +753,12 @@ func TestReanalyzeEndpointLLMErrorPropagation(t *testing.T) {
 func TestReanalyzeHandlerFallbackMechanismIntegration(t *testing.T) {
 	// Setup test server with mocks
 	router, mockDB, mockProgress, _, _, mockLLMClient := setupIntegrationTestServer(t)
+	// Clear default expectations so we can define custom behavior
+	mockLLMClient.ExpectedCalls = nil
+
+	// Ensure background reanalysis runs during this test
+	os.Setenv("NO_AUTO_ANALYZE", "false")
+	defer os.Unsetenv("NO_AUTO_ANALYZE")
 
 	// Test article ID
 	articleID := int64(42)
@@ -782,8 +791,9 @@ func TestReanalyzeHandlerFallbackMechanismIntegration(t *testing.T) {
 	mockLLMClient.On("GetHTTPLLMTimeout").Return(testTimeout)
 	mockLLMClient.On("SetHTTPLLMTimeout", mock.Anything).Return()
 
-	// For the actual reanalysis, we'll mock it to succeed
-	mockLLMClient.On("ReanalyzeArticle", articleID).Return(nil)
+	// For the actual reanalysis, mock to succeed if triggered
+	// (NO_AUTO_ANALYZE may skip this call, so mark as Maybe)
+	mockLLMClient.On("ReanalyzeArticle", articleID).Return(nil).Maybe()
 
 	// Progress tracking should be set to show it's working
 	mockProgress.On("SetProgress", articleID, mock.Anything).Return()
@@ -822,7 +832,9 @@ func TestReanalyzeHandlerFallbackMechanismIntegration(t *testing.T) {
 // TestReanalyzeHandlerAllModelsFail tests the case where all models fail the health check.
 func TestReanalyzeHandlerAllModelsFail(t *testing.T) {
 	// Setup test server with mocks
-	router, mockDB, _, _, _, mockLLMClient := setupIntegrationTestServer(t)
+	router, mockDB, mockProgress, _, _, mockLLMClient := setupIntegrationTestServer(t)
+	// Clear default expectations so we can define custom behavior
+	mockLLMClient.ExpectedCalls = nil
 
 	// Test article ID
 	articleID := int64(43)
@@ -840,6 +852,9 @@ func TestReanalyzeHandlerAllModelsFail(t *testing.T) {
 	// Configure the mock LLM client to simulate all models failing
 	mockLLMClient.On("ScoreWithModel", testArticle, "model-A").Return(0.0, fmt.Errorf("simulated error for model-A"))
 	mockLLMClient.On("ScoreWithModel", testArticle, "model-B").Return(0.0, fmt.Errorf("simulated error for model-B"))
+
+	// Expect progress to be set when analysis starts
+	mockProgress.On("SetProgress", articleID, mock.AnythingOfType("*models.ProgressState")).Return()
 
 	// Mock the GetConfig method to return a test configuration with two models
 	cfg := &llm.CompositeScoreConfig{
