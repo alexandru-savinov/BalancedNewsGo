@@ -7,7 +7,7 @@ This document provides a comprehensive analysis of the NewsBalancer Go project's
 *   Significant failures in API integration tests due to mock setup issues (`GetConfig`).
 *   Build failures in `internal/llm` and `internal/testing`.
 
-The subsequent review, incorporating insights from `docs/testing.md`, has allowed for a more refined prioritization of fixes and improvements. The strengths of this combined analysis include accurate identification of critical blockers and sound recommendations. Minor refinements could involve more explicit cross-referencing with related documents like `docs/pr/todo_llm_test_fixes.md`. The following sections detail the findings and a prioritized action plan.
+The subsequent review, incorporating insights from `docs/testing.md`, has allowed for a more refined prioritization of fixes and improvements. The strengths of this combined analysis include accurate identification of critical blockers and sound recommendations. Minor refinements could involve more explicit cross-referencing with a planned document on LLM test fixes. The following sections detail the findings and a prioritized action plan.
 
 ## 1. Test Coverage Overview
 
@@ -109,8 +109,8 @@ The test coverage across the system is uneven:
     *   **Action:** Implement `mockLLMClient.On("GetConfig").Return(...)` in `setupIntegrationTestServer` (`internal/api/api_integration_test.go`) and other affected tests, returning a valid `*llm.CompositeScoreConfig`.
     *   **Rationale:** Unblocks a large number of failing Go integration tests, providing a clearer view of API health.
 
-3.  **Fix `internal/llm` Unit Test Failures (Ref: `docs/testing.md` - Current Test Status; `docs/pr/todo_llm_test_fixes.md`)**
-    *   **Action:** Address failing unit tests in `internal/llm` as per `todo_llm_test_fixes.md`.
+3.  **Fix `internal/llm` Unit Test Failures (Ref: `docs/testing.md` - Current Test Status)**
+    *   **Action:** Address failing unit tests in `internal/llm` as outlined in the future LLM test fixes document.
     *   **Rationale:** LLM is core functionality; failing unit tests indicate potential logic bugs.
 
 ### P1: High Priority (Address after P0 to stabilize core testing and cover essential functionality)

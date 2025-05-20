@@ -69,14 +69,14 @@
 - **Tasks:**
   - [x] Use gomock or testify for DB/LLM mocks (see mock_llm_service.go, internal/api/api_test.go)
   - [ ] Ensure all mocks implement interfaces (see internal/db/interfaces.go)
-  - [ ] Document mock usage patterns (see TESTING_GUIDE.md)
+  - [ ] Document mock usage patterns (see docs/testing.md)
   - [x] Use test data directories and snapshotting for E2E (see e2e_prep.js)
 
 ## 6. Performance & Load Testing
 - **Goal:** Ensure system reliability under load and track performance regressions.
 - **Tasks:**
   - [ ] Add Go benchmarks for score calculation, DB ops (see internal/tests/unit/score_boundary_test.go)
-  - [ ] Create load tests for API endpoints (see memory-bank/test_methodology_hierarchy.md)
+  - [ ] Create load tests for API endpoints (plan forthcoming)
   - [ ] Track API response times and add regression alerts
 
 ## 7. Reporting & CI Integration
@@ -90,17 +90,15 @@
 ## 8. Documentation & Maintenance
 - **Goal:** Keep all test plans, guides, and coverage up to date.
 - **Tasks:**
-  - [ ] Document test requirements and setup (see TESTING_GUIDE.md, CLI_TESTING_GUIDE.md)
+  - [ ] Document test requirements and setup (see docs/testing.md)
   - [x] Update test_coverage_todo.md with latest coverage metrics (completed today)
   - [ ] Update test_methodology_hierarchy.md to reflect current testing priorities
 
 ---
 
 For detailed test case design, edge case handling, and automation, see:
-- [archive/postman_rescoring_test_plan.md](memory-bank/archive/postman_rescoring_test_plan.md)
-- [test_methodology_hierarchy.md](memory-bank/test_methodology_hierarchy.md)
-- [CLI_TESTING_GUIDE.md](CLI_TESTING_GUIDE.md)
-- [TESTING_GUIDE.md](TESTING_GUIDE.md)
+- Documentation in `docs/PR/` for past analysis and proposals
+- The main [Testing Guide](../testing.md)
 
 ---
 

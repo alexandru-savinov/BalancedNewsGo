@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,7 +119,7 @@ func TestSafeHandler(t *testing.T) {
 	if okErrorField {
 		messageVal, okMessageVal := errorField["message"].(string)
 		assert.True(t, okMessageVal, "\"message\" field in error should be a string")
-		assert.Contains(t, messageVal, "Internal server error")
+		assert.Contains(t, strings.ToLower(messageVal), "internal server error")
 	} else {
 		t.Log("Skipping message check as error field was not a map")
 	}

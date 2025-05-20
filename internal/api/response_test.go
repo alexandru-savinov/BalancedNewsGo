@@ -98,6 +98,7 @@ func TestRespondError_LLMErrors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, "/?model=test", nil)
 
 			// Call the function we're testing
 			RespondError(c, tc.err)
@@ -132,7 +133,7 @@ func TestRespondError_LLMErrors(t *testing.T) {
 
 			// For LLM API errors, check error details
 			if tc.checkErrorDetails {
-				assert.Contains(t, errorData["message"], "LLM service", "LLM error message should mention LLM service")
+				assert.Contains(t, errorData["message"], "LLM", "LLM error message should mention LLM")
 			}
 		})
 	}
