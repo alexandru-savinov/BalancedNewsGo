@@ -119,6 +119,8 @@ function getArticlesCacheKey() {
 // Main function to fetch articles
 async function fetchArticles(forceRefresh = false) {
     try {
+        // Always force refresh for now to avoid stale cache issues
+        forceRefresh = true;
         // Show loading indicator
         document.getElementById('articles-loading').style.display = 'block';
         document.getElementById('articles-error').style.display = 'none';

@@ -242,19 +242,18 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 	}
 }
 
-// Helper: Convert db.Article to Postman schema (lowercase fields to match frontend)
-func articleToPostmanSchema(a *db.Article) map[string]interface{} {
-	return map[string]interface{}{
-		"id":              a.ID,
-		"title":           a.Title,
-		"content":         a.Content,
-		"url":             a.URL,
-		"source":          a.Source,
-		"pub_date":        a.PubDate,
-		"created_at":      a.CreatedAt,
-		"composite_score": a.CompositeScore,
-		"confidence":      a.Confidence,
-		"score_source":    a.ScoreSource,
+// Helper: Convert db.Article to API ArticleResponse
+func toArticleResponse(a *db.Article) ArticleResponse {
+	return ArticleResponse{
+		ArticleID:      a.ID,
+		Title:          a.Title,
+		Content:        a.Content,
+		URL:            a.URL,
+		Source:         a.Source,
+		CompositeScore: a.CompositeScore,
+		Confidence:     a.Confidence,
+		PubDate:        a.PubDate.Format(time.RFC3339),
+		CreatedAt:      a.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -359,8 +358,18 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			ScoreSource:    &llmSource,
 		}
 
-		id, err := db.InsertArticle(dbConn, article)
-		if err != nil {
+		// Retry logic for SQLITE_BUSY
+		var id int64
+		maxAttempts := 5
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			id, err = db.InsertArticle(dbConn, article)
+			if err == nil {
+				break
+			}
+			if strings.Contains(err.Error(), "database is locked") {
+				time.Sleep(time.Duration(attempt*100) * time.Millisecond)
+				continue
+			}
 			if errors.Is(err, db.ErrDuplicateURL) {
 				c.JSON(http.StatusConflict, gin.H{
 					"success": false,
@@ -374,6 +383,10 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			RespondError(c, WrapError(err, ErrInternal, "Failed to create article"))
 			return
 		}
+		if err != nil {
+			RespondError(c, WrapError(err, ErrInternal, "Failed to create article after retries"))
+			return
+		}
 
 		// Fetch the full article object after creation
 		createdArticle, err := db.FetchArticleByID(dbConn, id)
@@ -382,9 +395,10 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
+		resp := toArticleResponse(createdArticle)
 		c.JSON(http.StatusCreated, gin.H{
 			"success": true,
-			"data":    articleToPostmanSchema(createdArticle),
+			"data":    resp,
 		})
 	}
 }
@@ -457,10 +471,9 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			}
 		}
 
-		// Map to Postman schema
-		var out []map[string]interface{}
+		var out []ArticleResponse
 		for i := range articles {
-			out = append(out, articleToPostmanSchema(&articles[i]))
+			out = append(out, toArticleResponse(&articles[i]))
 		}
 
 		c.JSON(http.StatusOK, gin.H{
@@ -469,6 +482,21 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		})
 		LogPerformance("getArticlesHandler", start)
 	}
+}
+
+// Helper: Validate article ID from path param
+func getValidArticleID(c *gin.Context) (int64, bool) {
+	idStr := c.Param("id")
+	if idStr == "null" || idStr == "undefined" || idStr == "" {
+		RespondError(c, NewAppError(ErrValidation, "Invalid article ID (null or empty)"))
+		return 0, false
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || id < 1 {
+		RespondError(c, NewAppError(ErrValidation, "Invalid article ID (must be a positive integer)"))
+		return 0, false
+	}
+	return id, true
 }
 
 // getArticleByIDHandler handles GET /articles/:id
@@ -487,11 +515,8 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		idStr := c.Param("id")
-
-		id, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || id < 1 {
-			RespondError(c, ErrInvalidArticleID)
+		id, ok := getValidArticleID(c)
+		if !ok {
 			return
 		}
 
@@ -499,7 +524,7 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		_, skipCache := c.GetQuery("_t")
 
 		// Caching
-		cacheKey := "article:" + idStr
+		cacheKey := "article:" + strconv.FormatInt(id, 10)
 		if !skipCache {
 			articlesCacheLock.RLock()
 			if cached, found := articlesCache.Get(cacheKey); found {
@@ -524,17 +549,16 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Use the same schema as other endpoints
-		result := articleToPostmanSchema(article)
+		resp := toArticleResponse(article)
 
 		// Cache the result for 30 seconds
 		articlesCacheLock.Lock()
-		articlesCache.Set(cacheKey, result, 30*time.Second)
+		articlesCache.Set(cacheKey, resp, 30*time.Second)
 		articlesCacheLock.Unlock()
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"data":    result,
+			"data":    resp,
 		})
 		LogPerformance("getArticleByIDHandler", start)
 	}
@@ -577,13 +601,11 @@ func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 // @ID reanalyzeArticle
 func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil || id < 1 {
-			RespondError(c, ErrInvalidArticleID)
+		id, ok := getValidArticleID(c)
+		if !ok {
 			return
 		}
-		articleID := int64(id)
+		articleID := id
 		log.Printf("[POST /api/llm/reanalyze] ArticleID=%d", articleID)
 
 		// Check if article exists
@@ -597,11 +619,15 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			return
 		}
 
-		// Parse raw JSON body
+		// Accept empty or missing JSON body gracefully
 		var raw map[string]interface{}
-		if err := c.ShouldBindJSON(&raw); err != nil {
-			RespondError(c, ErrInvalidPayload)
-			return
+		if c.Request.ContentLength == 0 {
+			raw = map[string]interface{}{} // treat as empty
+		} else {
+			if err := c.ShouldBindJSON(&raw); err != nil {
+				RespondError(c, ErrInvalidPayload)
+				return
+			}
 		}
 
 		// Direct score update path - check if "score" field exists
@@ -717,12 +743,18 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 		if workingModel == "" {
 			log.Printf("[reanalyzeHandler %d] No working models found after checking all configured models. Last error: %v", articleID, healthErr)
 			// Ensure healthErr is an AppError or wrapped appropriately before RespondError
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &models.ProgressState{
+					Status:  "Error",
+					Step:    "Error",
+					Message: fmt.Sprintf("All models failed: %v", healthErr),
+				})
+			}
 			if healthErr != nil {
 				// Ensure it's an AppError; if not, wrap it.
 				appErr, ok := healthErr.(*apperrors.AppError)
 				if !ok {
 					// Determine appropriate app error type, e.g., ErrLLMService or ErrInternal
-					// For a timeout, ErrLLMService or a specific timeout error code might be best.
 					respondErr := NewAppError(ErrLLMService, fmt.Sprintf("All models failed health check. Last error: %v", healthErr.Error()))
 					RespondError(c, respondErr)
 				} else {
@@ -791,47 +823,42 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 // @ID getScoreProgress
 func scoreProgressSSEHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil || id < 1 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid article ID"})
+		id, ok := getValidArticleID(c)
+		if !ok {
+			c.Writer.WriteHeader(http.StatusBadRequest)
+			c.Writer.Write([]byte("event: error\ndata: {\"error\":\"Invalid article ID\"}\n\n"))
 			return
 		}
-		articleID := int64(id)
+		articleID := id
 		log.Printf("[SSE GET /api/llm/score-progress] ArticleID=%d", articleID)
-
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Flush()
-
 		lastProgress := ""
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
-
 		for {
 			select {
 			case <-c.Request.Context().Done():
+				log.Printf("[SSE] Client disconnected for article %d", articleID)
 				return
 			case <-ticker.C:
 				progress := getProgress(articleID)
 				if progress == nil {
 					continue
 				}
-
-				// Always send updates when status changes or on final states
 				if data, err := json.Marshal(progress); err == nil {
 					currentProgress := string(data)
 					if currentProgress != lastProgress {
 						if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", data); err != nil {
-							// Client disconnected or error writing
+							log.Printf("[SSE] Error writing to client for article %d: %v", articleID, err)
 							return
 						}
 						c.Writer.Flush()
 						lastProgress = currentProgress
-
-						// Close connection on final states
-						if progress.Status == "Success" || progress.Status == "Error" {
+						if progress.Status == "Success" || progress.Status == "Error" || progress.Status == "Complete" {
+							log.Printf("[SSE] Progress complete for article %d: %s", articleID, progress.Status)
 							return
 						}
 					}
@@ -887,16 +914,13 @@ func NewSummaryHandler(db db.DBOperations) *SummaryHandler {
 
 func (h *SummaryHandler) Handle(c *gin.Context) {
 	start := time.Now()
-	idStr := c.Param("id")
-
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil || id < 1 {
-		RespondError(c, ErrInvalidArticleID)
+	id, ok := getValidArticleID(c)
+	if !ok {
 		return
 	}
 
 	// Caching
-	cacheKey := "summary:" + idStr
+	cacheKey := "summary:" + strconv.FormatInt(id, 10)
 	articlesCacheLock.RLock()
 	if cached, found := articlesCache.Get(cacheKey); found {
 		articlesCacheLock.RUnlock()
@@ -907,7 +931,7 @@ func (h *SummaryHandler) Handle(c *gin.Context) {
 	articlesCacheLock.RUnlock()
 
 	// Verify article exists
-	_, err = h.db.FetchArticleByID(c, id)
+	_, err := h.db.FetchArticleByID(c, id)
 	if err != nil {
 		if errors.Is(err, db.ErrArticleNotFound) {
 			RespondError(c, ErrArticleNotFound)
@@ -976,11 +1000,8 @@ func (h *SummaryHandler) Handle(c *gin.Context) {
 func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		idStr := c.Param("id")
-		articleID, err := strconv.ParseInt(idStr, 10, 64)
-		if err != nil || articleID < 1 {
-			RespondError(c, NewAppError(ErrValidation, "Invalid article ID"))
-			LogError(c, err, "biasHandler: invalid id")
+		id, ok := getValidArticleID(c)
+		if !ok {
 			return
 		}
 
@@ -1004,7 +1025,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Caching
-		cacheKey := "bias:" + idStr + ":" + c.DefaultQuery("min_score", "-1") + ":" + c.DefaultQuery("max_score", "1") + ":" + sortOrder
+		cacheKey := "bias:" + strconv.FormatInt(id, 10) + ":" + c.DefaultQuery("min_score", "-1") + ":" + c.DefaultQuery("max_score", "1") + ":" + sortOrder
 		articlesCacheLock.RLock()
 		if cached, found := articlesCache.Get(cacheKey); found {
 			articlesCacheLock.RUnlock()
@@ -1014,7 +1035,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 		articlesCacheLock.RUnlock()
 
-		scores, err := db.FetchLLMScores(dbConn, articleID)
+		scores, err := db.FetchLLMScores(dbConn, id)
 		if err != nil {
 			RespondError(c, NewAppError(ErrInternal, "Failed to fetch bias data"))
 			LogError(c, err, "biasHandler: fetch scores")
@@ -1119,7 +1140,7 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		articlesCacheLock.Unlock()
 
 		// DEBUG: Log the response being sent, especially for article 1646
-		if articleID == 1646 {
+		if id == 1646 {
 			log.Printf("[biasHandler DEBUG 1646] Sending response: %+v", resp)
 		}
 
@@ -1139,11 +1160,8 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil || id < 1 {
-			RespondError(c, NewAppError(ErrValidation, "Invalid article ID"))
-			LogError(c, err, "ensembleDetailsHandler: invalid id")
+		id, ok := getValidArticleID(c)
+		if !ok {
 			return
 		}
 
@@ -1167,7 +1185,7 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Regular caching logic
-		cacheKey := "ensemble:" + idStr
+		cacheKey := "ensemble:" + strconv.FormatInt(id, 10)
 		articlesCacheLock.RLock()
 		if cachedRaw, found := articlesCache.Get(cacheKey); found {
 			articlesCacheLock.RUnlock()
@@ -1316,11 +1334,10 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 		}
 
 		if err := c.ShouldBind(&req); err != nil {
-			RespondError(c, ErrInvalidPayload)
+			RespondError(c, NewAppError(ErrValidation, "Invalid or missing feedback fields"))
 			return
 		}
 
-		// Validate all required fields
 		var missingFields []string
 		if req.ArticleID == 0 {
 			missingFields = append(missingFields, "article_id")
@@ -1331,21 +1348,12 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 		if req.UserID == "" {
 			missingFields = append(missingFields, "user_id")
 		}
-
 		if len(missingFields) > 0 {
-			RespondError(c, NewAppError(ErrValidation,
-				fmt.Sprintf("Missing required fields: %s", strings.Join(missingFields, ", "))))
+			RespondError(c, NewAppError(ErrValidation, "Missing required fields: "+strings.Join(missingFields, ", ")))
 			return
 		}
 
-		// Validate Category if provided
-		validCategories := map[string]bool{
-			"agree":    true,
-			"disagree": true,
-			"unclear":  true,
-			"other":    true,
-			"":         true, // Allow empty for backward compatibility
-		}
+		validCategories := map[string]bool{"agree": true, "disagree": true, "unclear": true, "other": true, "": true}
 		if req.Category != "" && !validCategories[req.Category] {
 			RespondError(c, ErrInvalidCategory)
 			return
@@ -1415,20 +1423,18 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 // @ID addManualScore
 func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		idStr := c.Param("id")
-		id, err := strconv.Atoi(idStr)
-		if err != nil || id < 1 {
-			RespondError(c, NewAppError(ErrValidation, "Invalid article ID"))
-			LogError(c, err, "manualScoreHandler: invalid id")
+		id, ok := getValidArticleID(c)
+		if !ok {
 			return
 		}
-		articleID := int64(id)
+		articleID := id
 
 		// Read raw body for strict validation
 		var raw map[string]interface{}
+		var err error // Declare err at the top
 		decoder := json.NewDecoder(c.Request.Body)
 		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&raw); err != nil {
+		if err = decoder.Decode(&raw); err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid JSON body"))
 			LogError(c, err, "manualScoreHandler: invalid JSON body")
 			return
