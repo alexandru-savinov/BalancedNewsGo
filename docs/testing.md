@@ -6,7 +6,7 @@ This document provides information on how to test the NewsBalancer Go applicatio
 
 ## Recent Improvements
 
-Based on recent debugging efforts (documented in `docs/pr/`), the following improvements have been made:
+Based on recent debugging efforts (documented in `docs/PR/`), the following improvements have been made:
 
 1. **Schema Fix**: Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table to fix SQL `ON CONFLICT` issues
 2. **Enhanced Documentation**: Detailed troubleshooting steps for common test failures
@@ -73,7 +73,7 @@ For successful test execution:
 
 ## Root Causes of Common Failures
 
-Based on recent debugging (see `docs/pr/test_fixes_summary.md`), we identified two primary issues that cause test failures:
+Based on recent debugging (see `docs/PR/test_system_analysis.md`), we identified two primary issues that cause test failures:
 
 1. **SQL Schema Constraint Mismatch**: Without a `UNIQUE(article_id, model)` constraint on the `llm_scores` table, SQL `ON CONFLICT` clauses fail with:
    ```
