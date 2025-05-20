@@ -140,6 +140,7 @@ Here's a breakdown of the project's directory structure:
     *   [Integration Testing Guide](docs/integration_testing.md): Guide for testing with external services like LLMs.
     *   [Deployment Guide](docs/deployment.md): Instructions for production deployment and performance tuning.
     *   `architecture.md`: Describes the data flow and architecture (e.g., CompositeScore calculation).
+    *   [Request Flow Overview](docs/request_flow.md): Step-by-step walkthrough of how an API request travels through the system.
     *   `swagger.yaml`, `swagger.json`, `docs.go`: API documentation (Swagger/OpenAPI).
     *   `PR/handle_total_analysis_failure.md`: Technical recommendation for handling total analysis failure.
     *   [Potential Codebase Improvements](docs/plans/potential_improvements.md): Suggestions for future development and enhancements.
