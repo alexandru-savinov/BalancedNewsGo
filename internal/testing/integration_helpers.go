@@ -83,7 +83,7 @@ func SeedLLMScoresForErrAllPerspectivesInvalid(db *sqlx.DB, articleID int64) err
 			Model:     p.modelName,
 			Score:     math.Inf(1), // Use +Infinity instead of NaN
 			Metadata:  `{"confidence": 0.1}`,
-			Version:   "test-seeder",
+                    Version:   1,
 			CreatedAt: time.Now(),
 		}
 		_, err := appdb.InsertLLMScore(db, scoreRecord)
@@ -114,7 +114,7 @@ func SeedLLMScoresForErrAllScoresZeroConfidence(db *sqlx.DB, articleID int64) er
 			Model:     m.modelName,
 			Score:     m.scoreVal,
 			Metadata:  zeroConfidenceMetadata,
-			Version:   "test-seeder",
+                    Version:   1,
 			CreatedAt: time.Now(),
 		}
 		_, err := appdb.InsertLLMScore(db, scoreRecord)
@@ -144,7 +144,7 @@ func SeedLLMScoresForSuccessfulScore(db *sqlx.DB, articleID int64) error {
 			Model:     s.modelName,
 			Score:     s.scoreVal,
 			Metadata:  metadata,
-			Version:   "test-seeder",
+                    Version:   1,
 			CreatedAt: time.Now(),
 		}
 		_, err := appdb.InsertLLMScore(db, scoreRecord)

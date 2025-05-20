@@ -235,7 +235,7 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 				// Log the panic
 				log.Printf("[PANIC RECOVERED] %v\n%s", r, string(debug.Stack()))
 				// Return an error response
-				RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Internal server error: %v", r)))
+                                RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Internal Server Error: %v", r)))
 			}
 		}()
 		handler(c)
