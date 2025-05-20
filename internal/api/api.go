@@ -235,7 +235,7 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 				// Log the panic
 				log.Printf("[PANIC RECOVERED] %v\n%s", r, string(debug.Stack()))
 				// Return an error response
-                                RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Internal Server Error: %v", r)))
+				RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Internal Server Error: %v", r)))
 			}
 		}()
 		handler(c)
@@ -1502,6 +1502,25 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			"article_id": articleID,
 			"score":      scoreVal,
 		})
+	}
+}
+
+// articleToPostmanSchema converts a db.Article to a map used by Postman tests.
+func articleToPostmanSchema(a *db.Article) map[string]interface{} {
+	if a == nil {
+		return nil
+	}
+	return map[string]interface{}{
+		"id":              a.ID,
+		"title":           a.Title,
+		"content":         a.Content,
+		"url":             a.URL,
+		"source":          a.Source,
+		"pub_date":        a.PubDate,
+		"created_at":      a.CreatedAt,
+		"composite_score": a.CompositeScore,
+		"confidence":      a.Confidence,
+		"score_source":    a.ScoreSource,
 	}
 }
 
