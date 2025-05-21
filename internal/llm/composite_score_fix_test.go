@@ -217,7 +217,7 @@ func TestCalculateConfidence(t *testing.T) {
 			scoreMap: map[string]float64{
 				"left": 0.8,
 			},
-                        expectedResult: 0.333, // 1/3 perspectives valid
+			expectedResult: 0.333, // 1/3 perspectives valid
 			config: &CompositeScoreConfig{
 				ConfidenceMethod: "count_valid",
 				MinConfidence:    0.3,
