@@ -48,4 +48,4 @@ These changes will have no functional impact on the application since:
 
 ## Related Documentation
 
-The codebase documentation in `docs/codebase_documentation.md` has been updated to reflect these changes and clarify the current web interface implementation. 
+The codebase documentation in `docs/codebase_documentation.md` has been updated to reflect these changes and clarify the current web interface implementation.

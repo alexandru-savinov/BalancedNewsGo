@@ -117,4 +117,4 @@ For production deployment, consider the following configuration updates:
 2. Use a proper database path with backup strategy
 3. Set up monitoring endpoints for health checks
 4. Configure rate limiting for API endpoints
-5. Set appropriate timeouts for LLM services 
+5. Set appropriate timeouts for LLM services
