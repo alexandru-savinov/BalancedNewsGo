@@ -343,3 +343,8 @@ make run
 
 This will start the server on port 8080 by default. You can then access the web interface at http://localhost:8080.
 *Note: If you encounter a "port already in use" error (e.g., `listen tcp :8080: bind: Only one usage of each socket address...`), ensure no other processes are using port 8080. See "Port Conflicts" under "Common Test Issues and Solutions" above.*
+
+## License
+
+Licensed under the [MIT License](LICENSE).
+
