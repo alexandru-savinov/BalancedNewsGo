@@ -2,7 +2,7 @@
 
 This document provides a comprehensive reference for all configuration options in the NewsBalancer system.
 
-## Environment Variables (.env)
+## Environment Variables (`.env.example`)
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
