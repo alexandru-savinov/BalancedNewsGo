@@ -146,4 +146,4 @@
     *   Inform team members of the changes before merging.
 
 ---
-By following these steps, the workspace will be significantly cleaner, easier to navigate, and less prone to issues caused by generated files or misplaced configurations. 
+By following these steps, the workspace will be significantly cleaner, easier to navigate, and less prone to issues caused by generated files or misplaced configurations.

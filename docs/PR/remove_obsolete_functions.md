@@ -45,9 +45,3 @@ These changes will have no functional impact on the application since:
 - Confirmed web interface continues to function normally
 - Tested legacy mode still works properly with the `--legacy-html` flag
 - Ran all automated tests
-
-## Related Documentation
-
-The codebase documentation in `docs/codebase_documentation.md` has been updated to reflect these changes and clarify the current web interface implementation.
-
-**Status:** All obsolete functions and comments have been removed from `cmd/server/main.go`, and related documentation has been updated.
