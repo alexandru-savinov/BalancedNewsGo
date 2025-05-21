@@ -2,6 +2,12 @@
 
 # Directory to store test outputs (allow override via env var)
 RESULTS_DIR="${RESULTS_DIR:-test-results}"
+# Provide dummy LLM_API_KEY if not set to allow server startup during tests
+# Provide dummy LLM_API_KEY if not set to allow server startup during tests
+export LLM_API_KEY="${LLM_API_KEY:-test-key}"
+# Use local mock service to avoid external calls
+export LLM_BASE_URL="${LLM_BASE_URL:-http://localhost:8090}"
+export NO_AUTO_ANALYZE="${NO_AUTO_ANALYZE:-true}"
 # Create test-results directory if it doesn't exist
 mkdir -p "$RESULTS_DIR"
 
@@ -40,6 +46,27 @@ stop_server() {
 # Trap EXIT signal to ensure server is stopped
 trap stop_server EXIT
 
+# Start mock LLM service in the background
+start_mock_llm() {
+  local log_file=$1
+  echo "Starting mock LLM service on port 8090 (logging to $log_file)..."
+  python3 tools/mock_llm_service.py center 8090 > "$log_file" 2>&1 &
+  MOCK_PID=$!
+  sleep 1
+}
+
+# Stop mock LLM service if running
+stop_mock_llm() {
+  if [ ! -z "$MOCK_PID" ]; then
+    echo "Stopping mock LLM service (PID: $MOCK_PID)..."
+    kill $MOCK_PID 2>/dev/null || true
+    wait $MOCK_PID 2>/dev/null || true
+    MOCK_PID=""
+  fi
+}
+
+trap stop_mock_llm EXIT
+
 # Function to run a Newman test suite
 # $1: Test name (for logging/filenames)
 # $2: Newman collection file path
@@ -49,8 +76,10 @@ run_newman_test() {
   local collection_file=$2
   local env_file=$3
   local server_log="$RESULTS_DIR/server_${test_name}.log"
+  local mock_log="$RESULTS_DIR/mock_llm_${test_name}.log"
   local result_file="$RESULTS_DIR/${test_name}_results.json"
 
+  start_mock_llm "$mock_log"
   start_server "$server_log"
 
   echo "Running Newman test: $collection_file"
@@ -65,6 +94,7 @@ run_newman_test() {
   local newman_exit_code=$?
 
   # Server is stopped via EXIT trap
+  stop_mock_llm
 
   if [ $newman_exit_code -ne 0 ]; then
     echo "$test_name tests FAILED (Exit Code: $newman_exit_code). Check output above and $result_file."
@@ -100,7 +130,8 @@ run_all_tests_suite() {
     local timestamp=$(date +%Y%m%d%H%M%S)
     local all_log_file="$RESULTS_DIR/all_tests_run_${timestamp}.log"
     local server_log="$RESULTS_DIR/server_all_tests.log"
-
+    local mock_log="$RESULTS_DIR/mock_llm_all.log"
+    start_mock_llm "$mock_log"
     start_server "$server_log"
 
     echo "====== NewsBalancer Full API Test Run - $(date) ======" > "$all_log_file"
@@ -141,8 +172,8 @@ run_all_tests_suite() {
     echo "===== All tests completed SUCCESSFULLY =====" >> "$all_log_file"
     echo "Test log saved to: $all_log_file"
     cat "$all_log_file"
-
     stop_server
+    stop_mock_llm
 }
 
 # --- Main Execution --- 
@@ -154,30 +185,30 @@ fi
 case $COMMAND in
     "backend")
         echo "Running backend fixes tests..."
-        run_newman_test "backend_fixes" "postman/backend_fixes_tests_updated.json" "postman/local_environment.json"
+        run_newman_test "backend_fixes" "postman/unified_backend_tests.json" "postman/local_environment.json"
         # Add SSE check if needed: node scripts/test_sse_progress.js 
         ;;
     "api")
         echo "Running basic API tests..."
-        run_newman_test "api_tests" "postman/newsbalancer_api_tests.json" "postman/local_environment.json"
+        run_newman_test "api_tests" "postman/unified_backend_tests.json" "postman/local_environment.json"
         ;;
     "essential")
         echo "Running essential rescoring tests..."
-        run_newman_test "essential_tests" "postman/backup/essential_rescoring_tests.json" ""
+        run_newman_test "essential_tests" "postman/unified_backend_tests.json" ""
         ;;
     "debug")
         echo "Running debug tests..."
-        run_newman_test "debug_tests" "postman/debug_collection.json" "postman/debug_environment.json"
+        run_newman_test "debug_tests" "postman/unified_backend_tests.json" "postman/debug_environment.json"
         ;;
     "all")
         run_all_tests_suite # Use the dedicated function for the multi-stage 'all' run
         ;;
     "confidence")
-        if [ -f postman/backup/confidence_validation_tests.json ]; then
+        if [ -f postman/confidence_validation_tests.json ]; then
             echo "Running confidence validation tests..."
-            run_newman_test "confidence_tests" "postman/backup/confidence_validation_tests.json" ""
+            run_newman_test "confidence_tests" "postman/confidence_validation_tests.json" ""
         else
-             echo "Confidence test collection not found: postman/backup/confidence_validation_tests.json"
+             echo "Confidence test collection not found: postman/confidence_validation_tests.json"
         fi
         ;;
     "report")
@@ -203,10 +234,10 @@ case $COMMAND in
         echo
         echo "Available commands:"
         echo
-        echo "  backend        - Run backend fixes/integration tests (Newman: backend_fixes_tests_updated.json)"
-        echo "  api            - Run basic API tests (Newman: newsbalancer_api_tests.json)"
-        echo "  essential      - Run essential rescoring tests (Newman: essential_rescoring_tests.json)"
-        echo "  debug          - Run debug tests (Newman: debug_collection.json)"
+        echo "  backend        - Run backend fixes/integration tests (Newman: unified_backend_tests.json)"
+        echo "  api            - Run basic API tests (Newman: unified_backend_tests.json)"
+        echo "  essential      - Run essential rescoring tests (Newman: unified_backend_tests.json)"
+        echo "  debug          - Run debug tests (Newman: unified_backend_tests.json)"
         echo "  all            - Run essential, extended, and confidence tests (Multiple Newman collections)"
         echo "  confidence     - Run confidence validation tests (Newman: confidence_validation_tests.json) [If available]"
         echo
@@ -220,6 +251,7 @@ case $COMMAND in
         echo "  - Test commands (backend, api, essential, debug, confidence) typically start/stop the Go server."
         echo "  - The 'all' command runs multiple test suites sequentially without restarting the server between them."
         echo "  - Requires Node.js and Newman ('npm install -g newman')."
+        echo "  - A lightweight mock LLM service is started automatically on port 8090."
         echo
         ;;
 esac
