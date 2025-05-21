@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Directory to store test outputs
-RESULTS_DIR="test-results"
+# Directory to store test outputs (allow override via env var)
+RESULTS_DIR="${RESULTS_DIR:-test-results}"
 # Create test-results directory if it doesn't exist
 mkdir -p "$RESULTS_DIR"
 
@@ -99,8 +99,12 @@ run_all_tests_suite() {
     echo "Running all test suites..."
     local timestamp=$(date +%Y%m%d%H%M%S)
     local all_log_file="$RESULTS_DIR/all_tests_run_${timestamp}.log"
+    local server_log="$RESULTS_DIR/server_all_tests.log"
+
+    start_server "$server_log"
 
     echo "====== NewsBalancer Full API Test Run - $(date) ======" > "$all_log_file"
+    echo "Server log: $server_log" >> "$all_log_file"
     echo "" >> "$all_log_file"
 
     echo "===== Running Essential Tests =====" >> "$all_log_file"
@@ -137,6 +141,8 @@ run_all_tests_suite() {
     echo "===== All tests completed SUCCESSFULLY =====" >> "$all_log_file"
     echo "Test log saved to: $all_log_file"
     cat "$all_log_file"
+
+    stop_server
 }
 
 # --- Main Execution --- 
