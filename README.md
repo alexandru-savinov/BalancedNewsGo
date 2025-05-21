@@ -1,4 +1,6 @@
 # NewsBalancer Go Backend
+![Coverage](https://go-coverage-badge.appspot.com/badge/github.com/alexandru-savinov/BalancedNewsGo.svg)
+
 
 A Go-based backend service that provides politically balanced news aggregation using LLM-based analysis.
 
