@@ -408,9 +408,9 @@ func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
 
 	// Debug logging to identify which scores are retrieved and their properties
 	log.Printf("[ReanalyzeArticle %d] Found %d scores for composite calculation:", articleID, len(scores))
-        for i, s := range scores {
-                log.Printf("[ReanalyzeArticle %d] Score[%d]: Model=%s, Score=%.4f, Metadata=%s, Version=%d",
-                        articleID, i, s.Model, s.Score, s.Metadata, s.Version)
+	for i, s := range scores {
+		log.Printf("[ReanalyzeArticle %d] Score[%d]: Model=%s, Score=%.4f, Metadata=%s, Version=%d",
+			articleID, i, s.Model, s.Score, s.Metadata, s.Version)
 	}
 
 	finalScore, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
