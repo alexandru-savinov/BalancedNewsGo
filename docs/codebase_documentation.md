@@ -128,10 +128,7 @@ Configuration is crucial for adapting the application's behavior without code ch
 *   **Dependencies:** Gin, SQLx, godotenv, Swaggo, and most `internal/` packages (`db`, `llm`, `rss`, `api`, `metrics`).
 *   **Usage:** `go run cmd/server/main.go` - starts the server (default port 8080).
     *   *Note: If running the server directly or via `make run`, ensure port 8080 is free. Port conflict errors (e.g., "Only one usage of each socket address") can occur if the port is already in use. Refer to `docs/testing.md` for troubleshooting port conflicts.*
-*   **Note:** Several obsolete functions exist in the codebase related to the legacy web rendering:
-    *   `articleDetailHandler`: A placeholder function marked with a TODO that was never fully implemented
-    *   `articlesHandler`: Unused duplicate of the legacy handler functionality
-    *   A commented-out background reprocessing loop that was disabled for debugging
+*   **Note:** Older versions of the server contained obsolete functions related to the legacy web rendering mode (`articlesHandler`, `articleDetailHandler`) as well as a disabled background reprocessing loop. These have now been removed, leaving the client‑side implementation and legacy handlers as the supported options.
 
 ### 3.2. API Layer (`internal/api/`)
 
