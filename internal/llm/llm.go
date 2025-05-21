@@ -169,6 +169,11 @@ func NewLLMClient(dbConn *sqlx.DB) (*LLMClient, error) {
 	primaryKey := os.Getenv("LLM_API_KEY")
 	backupKey := os.Getenv("LLM_API_KEY_SECONDARY")
 	baseURL := os.Getenv("LLM_BASE_URL")
+	if baseURL == "" {
+		log.Printf("[LLM] LLM_BASE_URL not set, using default")
+	} else {
+		log.Printf("[LLM] Using LLM_BASE_URL=%s", baseURL)
+	}
 
 	// Return error for missing primary key instead of panicking
 	if primaryKey == "" {
