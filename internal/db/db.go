@@ -121,6 +121,9 @@ type DBOperations interface {
 	// LLM Score operations
 	FetchLLMScores(ctx context.Context, articleID int64) ([]LLMScore, error)
 	UpdateArticleScoreLLM(ctx context.Context, articleID int64, score float64, confidence float64) error
+
+	// Utility queries
+	FetchDistinctSources(ctx context.Context) ([]string, error)
 }
 
 // DBInstance implements the DBOperations interface
@@ -223,6 +226,11 @@ func (d *DBInstance) UpdateArticleScoreLLM(ctx context.Context, articleID int64,
 	// The actual db.UpdateArticleScoreLLM takes sqlx.ExtContext.
 	// For DBInstance, d.DB is *sqlx.DB which implements sqlx.ExtContext.
 	return UpdateArticleScoreLLM(d.DB, articleID, score, confidence)
+}
+
+// FetchDistinctSources retrieves a list of unique article sources
+func (d *DBInstance) FetchDistinctSources(ctx context.Context) ([]string, error) {
+	return FetchDistinctSources(d.DB)
 }
 
 // New creates a new database connection
@@ -582,6 +590,20 @@ func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
 		return false, handleError(err, "failed to check article URL existence")
 	}
 	return exists, nil
+}
+
+// FetchDistinctSources retrieves all unique, non-empty sources ordered alphabetically
+func FetchDistinctSources(db *sqlx.DB) ([]string, error) {
+	var sources []string
+	query := `SELECT DISTINCT source FROM articles WHERE source IS NOT NULL AND source != '' ORDER BY source ASC`
+	err := db.Select(&sources, query)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []string{}, nil
+		}
+		return nil, handleError(err, "failed to fetch distinct sources")
+	}
+	return sources, nil
 }
 
 // InitDB initializes and returns a database connection to the specified SQLite database file
