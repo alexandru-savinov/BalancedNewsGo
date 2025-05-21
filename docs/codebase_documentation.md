@@ -52,8 +52,8 @@ This document provides a high-level overview and detailed documentation of the G
 
 Configuration is crucial for adapting the application's behavior without code changes. Key files include:
 
-*   **`.env` (Project Root):**
-    *   **Purpose:** Stores environment variables, primarily secrets and external service configurations. Loaded by `godotenv`.
+*   **`.env.example` (Project Root):**
+    *   **Purpose:** Example environment configuration. Copy this file to `.env` and populate your secrets. The application loads variables from `.env` via `godotenv`.
     *   **Expected Variables:**
         *   `LLM_API_KEY`: Primary API key for the LLM service (e.g., OpenRouter).
         *   `LLM_API_KEY_SECONDARY`: (Optional) Backup API key for rate limit fallback.
@@ -111,7 +111,7 @@ Configuration is crucial for adapting the application's behavior without code ch
 
 *   **Purpose:** This is the **primary entry point** for the main application. It sets up and runs a Gin web server that serves both the web interface and the backend API.
 *   **Key Components:**
-    *   **Initialization (`initServices`):** Loads environment variables (`.env`) and initializes core services:
+    *   **Initialization (`initServices`):** Loads environment variables from `.env` (copy `.env.example` and fill it in) and initializes core services:
         *   Database connection (`db.InitDB`).
         *   LLM client (`llm.NewLLMClient`).
         *   RSS feed collector (`rss.NewCollector`) using `configs/feed_sources.json`.
@@ -415,7 +415,7 @@ OpenRouter errors are tracked using Prometheus metrics:
    - Consider implementing request throttling
 
 2. **Authentication Errors**:
-   - Verify API key in `.env` file
+   - Verify API key in your `.env` file (created from `.env.example`)
    - Check for proper API key format
    - Confirm account is active on OpenRouter
 

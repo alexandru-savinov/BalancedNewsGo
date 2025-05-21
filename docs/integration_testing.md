@@ -45,7 +45,7 @@ go run mock_llm_service.go -delay 500 -score 0.25 -label "center-right"
 
 ### Configuring the System to Use the Mock
 
-Update your `.env` file or environment variables:
+Update your `.env` file (copied from `.env.example`) or environment variables:
 
 ```
 LLM_BASE_URL=http://localhost:8090  # Match the port of your mock service

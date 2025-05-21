@@ -114,7 +114,7 @@ Here's a breakdown of the project's directory structure:
 *   `configs/`: Application configuration files (e.g., `feed_sources.json`).
 *   `go.mod`, `go.sum`: Go module definitions and dependencies.
 *   `web/`: Frontend assets and templates served by the application, including HTML, JavaScript, and CSS.
-*   `.env`, `.env.example`: Environment variable configuration (Should not be committed directly, except for the example).
+*   `.env.example`: Template for required environment variables. Copy this file to `.env` and fill in your local secrets (the `.env` file itself should never be committed).
 
 **Testing Files & Infrastructure:**
 
