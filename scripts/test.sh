@@ -1,7 +1,9 @@
 #!/bin/bash
 
+# Directory to store test outputs
+RESULTS_DIR="test-results"
 # Create test-results directory if it doesn't exist
-mkdir -p test-results
+mkdir -p "$RESULTS_DIR"
 
 # Function to start server in background and capture PID
 start_server() {
