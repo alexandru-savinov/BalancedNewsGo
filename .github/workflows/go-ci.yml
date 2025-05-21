@@ -46,7 +46,7 @@ jobs:
         go tool cover -func=coverage.out -o coverage-summary.txt
 
     - name: Generate coverage badge
-      uses: go-coverage/go-coverage-badge@v1
+      uses: tj-actions/coverage-badge-go@v2
       with:
         coverage-file: coverage.out
 
