@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Directory to store test outputs
-RESULTS_DIR="test-results"
+# Directory to store test outputs (allow override via env var)
+RESULTS_DIR="${RESULTS_DIR:-test-results}"
 # Create test-results directory if it doesn't exist
 mkdir -p "$RESULTS_DIR"
 
