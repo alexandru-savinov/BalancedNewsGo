@@ -68,4 +68,4 @@ news.db-wal
 # IDE / OS / Project Junk (extending existing)
 # /junk/ is already covered above
 .DS_Store
-*.log 
+*.log
