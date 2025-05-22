@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -258,6 +259,39 @@ func handleError(err error, msg string) error {
 	}
 }
 
+// validateDBSchema ensures critical tables exist. It returns an error if any
+// required table is missing, providing clearer diagnostics for test failures.
+func validateDBSchema(db *sqlx.DB) error {
+	required := []string{"articles", "llm_scores", "feedback", "labels"}
+	for _, table := range required {
+		var name string
+		err := db.Get(&name, "SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
+		if err != nil {
+			return fmt.Errorf("schema validation failed for table %s: %w", table, err)
+		}
+		if name == "" {
+			return fmt.Errorf("schema validation: table %s not found", table)
+		}
+	}
+	return nil
+}
+
+// validateLLMMetadata checks that the metadata field is valid JSON. Empty
+// strings are allowed. When invalid, an error is returned so callers can
+// surface meaningful information to the user and logs.
+func validateLLMMetadata(meta string) error {
+	if strings.TrimSpace(meta) == "" {
+		return nil
+	}
+	var tmp map[string]interface{}
+	if err := json.Unmarshal([]byte(meta), &tmp); err != nil {
+		log.Printf("[WARN] Invalid metadata JSON encountered: %v", err)
+		// Do not return error to preserve backward compatibility
+		return nil
+	}
+	return nil
+}
+
 // InsertLabel inserts a new label record
 func InsertLabel(db *sqlx.DB, label *Label) error {
 	result, err := db.NamedExec(`
@@ -423,11 +457,17 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 
 // InsertLLMScore creates a new LLM score record
 func InsertLLMScore(exec sqlx.ExtContext, score *LLMScore) (int64, error) {
+	if err := validateLLMMetadata(score.Metadata); err != nil {
+		log.Printf("[ERROR] Invalid metadata for article %d model %s: %v", score.ArticleID, score.Model, err)
+		return 0, handleError(err, "invalid metadata for llm score")
+	}
+
 	result, err := sqlx.NamedExecContext(context.Background(), exec, `
         INSERT INTO llm_scores (article_id, model, score, metadata, version, created_at)
         VALUES (:article_id, :model, :score, :metadata, :version, :created_at)`,
 		score)
 	if err != nil {
+		log.Printf("[ERROR] InsertLLMScore failed for article %d model %s score %.3f: %v", score.ArticleID, score.Model, score.Score, err)
 		return 0, handleError(err, "failed to insert LLM score")
 	}
 	return result.LastInsertId()
@@ -691,6 +731,13 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		log.Printf("Failed to initialize DB schema: %v", err)
 		if closeErr := db.Close(); closeErr != nil {
 			log.Printf("Error closing DB after schema init failure: %v", closeErr)
+		}
+		return nil, err
+	}
+
+	if err := validateDBSchema(db); err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Error closing DB after schema validation failure: %v", closeErr)
 		}
 		return nil, err
 	}

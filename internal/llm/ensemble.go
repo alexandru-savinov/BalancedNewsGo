@@ -151,6 +151,9 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 			} `json:"message"`
 		} `json:"choices"`
 	}
+	if !json.Valid([]byte(rawResp)) {
+		log.Printf("[DEBUG][LLM] Outer response is not valid JSON: %s", rawResp)
+	}
 	err := json.Unmarshal([]byte(rawResp), &apiResp)
 	if err != nil {
 		log.Printf("[DEBUG][LLM] Error parsing outer JSON: %v", err)
@@ -181,12 +184,14 @@ func parseNestedLLMJSONResponse(rawResp string) (float64, string, float64, error
 	}
 
 	// Try to parse as JSON
-	if err = json.Unmarshal([]byte(contentStr), &innerResp); err == nil {
-		log.Printf("[DEBUG][LLM] Successfully parsed as JSON: score=%.4f, confidence=%.4f",
-			innerResp.Score, innerResp.Confidence)
-		return innerResp.Score, innerResp.Explanation, innerResp.Confidence, nil
+	if json.Valid([]byte(contentStr)) {
+		if err = json.Unmarshal([]byte(contentStr), &innerResp); err == nil {
+			log.Printf("[DEBUG][LLM] Successfully parsed as JSON: score=%.4f, confidence=%.4f",
+				innerResp.Score, innerResp.Confidence)
+			return innerResp.Score, innerResp.Explanation, innerResp.Confidence, nil
+		}
 	}
-	log.Printf("[DEBUG][LLM] JSON parsing failed, trying regex patterns: %v", err)
+	log.Printf("[DEBUG][LLM] JSON parsing failed, raw content: %s, error: %v", contentStr, err)
 
 	// Step 4: If JSON parsing fails, try to extract values using regex patterns
 	// Extract score with regex
