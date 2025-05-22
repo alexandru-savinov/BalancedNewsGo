@@ -74,6 +74,7 @@ Key endpoints include:
 | `/api/llm/score-progress/{id}` | GET | SSE stream for real-time scoring progress |
 | `/api/feedback` | POST | Submit user feedback on article bias |
 | `/api/feeds/healthz` | GET | Check RSS feed health status |
+| `/api/health` | GET | Aggregated system health |
 
 Detailed API documentation is available at `/swagger/index.html` when running the server.
 
@@ -94,6 +95,10 @@ NewsBalancer includes a modern web UI that allows users to browse, view, and pro
 - Provides visualization of the ensemble analysis, showing scores from different LLM models and perspectives
 - Allows users to submit feedback on the article's political leaning
 - Implements comprehensive error handling and loading states
+
+### Health Page
+- Displays overall server status, database connectivity, and RSS feed health
+- Useful for quickly verifying system availability
 
 The web interface uses a responsive design that works well on both desktop and mobile devices. It features:
 

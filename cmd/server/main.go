@@ -116,6 +116,11 @@ func main() {
 		c.File("./web/article.html")
 	})
 
+	// Serve static HTML for system health page
+	router.GET("/health", func(c *gin.Context) {
+		c.File("./web/health.html")
+	})
+
 	// Metrics endpoints
 	router.GET("/metrics/validation", func(c *gin.Context) {
 		metrics, err := metrics.GetValidationMetrics(dbConn)

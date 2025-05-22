@@ -214,6 +214,17 @@ func RegisterRoutes(
 	// @ID getFeedsHealth
 	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
 
+	// Aggregated system health
+	// @Summary Get system health
+	// @Description Returns overall system health including database and feed status
+	// @Tags Health
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} map[string]interface{}
+	// @Router /api/health [get]
+	// @ID getSystemHealth
+	router.GET("/api/health", SafeHandler(systemHealthHandler(dbConn, rssCollector)))
+
 	// Progress tracking
 	// @Summary Score progress
 	// @Description Get real-time progress updates for article scoring
@@ -893,6 +904,20 @@ func feedHealthHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := rssCollector.CheckFeedHealth()
 		c.JSON(200, status)
+	}
+}
+
+// systemHealthHandler returns overall system health information.
+func systemHealthHandler(dbConn *sqlx.DB, rssCollector rss.CollectorInterface) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		dbOK := dbConn.PingContext(c.Request.Context()) == nil
+		feedStatus := rssCollector.CheckFeedHealth()
+
+		c.JSON(200, gin.H{
+			"server":   "ok",
+			"database": dbOK,
+			"feeds":    feedStatus,
+		})
 	}
 }
 

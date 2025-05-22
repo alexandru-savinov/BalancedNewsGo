@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>System Health - NewsBalancer</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        body {
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            margin: 0;
+            padding: 1rem;
+            background-color: #ffffff;
+            color: #222222;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 1rem;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        th {
+            background-color: #f9f9f9;
+        }
+        .status-ok { color: #4caf50; }
+        .status-fail { color: #f44336; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><a href="/" style="text-decoration: none; color: inherit;">NewsBalancer Health</a></h1>
+    </header>
+    <main>
+        <div id="health-loading">Loading...</div>
+        <div id="health-error" style="display:none;color:#f44336;"></div>
+        <table id="health-table" style="display:none;">
+            <thead>
+                <tr><th>Component</th><th>Status</th></tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </main>
+    <script src="/static/js/health.js"></script>
+</body>
+</html>
