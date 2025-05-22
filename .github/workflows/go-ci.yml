@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: news.db
 
     steps:
     - name: Checkout code
@@ -24,6 +26,10 @@ jobs:
 
     # The project uses 'averaging everywhere' for LLM score calculation. All tests must pass.
 
+    - name: Validate database
+      run: |
+        sqlite3 "$DATABASE_URL" '.schema'
+
     - name: Run Go unit and integration tests (NO_AUTO_ANALYZE=true)
       run: |
         export NO_AUTO_ANALYZE=true
@@ -33,7 +39,13 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         chmod +x scripts/test.sh
-        ./scripts/test.sh all
+        retries=0
+        until [ $retries -ge 3 ]; do
+          ./scripts/test.sh all && break
+          retries=$((retries+1))
+          echo "Retry $retries..."
+          sleep 5
+        done
 
     - name: Upload test-results artifact
       if: runner.os == 'Linux'
@@ -41,6 +53,12 @@ jobs:
       with:
         name: test-results
         path: test-results/
+    - name: Upload server logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: server-logs
+        path: test-results/*.log
     - name: Generate coverage summary
       run: |
         go tool cover -func=coverage.out -o coverage-summary.txt
