@@ -442,6 +442,23 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/health": {
+            "get": {
+                "description": "Returns overall server, database and feed health",
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Get system health",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
         "/api/llm/reanalyze/{id}": {
             "post": {
                 "description": "Initiates a reanalysis of an article's political bias or directly updates the score",

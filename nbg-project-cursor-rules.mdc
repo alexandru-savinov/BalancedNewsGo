@@ -54,6 +54,7 @@ alwaysApply: true
   - `GET /api/llm/score-progress/:id`: SSE stream for progress
   - `POST /api/feedback`: Submit user feedback
   - `GET /api/feeds/healthz`: Check RSS feed health
+  - `GET /api/health`: Aggregated server/database/feed health
 - Progress of async LLM scoring is tracked by `ProgressManager` and exposed via SSE endpoint.
 - API documentation is available via Swagger at `/swagger/index.html`.
 - Web UI is served from `web/` with routes including:
@@ -61,6 +62,7 @@ alwaysApply: true
   - `GET /articles`: Article listing page
   - `GET /article/:id`: Article detail page
   - `GET /metrics/*`: Various metrics pages
+  - `GET /health`: Health dashboard page
 
 ## 6. Database
 - Schema is defined in `internal/db/db.go` (tables: articles, llm_scores, feedback, labels).
@@ -94,7 +96,7 @@ alwaysApply: true
 - Prometheus metrics in `internal/metrics/prom.go`.
 - Aggregated DB metrics in `internal/metrics/metrics.go`.
 - Web UI metrics dashboards at `/metrics/*` endpoints.
-- Health checks available at `/healthz` and `/api/feeds/healthz`.
+- Health checks available at `/healthz`, `/api/feeds/healthz`, and `/api/health`.
 
 ## 10. Debugging Tips
 - Check logs for errors in API, LLM, RSS, and DB components.

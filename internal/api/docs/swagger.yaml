@@ -474,6 +474,17 @@ paths:
       summary: Get feed health status
       tags:
       - Feeds
+  /api/health:
+    get:
+      description: Returns overall server, database and feed health
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+      summary: Get system health
+      tags:
+      - Health
   /api/llm/reanalyze/{id}:
     post:
       consumes:
