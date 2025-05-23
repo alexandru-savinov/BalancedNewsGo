@@ -479,6 +479,28 @@ paths:
       summary: Submit user feedback
       tags:
       - Feedback
+  /api/sources:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a list of unique news sources from the system
+      operationId: getNewsSources
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of news sources
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Server error
+          schema:
+            $ref: '#/definitions/internal_api.ErrorResponse'
+      summary: Get news sources
+      tags:
+      - Articles
   /api/feeds/healthz:
     get:
       consumes:

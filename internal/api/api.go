@@ -106,6 +106,17 @@ func RegisterRoutes(
 	// @Router /api/articles [post]
 	router.POST("/api/articles", SafeHandler(createArticleHandler(dbConn)))
 
+	// @Summary Get news sources
+	// @Description Get a list of all unique news sources in the system
+	// @Tags Articles
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse{data=[]string}
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/sources [get]
+	// @ID getNewsSources
+	router.GET("/api/sources", SafeHandler(getSourcesHandler(dbConn)))
+
 	// Feed management
 	// @Summary Refresh feeds
 	// @Description Trigger a refresh of all RSS feeds
@@ -561,6 +572,49 @@ func getArticleByIDHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			"data":    resp,
 		})
 		LogPerformance("getArticleByIDHandler", start)
+	}
+}
+
+// getSourcesHandler handles GET /sources to list unique article sources
+// @Summary Get news sources
+// @Description Get a list of all unique news sources from articles in the system
+// @Tags Articles
+// @Accept json
+// @Produce json
+// @Success 200 {object} StandardResponse{data=[]string}
+// @Failure 500 {object} ErrorResponse
+// @Router /api/sources [get]
+// @ID getNewsSources
+func getSourcesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+
+		cacheKey := "news_sources_list"
+		articlesCacheLock.RLock()
+		if cached, found := articlesCache.Get(cacheKey); found {
+			articlesCacheLock.RUnlock()
+			if sources, ok := cached.([]string); ok {
+				RespondSuccess(c, sources)
+				LogPerformance("getSourcesHandler (cache hit)", start)
+				return
+			}
+			LogError(c, errors.New("cached news_sources data has unexpected type"), "getSourcesHandler cache type error")
+		} else {
+			articlesCacheLock.RUnlock()
+		}
+
+		sources, err := db.FetchDistinctSources(dbConn)
+		if err != nil {
+			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch news sources"))
+			return
+		}
+
+		articlesCacheLock.Lock()
+		articlesCache.Set(cacheKey, sources, 5*time.Minute)
+		articlesCacheLock.Unlock()
+
+		RespondSuccess(c, sources)
+		LogPerformance("getSourcesHandler (db fetch)", start)
 	}
 }
 

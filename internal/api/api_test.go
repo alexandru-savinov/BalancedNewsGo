@@ -204,6 +204,18 @@ func (m *MockDBOperations) UpdateArticleScoreLLM(ctx context.Context, articleID 
 	return args.Error(0)
 }
 
+func (m *MockDBOperations) FetchDistinctSources(ctx context.Context) ([]string, error) {
+	args := m.Called(ctx)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	val, ok := args.Get(0).([]string)
+	if !ok {
+		return nil, args.Error(1)
+	}
+	return val, args.Error(1)
+}
+
 // Test helper functions
 func setupTestRouter(mock db.DBOperations) *gin.Engine {
 	gin.SetMode(gin.TestMode)
