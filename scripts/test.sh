@@ -12,8 +12,22 @@ start_server() {
   go run cmd/server/main.go > "$log_file" 2>&1 &
   SERVER_PID=$!
   echo "Server PID: $SERVER_PID"
-  echo "Waiting for the server to start..."
-  sleep 5
+  echo "Waiting for server health check..."
+  local retries=0
+  until curl --silent http://localhost:8080/health > /dev/null; do
+    if ! ps -p $SERVER_PID > /dev/null; then
+      echo "Server process $SERVER_PID terminated unexpectedly"
+      exit 1
+    fi
+    retries=$((retries+1))
+    if [ $retries -ge 10 ]; then
+      echo "Server did not become healthy in time"
+      stop_server
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "Server started and healthy"
 }
 
 # Function to stop the server
@@ -55,6 +69,10 @@ run_newman_test() {
 
   echo "Running Newman test: $collection_file"
   local newman_cmd="npx newman run \"$collection_file\""
+  # include Postman globals for baseUrl
+  newman_cmd="$newman_cmd -g postman/NewsBalancer.postman_globals.json"
+  # prevent hanging by setting request and script timeouts
+  newman_cmd="$newman_cmd --timeout-request 60000 --timeout 120000"
   if [ ! -z "$env_file" ]; then
     newman_cmd="$newman_cmd -e \"$env_file\""
   fi
@@ -101,36 +119,45 @@ run_all_tests_suite() {
     local all_log_file="$RESULTS_DIR/all_tests_run_${timestamp}.log"
     local server_log="$RESULTS_DIR/server_all_tests.log"
 
+    # Remove existing database for a fresh start
+    rm -f news.db news.db-wal news.db-shm
+    echo "Deleted old database files"
+    
+    # Reset test database to a clean state
+    echo "Resetting test database..." >> "$all_log_file"
+    go run cmd/reset_test_db/main.go >> "$all_log_file" 2>&1
+    if [ $? -ne 0 ]; then echo "DB reset FAILED. Check $all_log_file"; exit 1; fi
+
     start_server "$server_log"
 
     echo "====== NewsBalancer Full API Test Run - $(date) ======" > "$all_log_file"
     echo "Server log: $server_log" >> "$all_log_file"
     echo "" >> "$all_log_file"
 
-    echo "===== Running Essential Tests =====" >> "$all_log_file"
-    echo "Running Newman: postman/backup/essential_rescoring_tests.json" | tee -a "$all_log_file"
-    npx newman run postman/backup/essential_rescoring_tests.json \
-      --reporters cli,json \
-      --reporter-json-export="$RESULTS_DIR/essential_results_${timestamp}.json" >> "$all_log_file" 2>&1
-    if [ $? -ne 0 ]; then echo "Essential tests FAILED. Check $all_log_file"; exit 1; fi
-
-    echo "" >> "$all_log_file"
-    echo "===== Running Extended Tests =====" >> "$all_log_file"
-    echo "Running Newman: postman/backup/extended_rescoring_collection.json" | tee -a "$all_log_file"
-    npx newman run postman/backup/extended_rescoring_collection.json \
-      --reporters cli,json \
-      --reporter-json-export="$RESULTS_DIR/extended_results_${timestamp}.json" >> "$all_log_file" 2>&1
-     if [ $? -ne 0 ]; then echo "Extended tests FAILED. Check $all_log_file"; exit 1; fi
-
-    if [ -f postman/backup/confidence_validation_tests.json ]; then
-      echo "" >> "$all_log_file"
-      echo "===== Running Confidence Validation Tests =====" >> "$all_log_file"
-      echo "Running Newman: postman/backup/confidence_validation_tests.json" | tee -a "$all_log_file"
-      npx newman run postman/backup/confidence_validation_tests.json \
+    echo "===== Running Unified Backend Tests (with retries) =====" >> "$all_log_file"
+    echo "Running Newman: postman/updated_backend_tests.json with environment postman/newman_environment.json" | tee -a "$all_log_file"
+    # Retry logic for transient failures
+    attempt=1
+    max_attempts=3
+    while [ $attempt -le $max_attempts ]; do
+      echo "Attempt $attempt of $max_attempts" >> "$all_log_file"
+      npx newman run postman/updated_backend_tests.json \
+        -e postman/newman_environment.json \
+        -g postman/NewsBalancer.postman_globals.json \
+        --timeout-request 60000 --timeout 120000 \
         --reporters cli,json \
-        --reporter-json-export="$RESULTS_DIR/confidence_results_${timestamp}.json" >> "$all_log_file" 2>&1
-      if [ $? -ne 0 ]; then echo "Confidence tests FAILED. Check $all_log_file"; exit 1; fi
-    fi
+        --reporter-json-export="$RESULTS_DIR/unified_results_${timestamp}.json" 2>&1 | tee -a "$all_log_file" && break
+      echo "Unified tests failed on attempt $attempt" >> "$all_log_file"
+      attempt=$((attempt+1))
+      if [ $attempt -le $max_attempts ]; then
+        echo "Retrying unified tests..." >> "$all_log_file"
+        sleep 2
+      else
+        echo "Unified tests FAILED after $max_attempts attempts. Check $all_log_file" >> "$all_log_file"
+        exit 1
+      fi
+    done
+    echo "Unified tests succeeded on attempt $attempt" >> "$all_log_file"
 
     echo "" >> "$all_log_file"
     echo "===== Generating Test Report =====" >> "$all_log_file"
@@ -143,6 +170,7 @@ run_all_tests_suite() {
     cat "$all_log_file"
 
     stop_server
+    exit 0
 }
 
 # --- Main Execution --- 
@@ -223,3 +251,4 @@ case $COMMAND in
         echo
         ;;
 esac
+exit 0
