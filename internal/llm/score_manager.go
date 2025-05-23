@@ -155,6 +155,7 @@ func (sm *ScoreManager) InvalidateScoreCache(articleID int64) {
 		fmt.Sprintf("article:%d", articleID),
 		fmt.Sprintf("ensemble:%d", articleID),
 		fmt.Sprintf("bias:%d", articleID),
+		fmt.Sprintf("summary:%d", articleID),
 	}
 	for _, key := range keys {
 		sm.cache.Delete(key)

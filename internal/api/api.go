@@ -149,7 +149,7 @@ func RegisterRoutes(
 	// @Failure 400 {object} ErrorResponse
 	// @Router /api/manual-score/{id} [post]
 	// @ID addManualScore
-	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(dbConn)))
+	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(&db.DBInstance{DB: dbConn}, scoreManager)))
 
 	// Article analysis
 	// @Summary Get article summary
@@ -577,6 +577,10 @@ func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		go rssCollector.ManualRefresh()
+		// Invalidate feed health cache since feeds are being refreshed
+		articlesCacheLock.Lock()
+		articlesCache.Delete("feed_health")
+		articlesCacheLock.Unlock()
 		RespondSuccess(c, map[string]string{"status": "refresh started"})
 		LogPerformance("refreshHandler", start)
 	}
@@ -891,8 +895,22 @@ func percent(step, total int) int {
 // @ID getFeedsHealth
 func feedHealthHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		cacheKey := "feed_health"
+		articlesCacheLock.RLock()
+		if cached, found := articlesCache.Get(cacheKey); found {
+			articlesCacheLock.RUnlock()
+			c.JSON(http.StatusOK, cached)
+			return
+		}
+		articlesCacheLock.RUnlock()
+
 		status := rssCollector.CheckFeedHealth()
-		c.JSON(200, status)
+
+		articlesCacheLock.Lock()
+		articlesCache.Set(cacheKey, status, 30*time.Second)
+		articlesCacheLock.Unlock()
+
+		c.JSON(http.StatusOK, status)
 	}
 }
 
@@ -1421,7 +1439,11 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 // @Failure 400 {object} ErrorResponse
 // @Router /api/manual-score/{id} [post]
 // @ID addManualScore
-func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+type ScoreCacheInvalidator interface {
+	InvalidateScoreCache(articleID int64)
+}
+
+func manualScoreHandler(dbOps db.DBOperations, invalidator ScoreCacheInvalidator) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := getValidArticleID(c)
 		if !ok {
@@ -1464,7 +1486,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Check if article exists
-		_, err = db.FetchArticleByID(dbConn, articleID)
+		_, err = dbOps.FetchArticleByID(c, articleID)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {
 				RespondError(c, NewAppError(ErrNotFound, "Article not found"))
@@ -1476,7 +1498,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Update score in DB
-		err = db.UpdateArticleScore(dbConn, articleID, scoreVal, 1.0) // Set confidence to 1.0 for manual scores
+		err = dbOps.UpdateArticleScore(c, articleID, scoreVal, 1.0) // Set confidence to 1.0 for manual scores
 		if err != nil {
 			errMsg := err.Error()
 			if errMsg != "" && (strings.Contains(errMsg, "constraint failed") ||
@@ -1497,6 +1519,11 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 		log.Printf("[manualScoreHandler] Article score updated successfully: articleID=%d, score=%f", articleID, scoreVal)
+
+		if invalidator != nil {
+			invalidator.InvalidateScoreCache(articleID)
+		}
+
 		RespondSuccess(c, map[string]interface{}{
 			"status":     "score updated",
 			"article_id": articleID,
