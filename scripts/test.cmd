@@ -39,9 +39,9 @@ REM --- Subroutines ---
     echo.
     echo Available commands:
     echo.
-    echo   backend        - Run backend fixes/integration tests (Newman: backend_fixes_tests_updated.json)
-    echo   api            - Run basic API tests (Newman: newsbalancer_api_tests.json)
-    echo   essential      - Run essential rescoring tests (Newman: essential_rescoring_tests.json)
+    echo   backend        - Run backend fixes/integration tests (Newman: unified_backend_tests.json)
+    echo   api            - Run basic API tests (Newman: unified_backend_tests.json)
+    echo   essential      - Run essential rescoring tests (Newman: unified_backend_tests.json)
     echo   debug          - Run debug tests (Newman: debug_collection.json)
     echo   all            - Run essential, extended, and confidence tests (Multiple Newman collections)
     echo   confidence     - Run confidence validation tests (Newman: confidence_validation_tests.json) [If available]

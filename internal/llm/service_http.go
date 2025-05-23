@@ -70,6 +70,7 @@ func NewHTTPLLMService(c *resty.Client, primaryKey string, backupKey string, bas
 	if baseURL == "" {
 		baseURL = "https://openrouter.ai/api/v1"
 	}
+	log.Printf("[HTTPLLMService] baseURL initialized as %s", baseURL)
 	// Ensure baseURL ends with /chat/completions
 	if !strings.HasSuffix(baseURL, "/chat/completions") {
 		if strings.HasSuffix(baseURL, "/") {

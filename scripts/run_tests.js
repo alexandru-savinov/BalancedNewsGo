@@ -1,7 +1,8 @@
 const newman = require('newman');
 
+// Simple helper to execute the primary Newman collection used by the other test scripts
 newman.run({
-    collection: require('./postman/backend_fixes_tests_updated.json'),
+    collection: require('./postman/unified_backend_tests.json'),
     environment: require('./postman/local_environment.json'),
     reporters: ['cli']
 }, function (err) {
