@@ -17,15 +17,15 @@
           "        success: { type: 'boolean' },",
           "        data: {",
           "            type: 'object',",
-          "            required: ['article_id', 'Title', 'Content', 'URL', 'Source', 'CompositeScore', 'Confidence'],",
+          "            required: ['article_id', 'title', 'content', 'url', 'source', 'composite_score', 'confidence'],",
           "            properties: {",
           "                article_id: { type: 'number' },",
-          "                Title: { type: 'string' },",
-          "                Content: { type: 'string' },",
-          "                URL: { type: 'string' },",
-          "                Source: { type: 'string' },",
-          "                CompositeScore: { type: ['number', 'null'] },",
-          "                Confidence: { type: ['number', 'null'] }",
+          "                title: { type: 'string' },",
+          "                content: { type: 'string' },",
+          "                url: { type: 'string' },",
+          "                source: { type: 'string' },",
+          "                composite_score: { type: ['number', 'null'] },",
+          "                confidence: { type: ['number', 'null'] }",
           "            }",
           "        }",
           "    }",
@@ -63,7 +63,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -102,12 +102,12 @@
               ]
             },
             {
-              "name": "Create Article - Invalid URL Format",
+              "name": "Create Article - Invalid url Format",
               "request": {
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -126,11 +126,11 @@
                   "listen": "test",
                   "script": {
                     "exec": [
-                      "pm.test(\"Status code is 400 for invalid URL\", function () {",
+                      "pm.test(\"Status code is 400 for invalid url\", function () {",
                       "    pm.response.to.have.status(400);",
                       "});",
                       "",
-                      "pm.test(\"Response contains error about invalid URL\", function () {",
+                      "pm.test(\"Response contains error about invalid url\", function () {",
                       "    var json = pm.response.json();",
                       "    pm.expect(json.error.message).to.include('Invalid URL format');",
                       "});"
@@ -146,7 +146,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -179,13 +179,13 @@
                       "    pm.environment.set(\"articleId\", json.data.article_id);",
                       "}",
                       "",
-                      "// Save the URL used in this request for the duplicate test",
+                      "// Save the url used in this request for the duplicate test",
                       "try {",
                       "    const requestBody = JSON.parse(pm.request.body.raw);",
                       "    pm.environment.set(\"lastCreatedArticleURL\", requestBody.url);",
-                      "    console.log('Saved URL for duplicate test:', requestBody.url);",
+                      "    console.log('Saved url for duplicate test:', requestBody.url);",
                       "} catch (e) {",
-                      "    console.error('Failed to parse request body or save URL:', e);",
+                      "    console.error('Failed to parse request body or save url:', e);",
                       "}"
                     ],
                     "type": "text/javascript"
@@ -194,12 +194,12 @@
               ]
             },
             {
-              "name": "Create Article - Duplicate URL",
+              "name": "Create Article - Duplicate url",
               "request": {
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -218,11 +218,11 @@
                   "listen": "test",
                   "script": {
                     "exec": [
-                      "pm.test(\"Status code is 409 for duplicate URL\", function () {",
+                      "pm.test(\"Status code is 409 for duplicate url\", function () {",
                       "    pm.response.to.have.status(409);",
                       "});",
                       "",
-                      "pm.test(\"Response contains error about duplicate URL\", function () {",
+                      "pm.test(\"Response contains error about duplicate url\", function () {",
                       "    var json = pm.response.json();",
                       "    pm.expect(json.error.message).to.include('already exists');",
                       "});"
@@ -275,7 +275,7 @@
               ]
             },
             {
-              "name": "Get Articles - With Source Filter",
+              "name": "Get Articles - With source Filter",
               "request": {
                 "method": "GET",
                 "url": {
@@ -308,7 +308,7 @@
                       "        const schema = pm.globals.get('articleSchema');",
                       "        responseJson.data.forEach(article => {",
                       "            pm.expect({ success: true, data: article }).to.have.jsonSchema(schema);",
-                      "            pm.expect(article.Source).to.equal('test');",
+                      "            pm.expect(article.source).to.equal('test');",
                       "        });",
                       "    }",
                       "});"
@@ -348,7 +348,7 @@
                       "    pm.expect(json.success).to.be.true;",
                       "    pm.expect(json.data).to.be.an('array');",
                       "    if (json.data && json.data.length > 0) {",
-                      "        pm.expect(json.data[0].Source).to.equal('test');",
+                      "        pm.expect(json.data[0].source).to.equal('test');",
                       "    }",
                       "});"
                     ],
@@ -408,7 +408,7 @@
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
+                "key": "content-Type",
                 "value": "application/json"
               }
             ],
@@ -452,7 +452,7 @@
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
+                "key": "content-Type",
                 "value": "application/json"
               }
             ],
@@ -496,7 +496,7 @@
             "method": "POST",
             "header": [
               {
-                "key": "Content-Type",
+                "key": "content-Type",
                 "value": "application/json"
               }
             ],
@@ -542,7 +542,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -582,7 +582,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -636,8 +636,8 @@
                       "",
                       "pm.test(\"Article has valid composite score and confidence\", function () {",
                       "    var json = pm.response.json();",
-                      "    pm.expect(json.data.CompositeScore).to.be.within(-1.0, 1.0);",
-                      "    pm.expect(json.data.Confidence).to.be.within(0.0, 1.0);",
+                      "    pm.expect(json.data.composite_score).to.be.within(-1.0, 1.0);",
+                      "    pm.expect(json.data.confidence).to.be.within(0.0, 1.0);",
                       "});"
                     ],
                     "type": "text/javascript"
@@ -651,7 +651,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -685,7 +685,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -724,7 +724,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -768,7 +768,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -808,7 +808,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -852,7 +852,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -896,7 +896,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -940,7 +940,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -979,7 +979,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -1019,7 +1019,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -1089,8 +1089,8 @@
                       "",
                       "            const json = res.json();",
                       "            if (json.data.article.Status === 'completed') {",
-                      "                pm.expect(json.data.article.CompositeScore).to.not.be.undefined;",
-                      "                pm.expect(json.data.article.Confidence).to.not.be.undefined;",
+                      "                pm.expect(json.data.article.composite_score).to.not.be.undefined;",
+                      "                pm.expect(json.data.article.confidence).to.not.be.undefined;",
                       "                return;",
                       "            } else if (json.data.article.Status === 'error') {",
                       "                pm.test('Error status includes error details', function() {",
@@ -1117,18 +1117,18 @@
       ]
     },
     {
-      "name": "4. Confidence Calculation Tests",
+      "name": "4. confidence Calculation Tests",
       "item": [
         {
           "name": "4.1 Metadata Parsing Tests",
           "item": [
             {
-              "name": "Create Article with Valid Confidence",
+              "name": "Create Article with Valid confidence",
               "request": {
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],
@@ -1139,7 +1139,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"title\": \"Confidence Test Article\",\n  \"content\": \"Test article for confidence calculation.\",\n  \"url\": \"https://example.com/confidence-test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
+                  "raw": "{\n  \"title\": \"confidence Test Article\",\n  \"content\": \"Test article for confidence calculation.\",\n  \"url\": \"https://example.com/confidence-test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\",\n  \"source\": \"test\"\n}"
                 }
               },
               "event": [
@@ -1162,7 +1162,7 @@
               ]
             },
             {
-              "name": "Test Integer Confidence",
+              "name": "Test Integer confidence",
               "request": {
                 "method": "POST",
                 "url": {
@@ -1188,7 +1188,7 @@
                       "// For now, we ensure the queueing worked (200 OK). Future tests could verify actual reanalysis if NO_AUTO_ANALYZE is false.",
                       "// pm.test(\"Integer confidence is converted to float\", function () {",
                       "//     var json = pm.response.json();",
-                      "//     pm.expect(json.data.Confidence).to.equal(1.0);",
+                      "//     pm.expect(json.data.confidence).to.equal(1.0);",
                       "// });"
                     ],
                     "type": "text/javascript"
@@ -1197,7 +1197,7 @@
               ]
             },
             {
-              "name": "Test Invalid Confidence Types",
+              "name": "Test Invalid confidence Types",
               "request": {
                 "method": "POST",
                 "url": {
@@ -1221,9 +1221,9 @@
                       "",
                       "// The reanalyze endpoint queues the task. Actual confidence check would require a subsequent GET and is complex with NO_AUTO_ANALYZE.",
                       "// For now, we ensure the queueing worked (200 OK). Future tests could verify actual reanalysis if NO_AUTO_ANALYZE is false.",
-                      "// pm.test(\"Confidence is averaged correctly\", function () {",
+                      "// pm.test(\"confidence is averaged correctly\", function () {",
                       "//     var json = pm.response.json();",
-                      "//     pm.expect(json.data.Confidence).to.equal(0.8);",
+                      "//     pm.expect(json.data.confidence).to.equal(0.8);",
                       "// });"
                     ],
                     "type": "text/javascript"
@@ -1338,7 +1338,7 @@
                 "method": "POST",
                 "header": [
                   {
-                    "key": "Content-Type",
+                    "key": "content-Type",
                     "value": "application/json"
                   }
                 ],

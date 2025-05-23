@@ -2,6 +2,8 @@
 
 # Directory to store test outputs (allow override via env var)
 RESULTS_DIR="${RESULTS_DIR:-test-results}"
+# Provide dummy LLM_API_KEY if not set to allow server startup during tests
+export LLM_API_KEY="${LLM_API_KEY:-test-key}"
 # Create test-results directory if it doesn't exist
 mkdir -p "$RESULTS_DIR"
 
@@ -154,30 +156,30 @@ fi
 case $COMMAND in
     "backend")
         echo "Running backend fixes tests..."
-        run_newman_test "backend_fixes" "postman/backend_fixes_tests_updated.json" "postman/local_environment.json"
+        run_newman_test "backend_fixes" "postman/unified_backend_tests.json" "postman/local_environment.json"
         # Add SSE check if needed: node scripts/test_sse_progress.js 
         ;;
     "api")
         echo "Running basic API tests..."
-        run_newman_test "api_tests" "postman/newsbalancer_api_tests.json" "postman/local_environment.json"
+        run_newman_test "api_tests" "postman/unified_backend_tests.json" "postman/local_environment.json"
         ;;
     "essential")
         echo "Running essential rescoring tests..."
-        run_newman_test "essential_tests" "postman/backup/essential_rescoring_tests.json" ""
+        run_newman_test "essential_tests" "postman/unified_backend_tests.json" ""
         ;;
     "debug")
         echo "Running debug tests..."
-        run_newman_test "debug_tests" "postman/debug_collection.json" "postman/debug_environment.json"
+        run_newman_test "debug_tests" "postman/unified_backend_tests.json" "postman/debug_environment.json"
         ;;
     "all")
         run_all_tests_suite # Use the dedicated function for the multi-stage 'all' run
         ;;
     "confidence")
-        if [ -f postman/backup/confidence_validation_tests.json ]; then
+        if [ -f postman/confidence_validation_tests.json ]; then
             echo "Running confidence validation tests..."
-            run_newman_test "confidence_tests" "postman/backup/confidence_validation_tests.json" ""
+            run_newman_test "confidence_tests" "postman/confidence_validation_tests.json" ""
         else
-             echo "Confidence test collection not found: postman/backup/confidence_validation_tests.json"
+             echo "Confidence test collection not found: postman/confidence_validation_tests.json"
         fi
         ;;
     "report")
@@ -203,10 +205,10 @@ case $COMMAND in
         echo
         echo "Available commands:"
         echo
-        echo "  backend        - Run backend fixes/integration tests (Newman: backend_fixes_tests_updated.json)"
-        echo "  api            - Run basic API tests (Newman: newsbalancer_api_tests.json)"
-        echo "  essential      - Run essential rescoring tests (Newman: essential_rescoring_tests.json)"
-        echo "  debug          - Run debug tests (Newman: debug_collection.json)"
+        echo "  backend        - Run backend fixes/integration tests (Newman: unified_backend_tests.json)"
+        echo "  api            - Run basic API tests (Newman: unified_backend_tests.json)"
+        echo "  essential      - Run essential rescoring tests (Newman: unified_backend_tests.json)"
+        echo "  debug          - Run debug tests (Newman: unified_backend_tests.json)"
         echo "  all            - Run essential, extended, and confidence tests (Multiple Newman collections)"
         echo "  confidence     - Run confidence validation tests (Newman: confidence_validation_tests.json) [If available]"
         echo

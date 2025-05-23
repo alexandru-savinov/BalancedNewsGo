@@ -1,8 +1,9 @@
 const newman = require('newman');
+const path = require('path');
 
 newman.run({
-    collection: require('./postman/backend_fixes_tests_updated.json'),
-    environment: require('./postman/local_environment.json'),
+    collection: require(path.resolve(__dirname, '../postman/unified_backend_tests.json')),
+    environment: require(path.resolve(__dirname, '../postman/local_environment.json')),
     reporters: ['cli']
 }, function (err) {
     if (err) { throw err; }
