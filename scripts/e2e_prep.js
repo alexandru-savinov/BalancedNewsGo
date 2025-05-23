@@ -170,10 +170,23 @@ async function main() {
 
   // 8b. Trigger article ingestion job (E2E automation)
   const { spawnSync } = require('child_process');
+  // Explicitly resolve the Go executable to avoid relying on an untrusted PATH
+  let goCmd = process.env.GO_EXECUTABLE || '/usr/local/go/bin/go';
+  if (!fs.existsSync(goCmd)) {
+    // Fallback to the first result from `which go`/`where go`
+    const which = process.platform === 'win32' ? 'where' : 'which';
+    const resolved = spawnSync(which, ['go'], { encoding: 'utf-8' });
+    if (resolved.status === 0 && resolved.stdout) {
+      goCmd = resolved.stdout.split(/\r?\n/)[0];
+    } else {
+      console.error('[E2E PREP][Ingestion] Go executable not found.');
+      process.exit(3);
+    }
+  }
   console.log('---');
   console.log('[E2E PREP][Ingestion] Starting article ingestion job via Go CLI...');
   // Limit ingestion to 3 articles for faster tests
-  const ingestion = spawnSync('go', ['run', 'cmd/fetch_articles/main.go', '--count=3'], { encoding: 'utf-8' });
+  const ingestion = spawnSync(goCmd, ['run', 'cmd/fetch_articles/main.go', '--count=3'], { encoding: 'utf-8', env: { PATH: path.dirname(goCmd) } });
   if (ingestion.stdout) {
     console.log('[E2E PREP][Ingestion][stdout]:\n' + ingestion.stdout);
   }
