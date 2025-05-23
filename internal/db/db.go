@@ -262,7 +262,7 @@ func handleError(err error, msg string) error {
 // validateDBSchema ensures critical tables exist. It returns an error if any
 // required table is missing, providing clearer diagnostics for test failures.
 func validateDBSchema(db *sqlx.DB) error {
-	required := []string{"articles", "llm_scores", "feedback", "labels"}
+	required := []string{"articles", "llm_scores", "feedback", "labels", "users"}
 	for _, table := range required {
 		var name string
 		err := db.Get(&name, "SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
@@ -723,6 +723,12 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		confidence REAL,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
+		CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			email TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
 	`
 
 	// Initialize database schema

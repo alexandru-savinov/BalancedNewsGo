@@ -2,6 +2,10 @@ package db
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -10,65 +14,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func applyMigrations(t *testing.T, db *sqlx.DB) {
+	_, currentFile, _, _ := runtime.Caller(0)
+	migrationsDir := filepath.Join(filepath.Dir(currentFile), "..", "..", "migrations")
+	files, err := filepath.Glob(filepath.Join(migrationsDir, "*_*.up.sql"))
+	assert.NoError(t, err)
+	sort.Strings(files)
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		assert.NoError(t, err)
+		_, err = db.Exec(string(b))
+		assert.NoError(t, err)
+	}
+}
+
 func setupTestDB(t *testing.T) *sqlx.DB {
 	// Use in-memory SQLite database for tests to avoid file locking issues
 	dbInstance, err := New(":memory:")
 	assert.NoError(t, err)
 
-	// Create necessary tables for testing
-	_, err = dbInstance.DB.Exec(`
-		CREATE TABLE IF NOT EXISTS articles (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			source TEXT NOT NULL,
-			pub_date TIMESTAMP NOT NULL,
-			url TEXT NOT NULL UNIQUE,
-			title TEXT NOT NULL,
-			content TEXT NOT NULL,
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			status TEXT DEFAULT 'pending',
-			fail_count INTEGER DEFAULT 0,
-			last_attempt DATETIME,
-			escalated BOOLEAN DEFAULT 0,
-			composite_score REAL,
-			confidence REAL,
-			score_source TEXT
-		);
-		
-		CREATE TABLE IF NOT EXISTS llm_scores (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			article_id INTEGER NOT NULL,
-			model TEXT NOT NULL,
-			score REAL NOT NULL,
-			metadata TEXT,
-			version TEXT,
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (article_id) REFERENCES articles (id)
-		);
-		
-		CREATE TABLE IF NOT EXISTS feedback (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			article_id INTEGER NOT NULL,
-			user_id TEXT,
-			feedback_text TEXT,
-			category TEXT,
-			ensemble_output_id INTEGER,
-			source TEXT,
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (article_id) REFERENCES articles (id)
-		);
-		
-		CREATE TABLE IF NOT EXISTS labels (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			data TEXT NOT NULL,
-			label TEXT NOT NULL,
-			source TEXT NOT NULL,
-			date_labeled TIMESTAMP NOT NULL,
-			labeler TEXT NOT NULL,
-			confidence REAL,
-			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-		);
-	`)
-	assert.NoError(t, err)
+	applyMigrations(t, dbInstance.DB)
 
 	// Register cleanup to ensure connection is closed after test
 	t.Cleanup(func() {
