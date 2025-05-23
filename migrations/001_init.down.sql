@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS llm_scores;
+DROP TABLE IF EXISTS articles;
+DROP TABLE IF EXISTS feedback;
+DROP TABLE IF EXISTS labels;

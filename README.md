@@ -48,6 +48,16 @@ See `docs/testing.md` for more information on test statuses and execution.
 The application relies on a SQLite database (typically `news.db`) with a schema defined in `internal/db/db.go`. Key tables include `articles`, `llm_scores`, `feedback`, and `labels`.
 
 A critical aspect of the `llm_scores` table is the `UNIQUE(article_id, model)` constraint. This constraint is essential for the correct functioning of the LLM scoring pipeline, particularly when updating scores using `ON CONFLICT` SQL clauses, ensuring that scores for a given article and model are properly upserted (updated if existing, or inserted if new).
+### Database Migrations
+
+This project uses [golang-migrate](https://github.com/golang-migrate/migrate) to manage schema changes.
+Migrations reside in the `migrations/` directory. To apply them, install the `migrate` CLI and run:
+
+```bash
+go install -tags "sqlite" github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+migrate -path ./migrations -database "sqlite3://news.db" up
+```
+
 
 ## Features
 
