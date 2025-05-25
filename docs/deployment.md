@@ -10,6 +10,9 @@ Before deploying to production, ensure you've completed these steps:
 - [ ] Configure a production-grade database setup
 - [ ] Set all required environment variables
 - [ ] Enable release mode for the server
+- [ ] **Verify Editorial template assets are properly served**
+- [ ] **Test responsive design across different devices**
+- [ ] **Validate template rendering performance**
 - [ ] Implement proper monitoring
 - [ ] Set up automated backups
 - [ ] Configure appropriate logging
@@ -30,12 +33,17 @@ export LLM_HTTP_TIMEOUT=30s  # Appropriate timeout for production
 
 # Optional: Database path (default is "news.db" in working directory)
 export DATABASE_URL=/path/to/production/database.db
+
+# Web interface mode (Editorial templates are default, legacy client-side available)
+# export LEGACY_HTML=true  # Only set if you need legacy client-side rendering mode
 ```
 
 ### Production Configuration Files
 
 1. **feed_sources.json**: Review and update with production-worthy news sources
 2. **composite_score_config.json**: Tune the ensemble configuration for production use
+3. **Editorial Templates**: Ensure all template files in `web/templates/` are present and properly formatted
+4. **Static Assets**: Verify that all assets in `web/assets/` (CSS, JS, images) are included in deployment
 
 ## Docker Deployment
 

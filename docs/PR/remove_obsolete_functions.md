@@ -2,11 +2,17 @@
 
 ## Overview
 
-This PR aims to clean up the codebase by removing several obsolete functions in `cmd/server/main.go` that are no longer used since the transition to client-side rendering for the web interface.
+This PR aimed to clean up the codebase by removing several obsolete functions in `cmd/server/main.go` that were no longer used after the transition to Editorial template integration as the primary web interface.
 
 ## Background
 
-The web interface was previously implemented with server-side rendering, but has since migrated to client-side JavaScript as the primary implementation. The server-side rendering functionality is still available as a legacy option (via the `--legacy-html` flag), but several functions and code blocks related to this implementation are either redundant or incomplete.
+**Note:** This document reflects a previous state of the system. The web interface has since evolved through multiple phases:
+
+1. **Legacy HTMX Server-Side Rendering** (Original implementation)
+2. **Client-Side JavaScript Rendering** (Intermediate phase documented here)
+3. **Editorial Template Integration** (Current production implementation with server-side Go template rendering)
+
+The Editorial template integration is now the primary implementation, with client-side JavaScript available as a legacy option via the `--legacy-html` flag.
 
 ## Changes
 

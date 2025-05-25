@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
+	"html/template"
 	"log"
+	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -55,22 +57,8 @@ import (
 // @tag.name Analysis
 // @tag.description Operations related to article analysis and summaries
 
-var (
-	legacyHTML bool
-)
-
-func init() {
-	flag.BoolVar(&legacyHTML, "legacy-html", false, "Use legacy HTML rendering instead of static files with client-side JS")
-}
-
 func main() {
-	flag.Parse()
-
-	// Override the legacy HTML flag to always be false
-	legacyHTML = false
-
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
-	log.Printf("Legacy HTML mode: %v", legacyHTML)
 
 	err := godotenv.Load()
 	if err != nil {
@@ -78,15 +66,27 @@ func main() {
 	}
 	// Initialize services
 	dbConn, llmClient, rssCollector, scoreManager, progressManager, simpleCache := initServices()
-	defer func() { _ = dbConn.Close() }()
-
-	// Initialize Gin
+	defer func() { _ = dbConn.Close() }() // Initialize Gin
 	router := gin.Default()
+	// Set up template functions
+	router.SetFuncMap(template.FuncMap{
+		"mul": func(a, b float64) float64 {
+			return a * b
+		},
+		"add": func(a, b int) int {
+			return a + b
+		},
+		"sub": func(a, b int) int {
+			return a - b
+		}, "split": func(s, sep string) []string {
+			return strings.Split(s, sep)
+		},
+	})
 
-	// Load HTML templates
-	router.LoadHTMLGlob("web/*.html")
+	// Load Editorial HTML templates
+	router.LoadHTMLGlob("web/templates/*.html")
 
-	// Serve static files from ./web
+	// Serve static assets (CSS, JS, images, fonts)
 	router.Static("/static", "./web")
 
 	// @Summary Health Check
@@ -102,18 +102,18 @@ func main() {
 	// The ProgressManager handles progress tracking for LLM scoring jobs.
 	// The SimpleCache provides in-memory caching for API responses.
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager, progressManager, simpleCache)
+	// Register UI routes - using Editorial template rendering
+	log.Println("Using Editorial template rendering with server-side data")
 
-	// Register UI routes - legacy mode is disabled
-	log.Println("Using static files with client-side JS mode")
+	// Serve templated HTML for articles list
+	router.GET("/articles", templateIndexHandler(dbConn))
 
-	// Serve static HTML for articles list, client-side JS will call API
-	router.GET("/articles", func(c *gin.Context) {
-		c.File("./web/index.html")
-	})
+	// Serve templated HTML for article detail
+	router.GET("/article/:id", templateArticleHandler(dbConn))
 
-	// Serve static HTML for article detail, client-side JS will call API
-	router.GET("/article/:id", func(c *gin.Context) {
-		c.File("./web/article.html")
+	// Root welcome endpoint - redirect to articles
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(http.StatusFound, "/articles")
 	})
 
 	// Metrics endpoints
@@ -152,7 +152,6 @@ func main() {
 		}
 		c.JSON(200, disagreements)
 	})
-
 	router.GET("/metrics/outliers", func(c *gin.Context) {
 		outliers, err := metrics.GetOutlierScores(dbConn)
 		if err != nil {
@@ -162,18 +161,16 @@ func main() {
 		c.JSON(200, outliers)
 	})
 
-	// Root welcome endpoint
-	router.GET("/", func(c *gin.Context) {
-		c.File("./web/index.html")
-	})
-
 	// Add Swagger route
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
 	// Start server
-	log.Println("Server running on :8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Server running on :%s", port)
 
-	if err := router.Run(":8080"); err != nil {
+	if err := router.Run(":" + port); err != nil {
 		log.Printf("ERROR: Failed to start server: %v", err)
 		os.Exit(1)
 	}

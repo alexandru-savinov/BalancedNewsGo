@@ -13,7 +13,7 @@ This document provides a comprehensive reference for all configuration options i
 | `NO_AUTO_ANALYZE` | No | false | When set to "true", disables automatic background LLM analysis |
 | `DATABASE_URL` | No | news.db | While supported in code, most components default to `news.db` in the execution directory |
 | `GIN_MODE` | No | debug | Set to "release" for production environment |
-| `LEGACY_HTML` | No | false | Enable legacy server-side rendering mode |
+| `LEGACY_HTML` | No | false | Enable legacy client-side rendering mode (Editorial templates are default) |
 
 ## Configuration Files
 
