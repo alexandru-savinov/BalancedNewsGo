@@ -9,7 +9,7 @@ mkdir -p "$RESULTS_DIR"
 start_server() {
   local log_file=$1
   echo "Starting the server (logging to $log_file)..."
-  go run cmd/server/main.go > "$log_file" 2>&1 &
+  go run cmd/server/*.go > "$log_file" 2>&1 &
   SERVER_PID=$!
   echo "Server PID: $SERVER_PID"
   echo "Waiting for server health check..."
@@ -122,7 +122,7 @@ run_all_tests_suite() {
     # Remove existing database for a fresh start
     rm -f news.db news.db-wal news.db-shm
     echo "Deleted old database files"
-    
+
     # Reset test database to a clean state
     echo "Resetting test database..." >> "$all_log_file"
     go run cmd/reset_test_db/main.go >> "$all_log_file" 2>&1
@@ -173,7 +173,7 @@ run_all_tests_suite() {
     exit 0
 }
 
-# --- Main Execution --- 
+# --- Main Execution ---
 COMMAND=$1
 if [ -z "$COMMAND" ]; then
     COMMAND="help"
@@ -183,7 +183,7 @@ case $COMMAND in
     "backend")
         echo "Running backend fixes tests..."
         run_newman_test "backend_fixes" "postman/backend_fixes_tests_updated.json" "postman/local_environment.json"
-        # Add SSE check if needed: node scripts/test_sse_progress.js 
+        # Add SSE check if needed: node scripts/test_sse_progress.js
         ;;
     "api")
         echo "Running basic API tests..."
