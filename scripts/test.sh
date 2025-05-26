@@ -191,7 +191,7 @@ case $COMMAND in
         ;;
     "essential")
         echo "Running essential rescoring tests..."
-        run_newman_test "essential_tests" "postman/backup/essential_rescoring_tests.json" ""
+        run_newman_test "essential_tests" "postman/updated_backend_tests.json" ""
         ;;
     "debug")
         echo "Running debug tests..."
