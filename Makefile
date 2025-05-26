@@ -1,8 +1,12 @@
 # Attempt to use bash/sh for shell-specific syntax
 SHELL = sh
 
-# Configurable race detection flag (default: enabled)
-ENABLE_RACE_DETECTION ?= true
+# Configurable race detection flag: enabled by default on non-Windows, disabled on Windows
+ifeq ($(OS),Windows_NT)
+    ENABLE_RACE_DETECTION ?= false
+else
+    ENABLE_RACE_DETECTION ?= true
+endif
 
 # OS detection
 ifeq ($(OS),Windows_NT)
