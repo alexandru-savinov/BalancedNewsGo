@@ -9,7 +9,7 @@ mkdir -p "$RESULTS_DIR"
 start_server() {
   local log_file=$1
   echo "Starting the server (logging to $log_file)..."
-  go run cmd/server/*.go > "$log_file" 2>&1 &
+  go run ./cmd/server > "$log_file" 2>&1 &
   SERVER_PID=$!
   echo "Server PID: $SERVER_PID"
   echo "Waiting for server health check..."
