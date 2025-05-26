@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"sort"
@@ -14,7 +15,11 @@ func main() {
 		fmt.Println("Could not open Makefile:", err)
 		os.Exit(1)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Error closing file: %v", err)
+		}
+	}()
 
 	re := regexp.MustCompile(`^([a-zA-Z0-9_-]+):.*?## (.*)`)
 	var targets [][2]string

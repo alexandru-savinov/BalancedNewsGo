@@ -27,7 +27,9 @@ func main() {
 		} else {
 			fmt.Println("Setup script: WAL checkpoint executed.")
 		}
-		db.Close()
+		if err := db.Close(); err != nil {
+			log.Printf("Error closing database connection: %v", err)
+		}
 		fmt.Println("Setup script: DB closed.")
 	}()
 

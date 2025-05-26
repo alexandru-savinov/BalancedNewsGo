@@ -14,7 +14,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize DB: %v", err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("Error closing database connection: %v", err)
+		}
+	}()
 
 	// Reset specific test IDs (e.g., 1 and any IDs used in failed attempts)
 	testIDsToReset := []int64{1}

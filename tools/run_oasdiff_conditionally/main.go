@@ -58,7 +58,10 @@ func findOasdiff() (string, error) {
 		fmt.Fprintf(os.Stderr, "DEBUG: Error getting GOPATH: %v\n", gopathErr)
 	}
 
-	return "", fmt.Errorf("'%s' command not found. Checked locations: %s. Please ensure oasdiff is installed (go install github.com/oasdiff/oasdiff@latest) and your PATH, GOBIN, or GOPATH/bin is configured correctly. Refer to README.md for details.", exeName, strings.Join(checkedPaths, ", "))
+	return "", fmt.Errorf("'%s' command not found. Checked locations: %s. "+
+		"Please ensure oasdiff is installed (go install github.com/oasdiff/oasdiff@latest) "+
+		"and your PATH, GOBIN, or GOPATH/bin is configured correctly. "+
+		"Refer to README.md for details.", exeName, strings.Join(checkedPaths, ", "))
 }
 
 func main() {
@@ -98,13 +101,15 @@ func main() {
 			// oasdiff returns exit code 1 for breaking changes found, 2 for other errors.
 			// We consider finding breaking changes as a "successful" run of the tool in terms of process,
 			// but the build/CI should interpret this exit code.
-			fmt.Fprintf(os.Stderr, "INFO: oasdiff completed. Exit code: %d (1 means breaking changes found, >1 means oasdiff error)\n", exitErr.ExitCode())
+			fmt.Fprintf(os.Stderr, "INFO: oasdiff completed. Exit code: %d "+
+				"(1 means breaking changes found, >1 means oasdiff error)\n", exitErr.ExitCode())
 			os.Exit(exitErr.ExitCode())
 		}
 		fmt.Fprintf(os.Stderr, "Error running oasdiff: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("INFO: oasdiff completed successfully (no breaking changes or oasdiff internal errors reported to stdout/stderr by the tool itself).")
+	fmt.Println("INFO: oasdiff completed successfully (no breaking changes or oasdiff internal errors " +
+		"reported to stdout/stderr by the tool itself).")
 	os.Exit(0)
 }

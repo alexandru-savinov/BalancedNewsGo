@@ -90,10 +90,12 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 					isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", codeVal) == "429"
 
 					if isRateLimit {
-						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded rate limit: %s", articleID, modelName, promptHash, message)
+						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | "+
+							"Detected embedded rate limit: %s", articleID, modelName, promptHash, message)
 						lastErr = ErrBothLLMKeysRateLimited // Use sentinel error
 					} else {
-						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Detected embedded API error: %s", articleID, modelName, promptHash, message)
+						log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | "+
+							"Detected embedded API error: %s", articleID, modelName, promptHash, message)
 						lastErr = fmt.Errorf("API error: %s (type: %s, code: %v)", message, errType, codeVal)
 					}
 					continue // Skip parsing, retry loop
@@ -110,7 +112,8 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 			if len(rawSnippet) > 200 {
 				rawSnippet = rawSnippet[:200] + "..."
 			}
-			log.Printf("[ERROR][LLM] ArticleID %d | Model %s | PromptHash %s | Parse error: %v | Raw response: %s", articleID, modelName, promptHash, parseErr, rawSnippet)
+			log.Printf("[ERROR][LLM] ArticleID %d | Model %s | PromptHash %s | Parse error: %v | "+
+				"Raw response: %s", articleID, modelName, promptHash, parseErr, rawSnippet)
 			if articleID == 133 {
 				log.Printf("[ERROR][Article 133] Parse error: %v", parseErr)
 				log.Printf("[ERROR][Article 133] FULL raw response:\n%s", rawResp)
@@ -121,12 +124,14 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 
 		// Validate parsed values
 		if confidence == 0 {
-			log.Printf("[ERROR][LLM] ArticleID %d | Model %s | PromptHash %s | Invalid zero confidence, retrying...", articleID, modelName, promptHash)
+			log.Printf("[ERROR][LLM] ArticleID %d | Model %s | PromptHash %s | "+
+				"Invalid zero confidence, retrying...", articleID, modelName, promptHash)
 			lastErr = fmt.Errorf("invalid zero confidence")
 			continue
 		}
 
-		log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Success | Score: %.3f | Confidence: %.3f", articleID, modelName, promptHash, score, confidence)
+		log.Printf("[LLM] ArticleID %d | Model %s | PromptHash %s | Success | Score: %.3f | "+
+			"Confidence: %.3f", articleID, modelName, promptHash, score, confidence)
 		return score, explanation, confidence, rawResp, nil
 	}
 
@@ -414,7 +419,8 @@ func loadPromptVariants() []PromptVariant {
 		{
 			ID: "default",
 			Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) " +
-				"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
+				"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', " +
+				"and 'confidence'. Do not include any other text or formatting.",
 			Examples: []string{
 				`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
 				`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
@@ -453,6 +459,27 @@ func loadPromptVariants() []PromptVariant {
 				`{"score": 0.0, "explanation": "Balanced or neutral reporting", "confidence": 0.95}`,
 				`{"score": 1.0, "explanation": "Strongly aligns with conservative viewpoints", "confidence": 0.9}`,
 			},
+		},
+		{
+			ID: "anthropic",
+			Template: promptJsonFieldsFragment + "\nPlease analyze the political bias of the following article, " +
+				"considering its language, framing, and source. " +
+				"Your analysis should be on a scale from -1.0 (strongly left) to +1.0 (strongly right).",
+			Examples: []string{
+				`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
+				`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
+				`{"score": 1.0, "explanation": "Strongly right-leaning language", "confidence": 0.9}`,
+			},
+		},
+		{
+			ID: "cohere_left",
+			Template: promptJsonFieldsFragment + "\nRespond ONLY with a valid JSON object containing 'score', " +
+				"'explanation', and 'confidence'. Do not include any other text or formatting.",
+		},
+		{
+			ID: "cohere_center",
+			Template: promptJsonFieldsFragment + "\nRespond ONLY with a valid JSON object containing 'score', " +
+				"'explanation', and 'confidence'. Do not include any other text or formatting.",
 		},
 	}
 }

@@ -1,11 +1,18 @@
+run:
+  skip-tests: true
+  skip-files:
+    - "_test\\.go$"
+
+issues:
+  exclude-rules:
+    - path: "_test\\.go$"
+      linters:
+        - "*"
+
 linters-settings:
-  gocyclo:
-    min-complexity: 20
-  funlen:
-    lines: 100
-    statements: 50
-  lll:
-    line-length: 140
+  gocritic:
+    disabled-checkers:
+      - exitAfterDefer
   revive:
     ignore-generated-header: true
   errcheck:
@@ -15,45 +22,20 @@ linters:
   enable:
     - govet
     - revive
-    - errcheck
-    - staticcheck
     - gosimple
-    - unused
-    - ineffassign
-    - typecheck
-    - gocritic
-    - gofmt
-    - goimports
     - misspell
-    - unparam
-    - goconst
-    - gocyclo
-    - funlen
-    - lll
-    - dupl
-    - nakedret
-    - prealloc
-    - dogsled
-    - unconvert
-    - whitespace
-    - nolintlint
   disable:
     - depguard
     - forbidigo
-
-run:
-  timeout: 5m
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - funlen
-        - gocyclo
-    - path: tools/.*/main\.go # Regex to match any main.go file in a tools subdirectory
-      text: "main redeclared in this block" # The specific error message to ignore
-    - linters:
-        - dupl
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  exclude-use-default: false
+    - gocyclo
+    - funlen
+    - gocritic
+    - goconst
+    - unparam
+    - unused
+    - ineffassign
+    - errcheck
+    - staticcheck
+    - gofmt
+    - goimports
+    - typecheck

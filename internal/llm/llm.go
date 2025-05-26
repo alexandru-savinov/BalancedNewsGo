@@ -45,7 +45,8 @@ func (pv *PromptVariant) FormatPrompt(content string) string {
 var DefaultPromptVariant = PromptVariant{
 	ID: "default",
 	Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) " +
-		"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
+		"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', " +
+		"and 'confidence'. Do not include any other text or formatting.",
 	Examples: []string{
 		`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
 		`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
@@ -158,7 +159,8 @@ func (c *LLMClient) GetHTTPLLMTimeout() time.Duration {
 		return httpService.client.GetClient().Timeout
 	}
 	// Fallback to the package-level default LLM timeout if not specifically set or accessible
-	log.Printf("[GetHTTPLLMTimeout] Warning: Could not retrieve specific timeout from HTTPLLMService, returning default: %v", defaultLLMTimeout)
+	log.Printf("[GetHTTPLLMTimeout] Warning: Could not retrieve specific timeout from HTTPLLMService, "+
+		"returning default: %v", defaultLLMTimeout)
 	return defaultLLMTimeout
 }
 
@@ -236,7 +238,8 @@ func (c *LLMClient) analyzeContent(articleID int64, content string, model string
 	generalPrompt := PromptVariant{
 		ID: "default",
 		Template: "Please analyze the political bias of the following article on a scale from -1.0 (strongly left) " +
-			"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', and 'confidence'. Do not include any other text or formatting.",
+			"to 1.0 (strongly right). Respond ONLY with a valid JSON object containing 'score', 'explanation', " +
+			"and 'confidence'. Do not include any other text or formatting.",
 		Examples: []string{
 			`{"score": -1.0, "explanation": "Strongly left-leaning language", "confidence": 0.9}`,
 			`{"score": 0.0, "explanation": "Neutral reporting", "confidence": 0.95}`,
@@ -299,7 +302,8 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 	var lastErr error
 
 	for _, m := range c.config.Models {
-		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.Perspective, m.ModelName, m.URL)
+		log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s",
+			article.ID, m.Perspective, m.ModelName, m.URL)
 		score, err := c.analyzeContent(article.ID, article.Content, m.ModelName)
 		if err != nil {
 			log.Printf("Error analyzing article %d with model %s: %v", article.ID, m.ModelName, err)

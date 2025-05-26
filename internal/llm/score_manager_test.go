@@ -184,7 +184,8 @@ type TestableScoreManager struct {
 }
 
 // NewTestableScoreManager creates a ScoreManager that works with our mocks
-func NewTestableScoreManager(mockDB *MockDB, cache *TestCache, calculator ScoreCalculator, mockProgress *MockProgressManager) *TestableScoreManager {
+func NewTestableScoreManager(mockDB *MockDB, cache *TestCache, calculator ScoreCalculator,
+	mockProgress *MockProgressManager) *TestableScoreManager {
 	return &TestableScoreManager{
 		db:           nil,
 		cache:        cache,
@@ -197,7 +198,8 @@ func NewTestableScoreManager(mockDB *MockDB, cache *TestCache, calculator ScoreC
 }
 
 // Override methods to use our mocks instead of real implementations
-func (sm *TestableScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore, cfg *CompositeScoreConfig) (float64, float64, error) {
+func (sm *TestableScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore,
+	cfg *CompositeScoreConfig) (float64, float64, error) {
 	if sm.calculator == nil {
 		return 0, 0, fmt.Errorf("ScoreManager: calculator is nil")
 	}
@@ -259,7 +261,8 @@ func (sm *TestableScoreManager) UpdateArticleScore(articleID int64, scores []db.
 		// Test cases will set expectations on mockTx.Exec and mockTx.Commit.
 
 		// Simulate db.UpdateArticleScoreLLM logic (simplified for mock)
-		_, execErr := sm.mockTx.Exec("UPDATE articles SET composite_score = ?, confidence = ?, score_source = 'llm' WHERE id = ?", compositeScore, confidence, articleID)
+		_, execErr := sm.mockTx.Exec("UPDATE articles SET composite_score = ?, confidence = ?, score_source = 'llm' WHERE id = ?",
+			compositeScore, confidence, articleID)
 		if execErr != nil {
 			dbUpdateErr = fmt.Errorf("failed during DB exec: %w", execErr)
 			sm.mockTx.Rollback() // Attempt rollback

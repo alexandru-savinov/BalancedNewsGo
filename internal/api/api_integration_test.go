@@ -198,7 +198,8 @@ func (m *IntegrationMockLLMClient) ReanalyzeArticle(articleID int64) error {
 }
 
 // Helper function to create a test server with real API handlers and mocked dependencies
-func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations, *MockProgressManager, *MockCache, *MockScoreCalculator, *IntegrationMockLLMClient) {
+func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations,
+	*MockProgressManager, *MockCache, *MockScoreCalculator, *IntegrationMockLLMClient) {
 	gin.SetMode(gin.TestMode)
 
 	// Create all our mocks

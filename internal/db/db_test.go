@@ -187,7 +187,8 @@ func TestTransactionRollback(t *testing.T) {
 		Content: "Rollback Content",
 	}
 
-	_, err = tx.NamedExec(`INSERT INTO articles (source, pub_date, url, title, content) VALUES (:source, :pub_date, :url, :title, :content)`, article)
+	_, err = tx.NamedExec(`INSERT INTO articles (source, pub_date, url, title, content) `+
+		`VALUES (:source, :pub_date, :url, :title, :content)`, article)
 	if err != nil {
 		t.Fatalf("Failed to insert article in tx: %v", err)
 	}

@@ -28,7 +28,11 @@ func main() {
 		fmt.Printf("Cannot open coverage file %s: %v\n", coverageFile, err)
 		os.Exit(1)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing file: %v\n", err)
+		}
+	}()
 
 	var totalCoverage float64
 

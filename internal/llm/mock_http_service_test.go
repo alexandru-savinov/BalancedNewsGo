@@ -51,7 +51,8 @@ func TestHTTPLLMServiceWithMockServer(t *testing.T) {
 						"index": 0,
 						"message": {
 							"role": "assistant",
-							"content": "The article has a left-leaning bias. Score: -0.7\\nConfidence: 0.9\\nReasoning: The article emphasizes progressive viewpoints and criticizes conservative positions."
+							"content": "The article has a left-leaning bias. Score: -0.7\\nConfidence: 0.9\\n"+
+								"Reasoning: The article emphasizes progressive viewpoints and criticizes conservative positions."
 						},
 						"finish_reason": "stop"
 					}

@@ -51,7 +51,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer conn.Close() // Ensure DB connection is closed at the end
+	defer func() {
+		if err := conn.Close(); err != nil { // Ensure DB connection is closed at the end
+			log.Printf("Error closing database connection: %v", err)
+		}
+	}()
 
 	llmClient, err := llm.NewLLMClient(conn) // Assuming NewLLMClient doesn't also return a scoreManager
 	if err != nil {
@@ -137,7 +141,8 @@ func main() {
 						}
 					} // End models loop
 
-					log.Printf("[Worker %d] Finished LLM analysis for article ID %d. Generated %d individual scores (skipped if test ID).", workerID, article.ID, scoresGeneratedForThisArticle)
+					log.Printf("[Worker %d] Finished LLM analysis for article ID %d. "+
+						"Generated %d individual scores (skipped if test ID).", workerID, article.ID, scoresGeneratedForThisArticle)
 					// Safely update global counter (though could be done after wg.Wait for simplicity if only counting total LLM scores)
 					apiStats.mu.Lock() // Assuming APIUsageStats has a mutex for its counters if updated concurrently here
 					totalLLMScoresGenerated += scoresGeneratedForThisArticle
@@ -171,7 +176,8 @@ func main() {
 				// Calling UpdateArticleScore with empty scores should trigger ErrAllPerspectivesInvalid if appropriate.
 			}
 
-			log.Printf("Calculating composite score for article ID %d (%s) using %d fetched LLM scores...", article.ID, article.Title, len(fetchedLLMScores))
+			log.Printf("Calculating composite score for article ID %d (%s) "+
+				"using %d fetched LLM scores...", article.ID, article.Title, len(fetchedLLMScores))
 			_, _, compErr := scoreManager.UpdateArticleScore(article.ID, fetchedLLMScores, config)
 			if compErr != nil {
 				// ScoreManager.UpdateArticleScore already logs details and updates status to an error state

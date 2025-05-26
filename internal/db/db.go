@@ -373,7 +373,8 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
 	    SELECT EXISTS(
 	        SELECT 1 FROM articles
 	        WHERE LOWER(
-	            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(title, "'", ""), '"', ""), ' ', ""), ',', ""), '!', ""), '.', ""), '?', ""), ';', "")
+	            REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(title,
+						"'", ""), '"', ""), " ", ""), ",", ""), "!", ""), ".", ""), "?", ""), ";", "")
 	        ) LIKE '%' || ? || '%'
 	    )`, cleanTitle)
 	if err != nil {
@@ -766,7 +767,8 @@ func UpdateArticleStatus(exec sqlx.ExtContext, articleID int64, status string) e
 		log.Printf("[WARN] Could not determine rows affected when updating status for article ID %d: %v", articleID, err)
 		// Not returning error here as the update might have succeeded.
 	} else if rowsAffected == 0 {
-		log.Printf("[WARN] UpdateArticleStatus: No rows affected when updating status for article ID %d to '%s'. Article may not exist.", articleID, status)
+		log.Printf("[WARN] UpdateArticleStatus: No rows affected when updating status for article ID %d to '%s'. "+
+			"Article may not exist.", articleID, status)
 		// Potentially return ErrArticleNotFound or a similar specific error if this is unexpected.
 		// For now, just logging as the main operation (exec) didn't error.
 	}

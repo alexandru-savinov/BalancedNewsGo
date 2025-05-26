@@ -30,9 +30,15 @@ func main() {
 	}()
 
 	var scores []LLMScore
-	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata FROM llm_scores WHERE article_id = ?", 681)
+	articleID := int64(681)
+	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata FROM llm_scores WHERE article_id = ?", articleID)
 	if err != nil {
-		log.Printf("ERROR: Failed to fetch scores: %v", err)
+		log.Printf("Error fetching scores for article ID %d: %v", articleID, err)
+		if db != nil {
+			if closeErr := db.Close(); closeErr != nil {
+				log.Printf("Error closing database connection: %v", closeErr)
+			}
+		}
 		os.Exit(1)
 	}
 

@@ -24,7 +24,9 @@ func TestInvalidContentJSON(t *testing.T) {
 // TestMalformedJSONWithBackticks tests handling of malformed JSON inside backticks
 func TestMalformedJSONWithBackticks(t *testing.T) {
 	// Valid outer JSON but backtick content is malformed
-	raw := `{"choices":[{"message":{"content":"` + "```" + `json {\\\"score\\\":1.0,\\\"explanation\\\":\\\"test\\\",\\\"confidence\\\":INVALID} ` + "```" + `"}}]}`
+	raw := `{"choices":[{"message":{"content":"` +
+		"```" + `json {\\\"score\\\":1.0,\\\"explanation\\\":\\\"test\\\",\\\"confidence\\\":INVALID} ` +
+		"```" + `"}}]}`
 
 	_, _, _, err := parseNestedLLMJSONResponse(raw)
 

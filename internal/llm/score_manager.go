@@ -45,7 +45,8 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 		})
 		// Persist final status to DB
 		if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedZeroConf); dbErr != nil {
-			log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after zero confidence error: %v", articleID, models.ArticleStatusFailedZeroConf, dbErr)
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s "+
+				"after zero confidence error: %v", articleID, models.ArticleStatusFailedZeroConf, dbErr)
 		}
 		// Return the error without modifying the score
 		return 0, 0, fmt.Errorf("all LLMs returned zero confidence - this indicates a serious issue with the LLM responses: %w", errZeroConf)
@@ -73,7 +74,8 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 			}
 			// Persist final status to DB
 			if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedAllInvalid); dbErr != nil {
-				log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after all invalid error: %v", articleID, models.ArticleStatusFailedAllInvalid, dbErr)
+				log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s "+
+					"after all invalid error: %v", articleID, models.ArticleStatusFailedAllInvalid, dbErr)
 			} else {
 				log.Printf("[DEBUG] ScoreManager: ArticleID %d: Successfully updated status to %s.", articleID, models.ArticleStatusFailedAllInvalid)
 			}
@@ -96,7 +98,8 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 			}
 			// Persist final status to DB
 			if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedError); dbErr != nil {
-				log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after calculation error: %v", articleID, models.ArticleStatusFailedError, dbErr)
+				log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s "+
+					"after calculation error: %v", articleID, models.ArticleStatusFailedError, dbErr)
 			}
 			return 0, 0, errCalc
 		}
@@ -115,14 +118,16 @@ func (sm *ScoreManager) UpdateArticleScore(articleID int64, scores []db.LLMScore
 		})
 		// Persist final status to DB even if score update failed
 		if dbStatusErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusFailedError); dbStatusErr != nil {
-			log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after DB score update error: %v", articleID, models.ArticleStatusFailedError, dbStatusErr)
+			log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s "+
+				"after DB score update error: %v", articleID, models.ArticleStatusFailedError, dbStatusErr)
 		}
 		return 0, 0, fmt.Errorf("failed to store score: %w", errDbUpdate)
 	}
 
 	// If score update was successful, also update status to Scored
 	if dbErr := db.UpdateArticleStatus(sm.db, articleID, models.ArticleStatusScored); dbErr != nil {
-		log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s after successful score update: %v", articleID, models.ArticleStatusScored, dbErr)
+		log.Printf("[ERROR] ScoreManager: ArticleID %d: Failed to update article status to %s "+
+			"after successful score update: %v", articleID, models.ArticleStatusScored, dbErr)
 		// Note: The main operation (score update) succeeded, so we don't return this error, just log it.
 	}
 

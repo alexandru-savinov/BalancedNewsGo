@@ -26,7 +26,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
-	defer dbConn.Close()
+	defer func() {
+		if err := dbConn.Close(); err != nil {
+			log.Printf("Error closing database connection: %v", err)
+		}
+	}()
 
 	// Get the article
 	article, err := db.FetchArticleByID(dbConn, articleID)
@@ -35,9 +39,15 @@ func main() {
 	}
 
 	// Set environment variables for NewLLMClient
-	os.Setenv("LLM_API_KEY", "dummy-key")
-	os.Setenv("LLM_API_KEY_SECONDARY", "dummy-backup-key")
-	os.Setenv("LLM_BASE_URL", "http://localhost:8090") // Use local mock service URL
+	if err := os.Setenv("LLM_API_KEY", "dummy-key"); err != nil {
+		log.Printf("Warning: failed to set LLM_API_KEY: %v", err)
+	}
+	if err := os.Setenv("LLM_API_KEY_SECONDARY", "dummy-backup-key"); err != nil {
+		log.Printf("Warning: failed to set LLM_API_KEY_SECONDARY: %v", err)
+	}
+	if err := os.Setenv("LLM_BASE_URL", "http://localhost:8090"); err != nil { // Use local mock service URL
+		log.Printf("Warning: failed to set LLM_BASE_URL: %v", err)
+	}
 
 	// Create client using constructor
 	llmClient, err := llm.NewLLMClient(dbConn)

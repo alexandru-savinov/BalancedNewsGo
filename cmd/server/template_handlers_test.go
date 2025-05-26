@@ -261,7 +261,8 @@ func TestBuildSearchQuery(t *testing.T) {
 				Limit:   20,
 				Offset:  0,
 			},
-			expectedQuery:  "SELECT * FROM articles WHERE 1=1 AND source = ? AND composite_score < -0.1 AND (title LIKE ? OR content LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?",
+			expectedQuery: "SELECT * FROM articles WHERE 1=1 AND source = ? AND composite_score < -0.1 " +
+				"AND (title LIKE ? OR content LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?",
 			expectedArgLen: 5,
 		},
 	}
@@ -342,7 +343,8 @@ func TestFetchArticleSummary(t *testing.T) {
 	// Mock the query for LLM scores
 	rows := sqlmock.NewRows([]string{"id", "article_id", "model", "score", "metadata", "created_at"}).
 		AddRow(summaryScore.ID, summaryScore.ArticleID, summaryScore.Model, summaryScore.Score, summaryScore.Metadata, summaryScore.CreatedAt).
-		AddRow(nonSummaryScore.ID, nonSummaryScore.ArticleID, nonSummaryScore.Model, nonSummaryScore.Score, nonSummaryScore.Metadata, nonSummaryScore.CreatedAt)
+		AddRow(nonSummaryScore.ID, nonSummaryScore.ArticleID, nonSummaryScore.Model,
+			nonSummaryScore.Score, nonSummaryScore.Metadata, nonSummaryScore.CreatedAt)
 
 	mock.ExpectQuery(queryLLMScores).
 		WithArgs(articleID).
@@ -435,18 +437,19 @@ func TestFetchArticlesWithFilters(t *testing.T) {
 	article1 := createTestArticle(1)
 	article2 := createTestArticle(2)
 
-	articlesRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
+	articleRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
 		AddRow(article1.ID, article1.Title, article1.Content, article1.URL, article1.Source, article1.PubDate, article1.CreatedAt, article1.CompositeScore, article1.Confidence, article1.ScoreSource).
 		AddRow(article2.ID, article2.Title, article2.Content, article2.URL, article2.Source, article2.PubDate, article2.CreatedAt, article2.CompositeScore, article2.Confidence, article2.ScoreSource)
 
 	actualSQLQuery, _ := buildSearchQuery(params) // We only need the query string for ExpectQuery
 	t.Logf("DEBUG: Actual SQL Query from buildSearchQuery: %s", actualSQLQuery)
 	// Args for WithArgs must match how buildSearchQuery constructs them
-	t.Logf("DEBUG: Manual Args for WithArgs: %#v", []interface{}{params.Source, "%" + params.Query + "%", "%" + params.Query + "%", params.Limit + 1, params.Offset})
+	t.Logf("DEBUG: Manual Args for WithArgs: %#v",
+		[]interface{}{params.Source, "%" + params.Query + "%", "%" + params.Query + "%", params.Limit + 1, params.Offset})
 
 	mock.ExpectQuery(regexp.QuoteMeta(actualSQLQuery)).
 		WithArgs(params.Source, "%"+params.Query+"%", "%"+params.Query+"%", params.Limit+1, params.Offset).
-		WillReturnRows(articlesRows)
+		WillReturnRows(articleRows)
 
 	articles, err := fetchArticlesWithFilters(dbConn, params)
 	if err != nil {
@@ -467,8 +470,9 @@ func TestFetchRecentArticles(t *testing.T) {
 
 	// Mock recent articles query
 	article := createTestArticle(1)
-	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
-		AddRow(article.ID, article.Title, article.Content, article.URL, article.Source, article.PubDate, article.CreatedAt, article.CompositeScore, article.Confidence, article.ScoreSource)
+	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source",
+		"pub_date", "created_at", "composite_score", "confidence", "score_source"})
+	recentRows.AddRow(article.ID, article.Title, article.Content, article.URL, article.Source, article.PubDate, article.CreatedAt, article.CompositeScore, article.Confidence, article.ScoreSource)
 
 	mock.ExpectQuery(querySelectArticles).
 		WillReturnRows(recentRows)
@@ -524,16 +528,21 @@ func TestTemplateIndexHandler(t *testing.T) {
 	article1 := createTestArticle(1)
 	article2 := createTestArticle(2)
 
-	articlesRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
-		AddRow(article1.ID, article1.Title, article1.Content, article1.URL, article1.Source, article1.PubDate, article1.CreatedAt, article1.CompositeScore, article1.Confidence, article1.ScoreSource).
-		AddRow(article2.ID, article2.Title, article2.Content, article2.URL, article2.Source, article2.PubDate, article2.CreatedAt, article2.CompositeScore, article2.Confidence, article2.ScoreSource)
+	articleRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
+		AddRow(article1.ID, article1.Title, article1.Content, article1.URL, article1.Source,
+			article1.PubDate, article1.CreatedAt, article1.CompositeScore, article1.Confidence,
+			article1.ScoreSource).
+		AddRow(article2.ID, article2.Title, article2.Content, article2.URL, article2.Source,
+			article2.PubDate, article2.CreatedAt, article2.CompositeScore, article2.Confidence,
+			article2.ScoreSource)
 
 	mock.ExpectQuery(querySelectArticles).
-		WillReturnRows(articlesRows)
+		WillReturnRows(articleRows)
 
 	// Mock recent articles query
-	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
-		AddRow(article1.ID, article1.Title, article1.Content, article1.URL, article1.Source, article1.PubDate, article1.CreatedAt, article1.CompositeScore, article1.Confidence, article1.ScoreSource)
+	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source",
+		"pub_date", "created_at", "composite_score", "confidence", "score_source"})
+	recentRows.AddRow(article1.ID, article1.Title, article1.Content, article1.URL, article1.Source, article1.PubDate, article1.CreatedAt, article1.CompositeScore, article1.Confidence, article1.ScoreSource)
 
 	mock.ExpectQuery(querySelectArticles).
 		WillReturnRows(recentRows)
@@ -573,7 +582,8 @@ func TestTemplateIndexHandlerWithFilters(t *testing.T) {
 	defer dbConn.Close()
 
 	// Mock search query with filters
-	searchRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
+	searchRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source",
+		"pub_date", "created_at", "composite_score", "confidence", "score_source"}).
 		AddRow(1, "Test Article", "Test content", "https://example.com", testSource, time.Now(), time.Now(), 0.2, 0.8, "test_model")
 
 	mock.ExpectQuery("SELECT \\* FROM articles WHERE 1=1").
@@ -581,7 +591,9 @@ func TestTemplateIndexHandlerWithFilters(t *testing.T) {
 		WillReturnRows(searchRows)
 
 	// Mock recent articles query
-	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"})
+	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source",
+		"pub_date", "created_at", "composite_score", "confidence", "score_source"})
+	recentRows.AddRow(1, "Test Article", "Test content", "https://example.com", testSource, time.Now(), time.Now(), 0.2, 0.8, "test_model")
 	mock.ExpectQuery(querySelectArticles).
 		WillReturnRows(recentRows)
 
@@ -623,7 +635,9 @@ func TestTemplateArticleHandler(t *testing.T) {
 
 	// Mock article fetch
 	articleRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"}).
-		AddRow(article.ID, article.Title, article.Content, article.URL, article.Source, article.PubDate, article.CreatedAt, article.CompositeScore, article.Confidence, article.ScoreSource)
+		AddRow(article.ID, article.Title, article.Content, article.URL, article.Source,
+			article.PubDate, article.CreatedAt, article.CompositeScore, article.Confidence,
+			article.ScoreSource)
 
 	mock.ExpectQuery("SELECT \\* FROM articles WHERE id = \\?").
 		WithArgs(int64(1)).
@@ -642,7 +656,10 @@ func TestTemplateArticleHandler(t *testing.T) {
 		WillReturnRows(summaryRows)
 
 	// Mock recent articles query
-	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source", "pub_date", "created_at", "composite_score", "confidence", "score_source"})
+	recentRows := sqlmock.NewRows([]string{"id", "title", "content", "url", "source",
+		"pub_date", "created_at", "composite_score", "confidence", "score_source"})
+	recentRows.AddRow(article.ID, article.Title, article.Content, article.URL, article.Source, article.PubDate, article.CreatedAt, article.CompositeScore, article.Confidence, article.ScoreSource)
+
 	mock.ExpectQuery(querySelectArticles).
 		WillReturnRows(recentRows)
 

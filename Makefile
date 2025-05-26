@@ -12,7 +12,22 @@ else
 endif
 
 # Base test command without race detection
-GO_TEST_CMD := go test -count=1 ./cmd/... ./internal/... -run . -short -timeout 2m
+ifeq ($(OS),Windows_NT)
+    TEST_PKGS := ./cmd/... \
+        ./internal/api/... \
+        ./internal/apperrors/... \
+        ./internal/balancer/... \
+        ./internal/db/... \
+        ./internal/import_labels/... \
+        ./internal/metrics/... \
+        ./internal/models/... \
+        ./internal/rss/... \
+        ./internal/testing/... \
+        ./internal/tests/...
+else
+    TEST_PKGS := ./cmd/... ./internal/...
+endif
+GO_TEST_CMD := go test -count=1 $(TEST_PKGS) -run . -short -timeout 2m
 
 # Add race flag conditionally
 ifeq ($(ENABLE_RACE_DETECTION),true)

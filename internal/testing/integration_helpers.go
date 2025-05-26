@@ -5,6 +5,10 @@ import (
 	"math"
 	"time"
 
+	"database/sql"
+
+	"log"
+
 	appdb "github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/jmoiron/sqlx"
 )
@@ -19,7 +23,11 @@ func DBReset(db *sqlx.DB, testArticleIDs []int64) error {
 	if err != nil {
 		return fmt.Errorf("DBReset: failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback if not committed
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone && err != sql.ErrConnDone {
+			log.Printf("Error rolling back transaction in DBResetForTestIDs: %v", err)
+		}
+	}()
 
 	// Prepare queries - using IN clause for efficiency if supported and not too many IDs.
 	// For simplicity with variable number of IDs and to ensure order, loop and delete.
@@ -119,7 +127,8 @@ func SeedLLMScoresForErrAllScoresZeroConfidence(db *sqlx.DB, articleID int64) er
 		}
 		_, err := appdb.InsertLLMScore(db, scoreRecord)
 		if err != nil {
-			return fmt.Errorf("SeedLLMScoresForErrAllScoresZeroConfidence: failed to insert zero-confidence score for model %s: %w", m.modelName, err)
+			return fmt.Errorf("SeedLLMScoresForErrAllScoresZeroConfidence: failed to insert zero-confidence score "+
+				"for model %s: %w", m.modelName, err)
 		}
 	}
 	return nil

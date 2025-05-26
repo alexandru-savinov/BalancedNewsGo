@@ -26,6 +26,12 @@ func main() {
 		_, err = db.Exec(`ALTER TABLE feedback ADD COLUMN category TEXT`)
 		if err != nil {
 			log.Printf("ERROR: Failed to add 'category' column: %v", err)
+			func() {
+				err := db.Close()
+				if err != nil {
+					log.Printf("Error closing db: %v", err)
+				}
+			}()
 			os.Exit(1)
 		}
 		fmt.Println("Added 'category' column")
@@ -38,6 +44,12 @@ func main() {
 		_, err = db.Exec(`ALTER TABLE feedback ADD COLUMN ensemble_output_id INTEGER`)
 		if err != nil {
 			log.Printf("ERROR: Failed to add 'ensemble_output_id' column: %v", err)
+			func() {
+				err := db.Close()
+				if err != nil {
+					log.Printf("Error closing db: %v", err)
+				}
+			}()
 			os.Exit(1)
 		}
 		fmt.Println("Added 'ensemble_output_id' column")
@@ -50,6 +62,12 @@ func main() {
 		_, err = db.Exec(`ALTER TABLE feedback ADD COLUMN source TEXT`)
 		if err != nil {
 			log.Printf("ERROR: Failed to add 'source' column: %v", err)
+			func() {
+				err := db.Close()
+				if err != nil {
+					log.Printf("Error closing db: %v", err)
+				}
+			}()
 			os.Exit(1)
 		}
 		fmt.Println("Added 'source' column")

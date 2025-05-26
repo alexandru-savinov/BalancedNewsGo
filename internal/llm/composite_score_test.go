@@ -69,9 +69,12 @@ func TestComputeCompositeScoreWithAllZeroResponses(t *testing.T) {
 			name: "Only ensemble score with valid confidence",
 			scores: []db.LLMScore{
 				{
-					Model:    "ensemble",
-					Score:    0.7,
-					Metadata: `{"all_sub_results":[{"model":"model1","score":0.1,"confidence":0.8},{"model":"model2","score":-0.1,"confidence":0.7}],"confidence":0.9,"final_aggregation":{"weighted_mean":0,"variance":0.1,"uncertainty_flag":false},"per_model_results":{},"per_model_aggregation":{},"timestamp":"2024-04-28T12:00:00Z"}`,
+					Model: "ensemble",
+					Score: 0.7,
+					Metadata: `{"all_sub_results":[{"model":"model1","score":0.1,"confidence":0.8},` +
+						`{"model":"model2","score":-0.1,"confidence":0.7}],"confidence":0.9,"final_aggregation":` +
+						`{"weighted_mean":0,"variance":0.1,"uncertainty_flag":false},"per_model_results":{},` +
+						`"per_model_aggregation":{},"timestamp":"2024-04-28T12:00:00Z"}`,
 				},
 			},
 			expectError: false,
@@ -80,9 +83,12 @@ func TestComputeCompositeScoreWithAllZeroResponses(t *testing.T) {
 			name: "Only ensemble score with zero confidence",
 			scores: []db.LLMScore{
 				{
-					Model:    "ensemble",
-					Score:    0.0,
-					Metadata: `{"all_sub_results":[{"model":"model1","score":0.1,"confidence":0.8},{"model":"model2","score":-0.1,"confidence":0.7}],"confidence":0,"final_aggregation":{"weighted_mean":0,"variance":1.0,"uncertainty_flag":true},"per_model_results":{},"per_model_aggregation":{},"timestamp":"2024-04-28T12:00:00Z"}`,
+					Model: "ensemble",
+					Score: 0.0,
+					Metadata: `{"all_sub_results":[{"model":"model1","score":0.1,"confidence":0.8},` +
+						`{"model":"model2","score":-0.1,"confidence":0.7}],"confidence":0,"final_aggregation":` +
+						`{"weighted_mean":0,"variance":1.0,"uncertainty_flag":true},"per_model_results":{},` +
+						`"per_model_aggregation":{},"timestamp":"2024-04-28T12:00:00Z"}`,
 				},
 			},
 			expectError:   true,
@@ -109,7 +115,13 @@ func TestComputeCompositeScoreWithAllZeroResponses(t *testing.T) {
 func TestComputeCompositeScoreWithConfidence(t *testing.T) {
 	// Create a specific test config
 	testCfg := &CompositeScoreConfig{
-		Formula: "average", DefaultMissing: 0.0, Models: []ModelConfig{{Perspective: "left", ModelName: "left"}, {Perspective: "center", ModelName: "center"}, {Perspective: "right", ModelName: "right"}}, MinScore: -1, MaxScore: 1, ConfidenceMethod: "count_valid", MinConfidence: 0, MaxConfidence: 1,
+		Formula: "average", DefaultMissing: 0.0,
+		Models: []ModelConfig{
+			{Perspective: "left", ModelName: "left"},
+			{Perspective: "center", ModelName: "center"},
+			{Perspective: "right", ModelName: "right"},
+		},
+		MinScore: -1, MaxScore: 1, ConfidenceMethod: "count_valid", MinConfidence: 0, MaxConfidence: 1,
 	}
 	scores := []db.LLMScore{
 		{Model: "left", Score: -1.0, Metadata: `{"confidence":0.9}`},
@@ -150,10 +162,11 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				createScoreWithConfidence("center", 0.1, 0.8),
 				createScoreWithConfidence("right", 1.5, 0.85), // Outside default -1 to 1
 			},
-			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
-			expectedScore:  0.1, // Only center score is valid
-			expectedConf:   0.8, // Only center confidence is valid
-			expectError:    false,
+			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0,
+				MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
+			expectedScore: 0.1, // Only center score is valid
+			expectedConf:  0.8, // Only center confidence is valid
+			expectError:   false,
 		},
 		{
 			name: "all zero confidence",
@@ -376,7 +389,11 @@ func TestComputeCompositeScoreWeightedCalculation(t *testing.T) {
 	// Create a base config for weighted tests
 	baseCfg := &CompositeScoreConfig{
 		Formula: "weighted", DefaultMissing: 0.0,
-		Models:   []ModelConfig{{Perspective: "left", ModelName: "left"}, {Perspective: "center", ModelName: "center"}, {Perspective: "right", ModelName: "right"}},
+		Models: []ModelConfig{
+			{Perspective: "left", ModelName: "left"},
+			{Perspective: "center", ModelName: "center"},
+			{Perspective: "right", ModelName: "right"},
+		},
 		MinScore: -1, MaxScore: 1, ConfidenceMethod: "count_valid", MinConfidence: 0, MaxConfidence: 1,
 	}
 

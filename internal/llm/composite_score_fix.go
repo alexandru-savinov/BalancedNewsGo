@@ -25,8 +25,10 @@ func isInvalid(v float64, cfg *CompositeScoreConfig) bool {
 //
 // Matching order:
 //  1. If the model name is empty, return the perspective for the first model in the config with an empty name (if any).
-//  2. If the normalized model name exactly matches a normalized config model name, return its perspective (first match wins, including duplicates).
-//  3. If no exact match, but the normalized model name has a config model name as a prefix (for cases like extra slashes or suffixes), return its perspective (first match wins).
+//  2. If the normalized model name exactly matches a normalized config model name, return its perspective
+//     (first match wins, including duplicates).
+//  3. If no exact match, but the normalized model name has a config model name as a prefix
+//     (for cases like extra slashes or suffixes), return its perspective (first match wins).
 //  4. If no config match, but the normalized model name is "left", "center", or "right", return that as the perspective.
 //  5. If none of the above, return an empty string.
 func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
@@ -251,7 +253,8 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 }
 
 // calculateCompositeScore calculates the final composite score based on the configuration and intermediate values
-func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64, sum float64, weightedSum float64, weightTotal float64, actualValidCount int, validModels map[string]bool) (float64, error) {
+func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64, sum float64, weightedSum float64,
+	weightTotal float64, actualValidCount int, validModels map[string]bool) (float64, error) {
 	if actualValidCount == 0 {
 		return 0.0, ErrAllPerspectivesInvalid
 	}

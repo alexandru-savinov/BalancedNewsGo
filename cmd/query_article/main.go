@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -19,9 +20,15 @@ type Article struct {
 
 func main() {
 	// Parse command line flags
-	var articleID int
-	flag.IntVar(&articleID, "id", 94, "The ID of the article to query")
+	var articleIDStr string
+	flag.StringVar(&articleIDStr, "id", "94", "The ID of the article to query")
 	flag.Parse()
+
+	articleID, err := strconv.ParseInt(articleIDStr, 10, 64)
+	if err != nil {
+		log.Printf("Error: Invalid article ID '%s': %v", articleIDStr, err)
+		os.Exit(1)
+	}
 
 	// Use database in root directory
 	dbPath := filepath.Join("../..", "news.db")
@@ -42,6 +49,13 @@ func main() {
 	err = db.Get(&article, "SELECT id, title, content FROM articles WHERE id = ?", articleID)
 	if err != nil {
 		log.Printf("ERROR: Failed to fetch article: %v", err)
+		log.Printf("Invalid article ID: %s\n", os.Args[1])
+		func() {
+			err := db.Close()
+			if err != nil {
+				log.Printf("Error closing db: %v", err)
+			}
+		}()
 		os.Exit(1)
 	}
 

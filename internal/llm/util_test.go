@@ -91,11 +91,13 @@ func TestHashContent(t *testing.T) {
 			}(),
 		},
 		{
-			name:    "Long text",
-			content: "This is a longer text that will be hashed to test the hashContent function with more than just a few characters to ensure it works correctly with various input sizes.",
+			name: "Long text",
+			content: "This is a longer text that will be hashed to test the hashContent function " +
+				"with more than just a few characters to ensure it works correctly with various input sizes.",
 			// SHA-256 of the long text
 			expected: func() string {
-				hash := sha256.Sum256([]byte("This is a longer text that will be hashed to test the hashContent function with more than just a few characters to ensure it works correctly with various input sizes."))
+				hash := sha256.Sum256([]byte("This is a longer text that will be hashed to test the hashContent function " +
+					"with more than just a few characters to ensure it works correctly with various input sizes."))
 				return fmt.Sprintf("%x", hash)
 			}(),
 		},

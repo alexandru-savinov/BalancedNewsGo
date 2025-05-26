@@ -41,7 +41,8 @@ func newMockLLMService(backupKey string, primaryFailRate, backupFailRate bool) *
 }
 
 // ScoreContent implements LLMService for testing rate limiting and fallback
-func (m *mockLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art *db.Article) (score float64, confidence float64, err error) {
+func (m *mockLLMService) ScoreContent(ctx context.Context, pv PromptVariant,
+	art *db.Article) (score float64, confidence float64, err error) {
 	// Try primary key first
 	m.primaryUsed = true
 	if m.primaryFailRate {

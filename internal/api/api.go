@@ -727,7 +727,8 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 					break
 				}
 
-				log.Printf("[reanalyzeHandler %d] Health check FAILED for model %s: %v. Trying next model.", articleID, modelConfig.ModelName, healthCheckErr)
+				log.Printf("[reanalyzeHandler %d] Health check FAILED for model %s: %v. "+
+					"Trying next model.", articleID, modelConfig.ModelName, healthCheckErr)
 				lastHealthCheckError = healthCheckErr
 			}
 			llmClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
@@ -825,8 +826,9 @@ func scoreProgressSSEHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := getValidArticleID(c)
 		if !ok {
-			c.Writer.WriteHeader(http.StatusBadRequest)
-			c.Writer.Write([]byte("event: error\ndata: {\"error\":\"Invalid article ID\"}\n\n"))
+			if _, err := c.Writer.Write([]byte("event: error\ndata: {\"error\":\"Invalid article ID\"}\n\n\n")); err != nil {
+				log.Printf("Error writing SSE error for invalid article ID: %v", err)
+			}
 			return
 		}
 		articleID := id
@@ -1025,7 +1027,9 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		// Caching
-		cacheKey := "bias:" + strconv.FormatInt(id, 10) + ":" + c.DefaultQuery("min_score", "-1") + ":" + c.DefaultQuery("max_score", "1") + ":" + sortOrder
+		cacheKey := "bias:" + strconv.FormatInt(id, 10) + ":" +
+			c.DefaultQuery("min_score", "-1") + ":" +
+			c.DefaultQuery("max_score", "1") + ":" + sortOrder
 		articlesCacheLock.RLock()
 		if cached, found := articlesCache.Get(cacheKey); found {
 			articlesCacheLock.RUnlock()

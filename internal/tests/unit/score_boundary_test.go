@@ -122,7 +122,9 @@ func TestScoreBoundaries(t *testing.T) {
 		MinScore: -1.0,
 		MaxScore: 1.0,
 		// Add other fields if needed
-		Formula: "average", DefaultMissing: 0.0, Models: []llm.ModelConfig{{Perspective: "left", ModelName: "left"}}, ConfidenceMethod: "count_valid",
+		Formula: "average", DefaultMissing: 0.0,
+		Models:           []llm.ModelConfig{{Perspective: "left", ModelName: "left"}},
+		ConfidenceMethod: "count_valid",
 	}
 	calc := &llm.DefaultScoreCalculator{}
 
@@ -148,7 +150,9 @@ func TestScoreBoundariesWithDifferentConfig(t *testing.T) {
 		MinScore: 0.0,
 		MaxScore: 10.0,
 		// Add other fields if needed
-		Formula: "average", DefaultMissing: 0.0, Models: []llm.ModelConfig{{Perspective: "left", ModelName: "left"}}, ConfidenceMethod: "count_valid",
+		Formula: "average", DefaultMissing: 0.0,
+		Models:           []llm.ModelConfig{{Perspective: "left", ModelName: "left"}},
+		ConfidenceMethod: "count_valid",
 	}
 	calc := &llm.DefaultScoreCalculator{}
 
