@@ -32,7 +32,7 @@ func openTestDB(t *testing.T) *sqlx.DB {
 			last_attempt TIMESTAMP,
 			escalated BOOLEAN
 		);
-		
+
 		CREATE TABLE IF NOT EXISTS llm_scores (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			article_id INTEGER NOT NULL,
@@ -43,7 +43,7 @@ func openTestDB(t *testing.T) *sqlx.DB {
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (article_id) REFERENCES articles (id)
 		);
-		
+
 		CREATE TABLE IF NOT EXISTS feedback (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			article_id INTEGER NOT NULL,
@@ -55,7 +55,7 @@ func openTestDB(t *testing.T) *sqlx.DB {
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (article_id) REFERENCES articles (id)
 		);
-		
+
 		CREATE TABLE IF NOT EXISTS labels (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			data TEXT NOT NULL,

@@ -91,7 +91,7 @@ If they fail locally they'll fail on CI for exactly the same reason.
 ### 4  Verify coverage & API contract (fail-fast like CI)
 
 ```bash
-make coverage-core        # enforces 90 % threshold 
+make coverage-core        # enforces 90 % threshold
 make contract             # spectral lint + oasdiff diff
 ```
 
@@ -150,4 +150,4 @@ git push
 
 Follow this flow and what's green locally will stay green in GitHub Actions—no more surprise CI reds.
 
-[1]: https://github.com/alexandru-savinov/BalancedNewsGo "GitHub - alexandru-savinov/BalancedNewsGo" 
+[1]: https://github.com/alexandru-savinov/BalancedNewsGo "GitHub - alexandru-savinov/BalancedNewsGo"

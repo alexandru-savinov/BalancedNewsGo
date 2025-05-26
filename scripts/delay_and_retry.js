@@ -20,7 +20,7 @@ function delay(ms) {
  */
 async function fetchWithRetry(url, options = {}, maxRetries = 3, delayMs = 300) {
   let lastError;
-  
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       // Wait before trying (except first attempt)
@@ -28,23 +28,23 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3, delayMs = 300) 
         console.log(`Retry attempt ${attempt} after delay of ${delayMs}ms...`);
         await delay(delayMs);
       }
-      
+
       const response = await fetch(url, options);
-      
+
       // If status is 5xx, consider it retriable
       if (response.status >= 500) {
         lastError = new Error(`Server error: ${response.status} ${response.statusText}`);
         console.log(`Received ${response.status} response, will retry...`);
         continue;
       }
-      
+
       return response;
     } catch (err) {
       lastError = err;
       console.log(`Fetch error: ${err.message}, will retry...`);
     }
   }
-  
+
   throw lastError || new Error(`Failed after ${maxRetries} attempts`);
 }
 

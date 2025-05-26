@@ -172,10 +172,10 @@ Common issues and solutions:
 2. **Port Conflicts**: Check if port 8080 is already in use:
    ```bash
    # Windows
-   Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | 
-      Select-Object -ExpandProperty OwningProcess | 
+   Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty OwningProcess |
       ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
-   
+
    # Linux/macOS
    lsof -i :8080 | awk 'NR>1 {print $2}' | xargs kill -9
    ```
@@ -206,4 +206,4 @@ For CI pipelines, always use:
 - `NO_AUTO_ANALYZE=true`
 - The mock LLM service
 - Isolated database instances
-- Explicit port assignments (to avoid conflicts) 
+- Explicit port assignments (to avoid conflicts)

@@ -19,6 +19,6 @@ rules:
   operation-tag-defined: error
 
   # Let spectral:oas defaults handle other common error rules like:
-  # operation-2xx-response, operation-4xx-response, path-params, 
+  # operation-2xx-response, operation-4xx-response, path-params,
   # oas3-valid-schema-example, duplicate-path-parameter, openapi-tags etc.
-  # by not listing them if their default is already 'error'. 
+  # by not listing them if their default is already 'error'.

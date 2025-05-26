@@ -1,6 +1,6 @@
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
 # Cursor Rules: NewsBalancer Go Project
@@ -50,5 +50,3 @@ alwaysApply: true
 - Validate config files and DB schema.
 - Monitor LLM API key usage and quota.
 - Use job logs and progress endpoints for batch/async tasks.
-
-

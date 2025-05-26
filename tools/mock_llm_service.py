@@ -2,7 +2,7 @@
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
- 
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         response = {
@@ -13,7 +13,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'application/json')
         self.end_headers()
         self.wfile.write(json.dumps(response).encode())
- 
+
 def run(label, port):
     if label == "left":
         score = -1.0
@@ -23,13 +23,13 @@ def run(label, port):
         score = 1.0
     else:
         score = 0.0
- 
+
     server = HTTPServer(('', port), Handler)
     server.label = label
     server.score = score
     print(f"Starting mock LLM service for {label} on port {port}...")
     server.serve_forever()
- 
+
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python mock_llm_service.py <label> <port>")

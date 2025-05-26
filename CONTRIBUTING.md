@@ -34,4 +34,4 @@ Thank you for considering contributing to NewsBalancer! Please take a moment to 
 5.  Ensure the PR passes any automated checks (CI/CD).
 6.  Be prepared to discuss your changes and make further adjustments based on feedback.
 
-Thank you for your contribution! 
+Thank you for your contribution!

@@ -48,4 +48,4 @@
 *   **Rationale/Benefit:**
     *   Ensures that the specific, potentially curated or distinct, summary from the `ModelSummarizer` is displayed.
     *   Simplifies frontend logic by using a dedicated endpoint for summaries rather than parsing it from broader data structures.
-    *   Improves content organization on the article detail page. 
+    *   Improves content organization on the article detail page.

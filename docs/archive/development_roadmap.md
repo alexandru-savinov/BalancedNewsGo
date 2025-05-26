@@ -246,4 +246,4 @@ This development roadmap provides a clear path to implementing LLM-based politic
 
 The implementation prioritizes backend functionality first, focuses on a simple political spectrum, and aims for a quick MVP delivery. The modular design allows for future enhancements, including more sophisticated political analysis, improved UI, and integration of multiple LLM models.
 
-With this roadmap, you have a comprehensive guide to transform NewsBalancer into a tool that helps users access news from balanced political perspectives. 
+With this roadmap, you have a comprehensive guide to transform NewsBalancer into a tool that helps users access news from balanced political perspectives.

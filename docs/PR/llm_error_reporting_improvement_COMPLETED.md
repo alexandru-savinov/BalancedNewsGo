@@ -219,4 +219,4 @@ Currently, when the `/api/llm/reanalyze/{id}` endpoint encounters an LLM error (
 - `internal/api/response.go` (RespondError)
 - `internal/llm/llm.go` (LLMAPIError)
 - `internal/metrics/prom.go` (metrics collection)
-- `docs/testing.md` 
+- `docs/testing.md`

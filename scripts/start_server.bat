@@ -4,4 +4,4 @@ go clean
 go build -o newbalancer_server.exe cmd/server/main.go
 
 echo Starting the server...
-start /B newbalancer_server.exe 
+start /B newbalancer_server.exe

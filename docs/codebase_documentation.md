@@ -195,12 +195,12 @@ The web interface provides a modern, responsive user experience built with Edito
         - Re-analysis functionality with real-time progress tracking
 
 *   **Client-Side Enhancement JavaScript:**
-    *   **`web/js/list.js`:** 
+    *   **`web/js/list.js`:**
         *   **Purpose:** Enhances the article list page with dynamic functionality
         *   **Key Features:** Client-side caching, pagination, filtering (by source, leaning, confidence), sorting, and dynamic rendering of article cards
         *   **API Integration:** Fetches article data from `/api/articles` endpoint with pagination and filter parameters
         *   **Performance:** Implements intelligent caching with 5-minute expiry for optimal performance
-    *   **`web/js/article.js`:** 
+    *   **`web/js/article.js`:**
         *   **Purpose:** Enhances the article detail page with interactive features
         *   **Key Features:** Displays article content, bias visualization, confidence indicators, ensemble details showing individual model scores, user feedback submission, and re-analysis capabilities
         *   **API Integration:** Fetches article data from `/api/articles/:id`, ensemble details from `/api/articles/:id/ensemble-details`, submits feedback to `/api/feedback`, and tracks re-analysis progress via Server-Sent Events

@@ -26,7 +26,7 @@ func TestLoadPromptVariants(t *testing.T) {
 	variants := loadPromptVariants()
 
 	// Verify function returns expected prompts
-	assert.Len(t, variants, 4, "Should find 4 prompt variants")
+	assert.Len(t, variants, 7, "Should find 7 prompt variants")
 
 	// Check for the expected prompt variants by ID
 	foundIDs := make(map[string]bool)
@@ -38,6 +38,9 @@ func TestLoadPromptVariants(t *testing.T) {
 	assert.True(t, foundIDs["left_focus"], "Should have 'left_focus' prompt")
 	assert.True(t, foundIDs["center_focus"], "Should have 'center_focus' prompt")
 	assert.True(t, foundIDs["right_focus"], "Should have 'right_focus' prompt")
+	assert.True(t, foundIDs["anthropic"], "Should have 'anthropic' prompt")
+	assert.True(t, foundIDs["cohere_left"], "Should have 'cohere_left' prompt")
+	assert.True(t, foundIDs["cohere_center"], "Should have 'cohere_center' prompt")
 }
 
 // TestEnsembleAnalyze tests the EnsembleAnalyze function

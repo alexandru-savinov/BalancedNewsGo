@@ -169,7 +169,7 @@ The Editorial template integration has been **100% successfully completed**! The
 ```
 /web/templates/
 ├── base.html        # Main layout with sidebar and header
-├── index.html       # Article list with search and pagination  
+├── index.html       # Article list with search and pagination
 └── article.html     # Individual article view with bias analysis
 
 /web/assets/
@@ -221,7 +221,7 @@ This document outlines a step-by-step plan to integrate the new **Editorial** pa
   - **No external CDN dependencies** - All libraries are locally hosted for better reliability
   - All references are self-contained within the template assets
 - [ ] **Static Serving Configuration:** Ensure the Go backend is configured to serve static files:
-  - If not already set up, use Go’s file server (e.g., `http.FileServer`) to serve the static directory under a URL path (such as `/static/`). 
+  - If not already set up, use Go’s file server (e.g., `http.FileServer`) to serve the static directory under a URL path (such as `/static/`).
   - Verify that requests to asset URLs (CSS, JS, images) will be routed to the static files. (If BalancedNewsGo uses a router like Gorilla or Gin, add a route to serve static files.)
 - [x] **Verify Asset Paths:** ✅ **COMPLETED** - Confirmed path compatibility:
   - Template expects `/assets/css/main.css` → served as `/static/assets/css/main.css`
@@ -245,4 +245,3 @@ This document outlines a step-by-step plan to integrate the new **Editorial** pa
 **Dependencies:** Asset Import phase completed (all template files are available in the project).
 
 <!-- ... Content truncated for brevity in this code block. The actual file will include the entire markdown document from the assistant's previous response ... -->
-

@@ -7,12 +7,12 @@
 > - API Layer: 11.0% (from `go tool cover -func=coverage.out`)
 > - API Documentation: 0.0% (expected, from `go tool cover -func=api_coverage.out`)
 > - Overall System: 11.0% (statements) (from `go test -coverprofile=coverage.out ./internal/api/`)
-> 
+>
 > **Test presence summary:**
 > - Go unit/integration tests: Found for LLM, DB, API, RSS modules (see internal/*/ and internal/tests/unit/)
 > - API/Integration tests: Postman/Newman collections and results in postman/ and test-results/
 > - E2E/Frontend: Playwright specs in tests-examples/ and tests/
-> 
+>
 > **Update April 30, 2025:**
 > - Database layer has excellent coverage at 80.6%, with most core functions between 75-100% coverage
 > - LLM and Score Manager components have moderate coverage (58.2% and 56.8% respectively)
@@ -117,4 +117,4 @@ For detailed test case design, edge case handling, and automation, see:
    - Add benchmarks for score calculation and DB operations
    - Set up proper load testing for API endpoints
 
-4. Review progress weekly and update this plan as coverage improves 
+4. Review progress weekly and update this plan as coverage improves

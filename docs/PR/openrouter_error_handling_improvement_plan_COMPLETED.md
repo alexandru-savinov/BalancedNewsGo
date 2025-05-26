@@ -49,7 +49,7 @@ func formatHTTPError(resp *resty.Response) error {
     errorType := ErrTypeUnknown
     retryAfter := 0
     message := "Unknown LLM API error"
-    
+
     // Try to parse the error response
     var openRouterError struct {
         Error struct {
@@ -58,14 +58,14 @@ func formatHTTPError(resp *resty.Response) error {
             Code    string `json:"code"`
         } `json:"error"`
     }
-    
+
     if err := json.Unmarshal([]byte(resp.String()), &openRouterError); err == nil && openRouterError.Error.Message != "" {
         message = openRouterError.Error.Message
     } else {
         // Use status text if can't parse JSON
         message = resp.Status()
     }
-    
+
     // Identify error type and additional metadata
     switch resp.StatusCode() {
     case 429:
@@ -87,7 +87,7 @@ func formatHTTPError(resp *resty.Response) error {
         // Increment generic LLM failure metric
         metrics.IncLLMFailure()
     }
-    
+
     // Create appropriate AppError based on error type
     var appErr *apperrors.AppError
     switch errorType {
@@ -100,7 +100,7 @@ func formatHTTPError(resp *resty.Response) error {
     default:
         appErr = apperrors.New(fmt.Sprintf("LLM service error: %s", message), "llm_service_error")
     }
-    
+
     // Wrap in LLMAPIError with additional context
     return &LLMAPIError{
         AppError:     appErr,
@@ -136,7 +136,7 @@ func RespondError(c *gin.Context, err error) {
         Code:    "internal_error",
         Message: "Internal server error",
     }
-    
+
     // Handle LLMAPIError
     var llmErr *llm.LLMAPIError
     if errors.As(err, &llmErr) {
@@ -167,26 +167,26 @@ func RespondError(c *gin.Context, err error) {
             errorResponse.Code = ErrLLMService
             errorResponse.Message = "LLM service error"
         }
-        
+
         // Include detailed error information
         errorResponse.Details = map[string]interface{}{
             "llm_status_code": llmErr.StatusCode,
             "llm_message": llmErr.Message,
             "llm_error_type": string(llmErr.ErrorType),
         }
-        
+
         // Only include retry_after if present
         if llmErr.RetryAfter > 0 {
             errorResponse.Details["retry_after"] = llmErr.RetryAfter
         }
-        
+
         // Log the error with appropriate level based on type
         LogError(c, llmErr, fmt.Sprintf("LLM error (%s): %s", llmErr.ErrorType, llmErr.Message))
-        
+
         c.JSON(statusCode, errorResponse)
         return
     }
-    
+
     // Handle regular AppError (existing code)
     var appError *apperrors.AppError
     if errors.As(err, &appError) {
@@ -203,13 +203,13 @@ func RespondError(c *gin.Context, err error) {
 
 func (c *LLMClient) callLLM(ctx context.Context, content, systemPrompt, userPrompt string, model string) (*db.LLMScore, error) {
     // Existing code...
-    
+
     // Enhanced error handling for SSE/streaming errors
     response, err := c.service.ScoreContent(ctx, content, systemPrompt, userPrompt, model)
     if err != nil {
         // Check for streaming-specific errors
-        if strings.Contains(err.Error(), "SSE") || 
-           strings.Contains(err.Error(), "stream") || 
+        if strings.Contains(err.Error(), "SSE") ||
+           strings.Contains(err.Error(), "stream") ||
            strings.Contains(err.Error(), "PROCESSING") {
             // Convert to streaming-specific error
             return nil, &LLMAPIError{
@@ -221,7 +221,7 @@ func (c *LLMClient) callLLM(ctx context.Context, content, systemPrompt, userProm
         }
         return nil, err
     }
-    
+
     // Rest of existing code...
 }
 ```
@@ -234,7 +234,7 @@ func (c *LLMClient) callLLM(ctx context.Context, content, systemPrompt, userProm
 func (pm *ProgressManager) UpdateProgress(articleID int, step string, percent float64, status string, err error) {
     pm.mu.Lock()
     defer pm.mu.Unlock()
-    
+
     state, exists := pm.progressMap[articleID]
     if !exists {
         state = &models.ProgressState{
@@ -242,16 +242,16 @@ func (pm *ProgressManager) UpdateProgress(articleID int, step string, percent fl
         }
         pm.progressMap[articleID] = state
     }
-    
+
     state.Step = step
     state.Percent = percent
     state.Status = status
     state.LastUpdated = time.Now()
-    
+
     // Enhanced error handling for LLM errors
     if err != nil {
         state.Error = err.Error()
-        
+
         // Add specific error details for LLM errors
         var llmErr *LLMAPIError
         if errors.As(err, &llmErr) {
@@ -259,7 +259,7 @@ func (pm *ProgressManager) UpdateProgress(articleID int, step string, percent fl
                 "type": string(llmErr.ErrorType),
                 "status_code": llmErr.StatusCode,
             }
-            
+
             // Convert to JSON string
             if detailsJSON, jsonErr := json.Marshal(errorDetails); jsonErr == nil {
                 state.ErrorDetails = string(detailsJSON)
@@ -281,7 +281,7 @@ Add new metrics for specific OpenRouter error types:
 
 var (
     // Existing metrics...
-    
+
     // New metrics for specific LLM error types
     LLMRateLimitCounter   prometheus.Counter
     LLMAuthFailureCounter prometheus.Counter
@@ -292,23 +292,23 @@ var (
 // Initialize new metrics in InitLLMMetrics
 func InitLLMMetrics() {
     // Existing metric initialization...
-    
+
     // Initialize new metrics
     LLMRateLimitCounter = promauto.NewCounter(prometheus.CounterOpts{
         Name: "llm_rate_limit_total",
         Help: "Total number of rate limit errors from OpenRouter",
     })
-    
+
     LLMAuthFailureCounter = promauto.NewCounter(prometheus.CounterOpts{
         Name: "llm_auth_failure_total",
         Help: "Total number of authentication failures with OpenRouter",
     })
-    
+
     LLMCreditsCounter = promauto.NewCounter(prometheus.CounterOpts{
         Name: "llm_credits_exhausted_total",
         Help: "Total number of credit exhaustion errors from OpenRouter",
     })
-    
+
     LLMStreamingErrors = promauto.NewCounter(prometheus.CounterOpts{
         Name: "llm_streaming_errors_total",
         Help: "Total number of streaming-related errors from OpenRouter",
@@ -358,7 +358,7 @@ import (
 func TestOpenRouterErrorHandling(t *testing.T) {
     // Initialize metrics
     metrics.InitLLMMetrics()
-    
+
     // Set up test cases
     testCases := []struct {
         name           string
@@ -411,7 +411,7 @@ func TestOpenRouterErrorHandling(t *testing.T) {
             expectedStatus: 400,
         },
     }
-    
+
     for _, tc := range testCases {
         t.Run(tc.name, func(t *testing.T) {
             // Set up test server
@@ -424,20 +424,20 @@ func TestOpenRouterErrorHandling(t *testing.T) {
                 _, _ = w.Write([]byte(tc.responseBody))
             }))
             defer server.Close()
-            
+
             // Create client pointing to test server
             client := &HTTPLLMService{
                 client:  http.DefaultClient,
                 baseURL: server.URL,
                 apiKey:  "test-key",
             }
-            
+
             // Call API
             _, err := client.ScoreContent(context.Background(), "test content", "system prompt", "user prompt", "test-model")
-            
+
             // Assert error type
             assert.Error(t, err)
-            
+
             // Check error details
             var llmErr *LLMAPIError
             if assert.True(t, errors.As(err, &llmErr), "Expected LLMAPIError") {
@@ -627,15 +627,15 @@ Below are the failing tests from the latest run of the OpenRouter error handling
 **Note:**
 - For each failure, check the corresponding test and implementation for mismatches in error type mapping, error message formatting, and propagation of error details.
 - Some failures indicate a mismatch between expected error type (e.g., "streaming") and what is actually returned (e.g., "unknown"). Others are due to error message formatting or missing error details in progress tracking.
-- Addressing these will improve the reliability and transparency of OpenRouter error handling in the NewsBalancer application. 
+- Addressing these will improve the reliability and transparency of OpenRouter error handling in the NewsBalancer application.
 
 ## Implementation Plan for Fixing Failing Tests
 
 Below is a detailed plan to fix all failing tests in the OpenRouter error handling implementation. The plan addresses each issue in priority order, with specific code changes, validation steps, and estimated implementation time.
 
 ### Priority 1: Fix OpenRouter Error Type Handling and Error Formatting
-**Files to Change**: `internal/llm/service_http.go`  
-**Estimated Time**: 1 day  
+**Files to Change**: `internal/llm/service_http.go`
+**Estimated Time**: 1 day
 **Tests Addressed**: TestOpenRouterErrorTypes, TestLLMAPIError_Error, TestFormatHTTPError
 
 #### Code Changes
@@ -648,7 +648,7 @@ func formatHTTPError(resp *resty.Response) error {
     errorType := ErrTypeUnknown
     retryAfter := 0
     message := "Unknown LLM API error"
-    
+
     // Try to parse the error response
     var openRouterError struct {
         Error struct {
@@ -657,14 +657,14 @@ func formatHTTPError(resp *resty.Response) error {
             Code    string `json:"code"`
         } `json:"error"`
     }
-    
+
     if err := json.Unmarshal([]byte(resp.String()), &openRouterError); err == nil && openRouterError.Error.Message != "" {
         message = openRouterError.Error.Message
     } else {
         // Use status text if can't parse JSON
         message = resp.Status()
     }
-    
+
     // Identify error type and additional metadata
     switch resp.StatusCode() {
     case 429:
@@ -684,7 +684,7 @@ func formatHTTPError(resp *resty.Response) error {
         metrics.IncLLMFailure("openrouter", "", "authentication")
     case 503:
         // Check if this is a streaming error based on message content
-        if strings.Contains(strings.ToLower(message), "stream") || 
+        if strings.Contains(strings.ToLower(message), "stream") ||
            strings.Contains(strings.ToLower(message), "sse") {
             errorType = ErrTypeStreaming
             metrics.IncLLMFailure("openrouter", "", "streaming")
@@ -718,7 +718,7 @@ func formatHTTPError(resp *resty.Response) error {
     default:
         errorPrefix = "LLM service error: "
     }
-    
+
     // Return the structured error with formatted message
     return LLMAPIError{
         Message:      errorPrefix + message,
@@ -743,8 +743,8 @@ func (e LLMAPIError) Error() string {
 3. Run `go test ./internal/llm/... -run TestFormatHTTPError` - Verify error messages have the right prefix
 
 ### Priority 2: Fix LLMAPIError Propagation and Type Detection
-**Files to Change**: `internal/llm/service_http.go`  
-**Estimated Time**: 0.5 day  
+**Files to Change**: `internal/llm/service_http.go`
+**Estimated Time**: 0.5 day
 **Tests Addressed**: TestOpenRouterErrorHandling/Rate_Limit_Error
 
 #### Code Changes
@@ -754,23 +754,23 @@ func (e LLMAPIError) Error() string {
 
 func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art *db.Article) (float64, float64, error) {
     // ... existing code ...
-    
+
     resp, err := s.client.R().
         SetBody(requestBody).
         SetHeader("Content-Type", "application/json").
         SetHeader("Authorization", fmt.Sprintf("Bearer %s", s.apiKey)).
         Post(apiURL)
-    
+
     if err != nil {
         // Don't wrap this, return directly
         return 0, 0, err
     }
-    
+
     if resp.StatusCode() >= 400 {
         // Don't wrap the LLMAPIError, return it directly
         return 0, 0, formatHTTPError(resp)
     }
-    
+
     // ... rest of existing code ...
 }
 ```
@@ -780,8 +780,8 @@ func (s *HTTPLLMService) ScoreContent(ctx context.Context, pv PromptVariant, art
 2. Run `go test ./internal/llm/... -run TestRateLimitFallback` - Verify rate limit fallback still works
 
 ### Priority 3: Fix Error Details in Progress Manager
-**Files to Change**: `internal/llm/progress_manager.go`  
-**Estimated Time**: 0.5 day  
+**Files to Change**: `internal/llm/progress_manager.go`
+**Estimated Time**: 0.5 day
 **Tests Addressed**: TestProgressManager_UpdateProgressWithLLMError
 
 #### Code Changes
@@ -841,8 +841,8 @@ func (pm *ProgressManager) UpdateProgress(articleID int64, step string, percent 
 2. Run `go test ./internal/llm/... -run TestProgressManager_ExportStateWithErrors` - Verify no regressions
 
 ### Priority 4: Fix AnalyzeAndStore Error Propagation
-**Files to Change**: `internal/llm/llm.go`  
-**Estimated Time**: 0.5 day  
+**Files to Change**: `internal/llm/llm.go`
+**Estimated Time**: 0.5 day
 **Tests Addressed**: TestAnalyzeAndStore
 
 #### Code Changes
@@ -857,7 +857,7 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
     }
 
     var lastErr error
-    
+
     for _, m := range c.config.Models {
         log.Printf("[DEBUG][AnalyzeAndStore] Article %d | Perspective: %s | ModelName passed: %s | URL: %s", article.ID, m.Perspective, m.ModelName, m.URL)
         score, err := c.analyzeContent(article.ID, article.Content, m.ModelName)
@@ -1175,19 +1175,19 @@ For each error path, implement a systematic verification approach:
            ErrTypeStreaming,
            ErrTypeUnknown,
        }
-       
+
        for _, errType := range errorTypes {
            t.Run(string(errType), func(t *testing.T) {
                // Set up metrics recorder and log capture
                metrics := setupMetricsRecorder()
                logs := captureLogOutput()
-               
+
                // Trigger error
                triggerErrorOfType(errType)
-               
+
                // Verify metrics
                assertMetricIncremented(t, metrics, string(errType))
-               
+
                // Verify logs
                assertLogContains(t, logs, string(errType))
                assertLogContainsSensitiveInfo(t, logs, false)
@@ -1200,21 +1200,21 @@ For each error path, implement a systematic verification approach:
    ```bash
    #!/bin/bash
    # verify_error_logs.sh
-   
+
    for error_type in rate_limit authentication credits streaming unknown; do
      echo "Verifying logs for $error_type error..."
      LLM_TEST_SIMULATE_ERROR=$error_type go run ./cmd/test_llm/main.go -article-id 123 2>&1 | tee logs_$error_type.txt
-     
+
      # Check for sensitive information
      if grep -q "sk-" logs_$error_type.txt || grep -q "or-" logs_$error_type.txt; then
        echo "WARNING: Possible API key in logs!"
      fi
-     
+
      # Check for appropriate error context
      if ! grep -q "$error_type" logs_$error_type.txt; then
        echo "ERROR: Log missing error type information"
      fi
-     
+
      echo -e "Done\n---\n"
    done
    ```
@@ -1223,10 +1223,10 @@ For each error path, implement a systematic verification approach:
    ```bash
    # Start server with metrics enabled
    METRICS_ENABLED=true go run ./cmd/server/main.go
-   
+
    # Generate errors of each type
    ./scripts/generate_all_error_types.sh
-   
+
    # Check metrics endpoint
    curl http://localhost:8080/metrics | grep llm_
    ```
@@ -1272,12 +1272,12 @@ func BenchmarkErrorHandling(b *testing.B) {
         {"MalformedJSON", 400, `{not valid json}`},
         {"EmptyResponse", 500, ``},
     }
-    
+
     for _, tc := range testCases {
         b.Run(tc.name, func(b *testing.B) {
             // Create response object
             resp := createTestResponse(tc.statusCode, tc.responseBody)
-            
+
             // Run benchmark
             for i := 0; i < b.N; i++ {
                 _ = formatHTTPError(resp)
@@ -1314,10 +1314,10 @@ while [ $(date +%s) -lt $END_TIME ]; do
   # Generate random error type
   ERROR_TYPES=("rate_limit" "authentication" "credits" "streaming" "unknown")
   RANDOM_ERROR=${ERROR_TYPES[$RANDOM % ${#ERROR_TYPES[@]}]}
-  
+
   # Make request
   curl -s "http://localhost:8080/api/v1/articles/123/analyze?simulate=$RANDOM_ERROR" > /dev/null
-  
+
   # Small sleep to avoid overwhelming
   sleep 0.1
 done
@@ -1352,4 +1352,4 @@ kill $SERVER_PID
 
 3. **Graceful Degradation**:
    - Implement circuit breakers for LLM service failures
-   - Add fallback strategies for each error type 
+   - Add fallback strategies for each error type

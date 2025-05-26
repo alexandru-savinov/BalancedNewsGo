@@ -250,8 +250,8 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
 1. **Port Conflicts**:
    ```powershell
    # Kill processes using port 8080
-   Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | 
-      Select-Object -ExpandProperty OwningProcess | 
+   Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty OwningProcess |
       ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
    ```
    *Note: This error commonly occurs if another instance of the server is already running, or if another application is using port 8080. This can happen when using `make run` or `go run cmd/server/main.go` if the port is not free.*
@@ -260,7 +260,7 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
    ```powershell
    # Kill server processes
    Get-Process -Name "go", "newbalancer_server" -ErrorAction SilentlyContinue | Stop-Process -Force
-   
+
    # Delete database file
    Remove-Item news.db -Force
    ```
@@ -285,28 +285,28 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
   # Windows
   scripts/test.cmd backend
   # Linux/macOS
-  scripts/test.sh backend 
+  scripts/test.sh backend
   ```
 - Run API tests:
   ```bash
   # Windows
   scripts/test.cmd api
   # Linux/macOS
-  scripts/test.sh api 
+  scripts/test.sh api
   ```
 - Run the complete test suite (essential, extended, confidence):
   ```bash
   # Windows
   scripts/test.cmd all
   # Linux/macOS
-  scripts/test.sh all 
+  scripts/test.sh all
   ```
 - Run essential tests only:
   ```bash
   # Windows
   scripts/test.cmd essential
   # Linux/macOS
-  scripts/test.sh essential 
+  scripts/test.sh essential
   ```
 - Generate HTML report from latest results:
   ```bash
@@ -370,7 +370,7 @@ When documenting API endpoints with Swagger annotations, ensure:
 - Every endpoint has proper descriptions, parameters, and response types
 
 **Pre-commit Hook:**
-To automate these checks, a pre-commit hook is recommended. 
+To automate these checks, a pre-commit hook is recommended.
 
 *   **Manual Setup:** To set this up manually:
     1.  Create/edit the file `.git/hooks/pre-commit`.
@@ -402,4 +402,3 @@ This will start the server on port 8080 by default. You can then access the web 
 ## License
 
 Licensed under the [MIT License](LICENSE).
-

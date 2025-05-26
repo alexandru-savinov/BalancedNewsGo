@@ -134,14 +134,13 @@ run_all_tests_suite() {
     echo "Server log: $server_log" >> "$all_log_file"
     echo "" >> "$all_log_file"
 
-    echo "===== Running Unified Backend Tests (with retries) =====" >> "$all_log_file"
-    echo "Running Newman: postman/updated_backend_tests.json with environment postman/newman_environment.json" | tee -a "$all_log_file"
+    echo "===== Running Unified Backend Tests (with retries) =====" >> "$all_log_file"    echo "Running Newman: postman/unified_backend_tests.json with environment postman/newman_environment.json" | tee -a "$all_log_file"
     # Retry logic for transient failures
     attempt=1
     max_attempts=3
     while [ $attempt -le $max_attempts ]; do
       echo "Attempt $attempt of $max_attempts" >> "$all_log_file"
-      npx newman run postman/updated_backend_tests.json \
+      npx newman run postman/unified_backend_tests.json \
         -e postman/newman_environment.json \
         -g postman/NewsBalancer.postman_globals.json \
         --timeout-request 60000 --timeout 120000 \
@@ -188,10 +187,13 @@ case $COMMAND in
     "api")
         echo "Running basic API tests..."
         run_newman_test "api_tests" "postman/newsbalancer_api_tests.json" "postman/local_environment.json"
+        ;;    "unified")
+        echo "Running unified tests..."
+        run_newman_test "unified_tests" "postman/unified_backend_tests.json" ""
         ;;
     "essential")
-        echo "Running essential rescoring tests..."
-        run_newman_test "essential_tests" "postman/updated_backend_tests.json" ""
+        echo "Running unified tests (essential is deprecated, use 'unified')..."
+        run_newman_test "unified_tests" "postman/unified_backend_tests.json" ""
         ;;
     "debug")
         echo "Running debug tests..."
@@ -233,9 +235,10 @@ case $COMMAND in
         echo
         echo "  backend        - Run backend fixes/integration tests (Newman: backend_fixes_tests_updated.json)"
         echo "  api            - Run basic API tests (Newman: newsbalancer_api_tests.json)"
-        echo "  essential      - Run essential rescoring tests (Newman: essential_rescoring_tests.json)"
+        echo "  unified        - Run unified tests (Newman: unified_backend_tests.json)"
+        echo "  essential      - [DEPRECATED] Alias for 'unified' command"
         echo "  debug          - Run debug tests (Newman: debug_collection.json)"
-        echo "  all            - Run essential, extended, and confidence tests (Multiple Newman collections)"
+        echo "  all            - Run unified, extended, and confidence tests (Multiple Newman collections)"
         echo "  confidence     - Run confidence validation tests (Newman: confidence_validation_tests.json) [If available]"
         echo
         echo "  report         - Generate HTML test report from results"
@@ -245,7 +248,7 @@ case $COMMAND in
         echo "  help           - Show this help message"
         echo
         echo "Notes:"
-        echo "  - Test commands (backend, api, essential, debug, confidence) typically start/stop the Go server."
+        echo "  - Test commands (backend, api, unified, debug, confidence) typically start/stop the Go server."
         echo "  - The 'all' command runs multiple test suites sequentially without restarting the server between them."
         echo "  - Requires Node.js and Newman ('npm install -g newman')."
         echo

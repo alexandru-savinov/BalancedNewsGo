@@ -83,4 +83,4 @@ Based on the test results, the following areas require attention:
 2.  Concurrently or subsequently, investigate the **`scripts/test.cmd` script error**.
 3.  Once core functionality is stable and unit tests are passing, revisit the **test suite clarification and missing collections**.
 
-This plan will be used to guide the debugging and fixing process. 
+This plan will be used to guide the debugging and fixing process.

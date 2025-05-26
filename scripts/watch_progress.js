@@ -9,7 +9,7 @@ console.log(`Watching progress for article ${articleId}...`);
 eventSource.onmessage = (event) => {
     const data = JSON.parse(event.data);
     console.log(JSON.stringify(data, null, 2));
-    
+
     // Close the connection if we reach a final state
     if (data.status === 'Success' || data.status === 'Error') {
         console.log('Reached final state, closing connection...');
@@ -22,4 +22,4 @@ eventSource.onerror = (error) => {
     console.error('Error:', error);
     eventSource.close();
     process.exit(1);
-}; 
+};

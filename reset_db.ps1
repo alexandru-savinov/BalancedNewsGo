@@ -53,4 +53,4 @@ if ($integrity -match "ok") {
 
 Write-Host "`n✅ DATABASE RESET COMPLETED SUCCESSFULLY" -ForegroundColor Green
 Write-Host "   Original database backed up to: backup/news.db.backup_$timestamp" -ForegroundColor Gray
-Write-Host "   Run 'scripts/test.cmd essential' to verify functionality" -ForegroundColor Gray 
+Write-Host "   Run 'scripts/test.cmd essential' to verify functionality" -ForegroundColor Gray

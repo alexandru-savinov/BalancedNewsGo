@@ -7,4 +7,4 @@ breaking:
   checkPaths: true
   checkRequired: true
   checkRequiredInProperties: true
-  checkResponseDefinition: true 
+  checkResponseDefinition: true

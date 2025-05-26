@@ -204,4 +204,4 @@ Scoring attempts for article 788 (and others) fail due to \"unsupported model\" 
 ### Production-Ready Status
 - As of April 11, 2025, the scoring system is fully functional and production-ready.
 - The end-to-end pipeline (article selection, LLM model mapping, scoring job execution, frontend display) has been verified in a production environment.
-- Ongoing monitoring and documentation updates will continue as the system evolves. 
+- Ongoing monitoring and documentation updates will continue as the system evolves.

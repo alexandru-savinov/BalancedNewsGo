@@ -4,7 +4,7 @@
 ## Environment
 
 GOBIN: undefined
-toolsGopath: 
+toolsGopath:
 gopath: C:\Users\user\go
 GOROOT: C:\Program Files\Go
 PATH: C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;C:\Program Files\Docker\Docker\resources\bin;C:\Program Files\usbipd-win\;C:\Program Files\Git\cmd;C:\Program Files\nodejs\;C:\Program Files\PuTTY\;C:\Program Files\Calibre2\;C:\Program Files\Cloudflare\Cloudflare WARP\;C:\Program Files\Go\bin;C:\Users\user\AppData\Local\Microsoft\WindowsApps;C:\Users\user\AppData\Roaming\npm;C:\Users\user\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\user\AppData\Local\Programs\cursor\resources\app\bin;C:\Users\user\go\bin
@@ -71,4 +71,3 @@ Workspace Folder (newbalancer_go): c:\Users\user\Documents\dev\news_filter\newba
 	set GOVERSION=go1.24.2
 	set GOWORK=
 	set PKG_CONFIG=pkg-config
-	

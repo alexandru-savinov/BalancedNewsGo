@@ -46,4 +46,4 @@
 
 *   **Rationale/Benefit:**
     *   Allows administrators to manually update the article database with the latest news on demand, without waiting for the next scheduled fetch.
-    *   Useful for testing the feed fetching mechanism or quickly ingesting new content after configuration changes. 
+    *   Useful for testing the feed fetching mechanism or quickly ingesting new content after configuration changes.

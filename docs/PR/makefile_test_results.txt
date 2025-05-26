@@ -24,7 +24,7 @@ Makefile Target Test Results
    - Test scope adjusted to `./cmd/... ./internal/...` to avoid issues with `tools/` directory. Assumed to still pass as per original report, as changes were to scoping, not test logic.
 
 7. test: ✅ Fixed & Verified
-   - Depends on `unit` and `integ`. 
+   - Depends on `unit` and `integ`.
    - `make test ENABLE_RACE_DETECTION=false` works correctly.
    - `make test ENABLE_RACE_DETECTION=true` fails with CGO guidance if C compiler not set up (expected).
 
@@ -61,7 +61,7 @@ Technical Notes:
 - Race detection in `unit`, `test`, and `coverage-core` is optional. If enabled (`ENABLE_RACE_DETECTION=true`), a C compiler and `CGO_ENABLED=1` are required.
 - Directory creation for `bin` and `coverage` is handled by a cross-platform Go script (`tools/mkdir.go`).
 - `coverage-core` uses standard output redirection instead of `tee` for cross-platform compatibility.
-- Some targets depend on external tools (e.g., `golangci-lint`, `swag`, `pnpm`, `docker`, `npx`). Ensure these are installed and available in your PATH. 
+- Some targets depend on external tools (e.g., `golangci-lint`, `swag`, `pnpm`, `docker`, `npx`). Ensure these are installed and available in your PATH.
 
 Action Plan to Fix Critical Issues
 ===================================

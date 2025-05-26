@@ -22,7 +22,7 @@ This PR implements the [LLM Error Reporting Improvement Plan](llm_error_reportin
 
 - Added a new Prometheus metric `llm_api_errors_total` with dimensions for:
   - Provider (e.g., openrouter)
-  - Model 
+  - Model
   - Error type
   - Status code
 - Updated the `RespondError` function to track these metrics for all LLM errors.
@@ -61,7 +61,7 @@ After:
 {
   "success": false,
   "error": {
-    "code": "llm_service_error", 
+    "code": "llm_service_error",
     "message": "LLM service authentication failed",
     "details": {
       "provider": "openrouter",
@@ -86,4 +86,4 @@ After:
 
 ## Testing Notes
 
-The changes have been verified with new integration tests that specifically check LLM error propagation through the API layer. 
+The changes have been verified with new integration tests that specifically check LLM error propagation through the API layer.

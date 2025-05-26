@@ -13,7 +13,8 @@ REM --- Command Dispatch ---
 if /I "%command%" == "help" ( call :run_help & goto :eof )
 if /I "%command%" == "backend" ( call :run_backend & goto :eof )
 if /I "%command%" == "api" ( call :run_api & goto :eof )
-if /I "%command%" == "essential" ( call :run_essential & goto :eof )
+if /I "%command%" == "unified" ( call :run_unified & goto :eof )
+if /I "%command%" == "essential" ( call :run_unified & goto :eof )
 if /I "%command%" == "debug" ( call :run_debug & goto :eof )
 if /I "%command%" == "all" ( call :run_all & goto :eof )
 if /I "%command%" == "confidence" ( call :run_confidence & goto :eof )
@@ -41,9 +42,10 @@ REM --- Subroutines ---
     echo.
     echo   backend        - Run backend fixes/integration tests (Newman: backend_fixes_tests_updated.json)
     echo   api            - Run basic API tests (Newman: newsbalancer_api_tests.json)
-    echo   essential      - Run essential rescoring tests (Newman: essential_rescoring_tests.json)
+    echo   unified        - Run unified tests (Newman: unified_backend_tests.json)
+   essential      - [DEPRECATED] Alias for 'unified' command
     echo   debug          - Run debug tests (Newman: debug_collection.json)
-    echo   all            - Run essential, extended, and confidence tests (Multiple Newman collections)
+    echo   all            - Run unified, extended, and confidence tests (Multiple Newman collections)
     echo   confidence     - Run confidence validation tests (Newman: confidence_validation_tests.json) [If available]
     echo.
     echo   report         - Generate HTML test report from results
@@ -53,7 +55,7 @@ REM --- Subroutines ---
     echo   help           - Show this help message
     echo.
     echo Notes:
-    echo   - Test commands (backend, api, essential, debug, all, confidence) typically start/stop the Go server.
+    echo   - Test commands (backend, api, unified, debug, all, confidence) typically start/stop the Go server.
     echo   - Ensure 'go run cmd/server/main.go' works before running tests.
     echo   - Requires Node.js and Newman ('npm install -g newman').
     echo.
@@ -71,9 +73,9 @@ goto :eof
     call :run_newman_test "api_tests" "postman/unified_backend_tests.json" "postman/local_environment.json"
 goto :eof
 
-:run_essential
-    echo Running essential rescoring tests (using unified_backend_tests.json)...
-    call :run_newman_test "essential_tests" "postman/unified_backend_tests.json" ""
+:run_unified
+    echo Running unified tests (using unified_backend_tests.json)...
+    call :run_newman_test "unified_tests" "postman/unified_backend_tests.json" ""
 goto :eof
 
 :run_debug
@@ -89,14 +91,12 @@ goto :eof
     set ALL_LOG_FILE=%RESULTS_DIR%\all_tests_run_%TIMESTAMP%.log
 
     echo ====== NewsBalancer Full API Test Run - %date% %time% ====== > %ALL_LOG_FILE%
-    echo. >> %ALL_LOG_FILE%
-
-    echo ===== Running Essential Tests (using unified_backend_tests.json) ===== >> %ALL_LOG_FILE%
-    echo Running Newman: unified_backend_tests.json (as Essential)
+    echo. >> %ALL_LOG_FILE%    echo ===== Running Unified Tests (using unified_backend_tests.json) ===== >> %ALL_LOG_FILE%
+    echo Running Newman: unified_backend_tests.json (as Unified)
     call npx newman run postman/unified_backend_tests.json ^
       --reporters cli,json ^
-      --reporter-json-export=%RESULTS_DIR%/essential_results_%TIMESTAMP%.json >> %ALL_LOG_FILE%
-    if errorlevel 1 ( echo Essential tests FAILED. Check %ALL_LOG_FILE% & goto :end_fail )
+      --reporter-json-export=%RESULTS_DIR%/unified_results_%TIMESTAMP%.json >> %ALL_LOG_FILE%
+    if errorlevel 1 ( echo Unified tests FAILED. Check %ALL_LOG_FILE% & goto :end_fail )
 
     echo. >> %ALL_LOG_FILE%
     echo ===== Running Extended Tests ===== >> %ALL_LOG_FILE%

@@ -52,7 +52,7 @@ This document outlines potential areas for improvement and future development wi
 *   **Duplicate Detection:** URL and similar-title duplicate detection are implemented. For greater accuracy, consider adding content-based duplicate detection (e.g., using MinHash or SimHash algorithms on article content).
 *   **Error Handling & Reporting:** Logging of fetch/store errors is in place. For better operational insight, consider adding specific Prometheus metrics for RSS fetching (e.g., feeds successfully fetched/failed, articles added).
 *   **Logging:** Current logging provides good traceability. Minor enhancements could include unique IDs for fetch cycles if needed for very detailed debugging.
-*   **Performance:** The current sequential fetching of feeds and items can be a bottleneck for a large number of sources. Explore parallelizing feed fetching (e.g., using a worker pool) and potentially batching database insertions if performance becomes an issue. 
+*   **Performance:** The current sequential fetching of feeds and items can be a bottleneck for a large number of sources. Explore parallelizing feed fetching (e.g., using a worker pool) and potentially batching database insertions if performance becomes an issue.
 
 ## Web Interface (`web/` & Editorial Template Integration)
 

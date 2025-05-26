@@ -38,10 +38,9 @@ func TestHTTPLLMServiceWithMockServer(t *testing.T) {
 		expectedScore  float64
 		expectedConf   float64
 		description    string
-	}{
-		{
-			name: "Successful response",
-			responseBody: `{
+	}{{
+		name: "Successful response",
+		responseBody: `{
 				"id": "test-id",
 				"object": "chat.completion",
 				"created": 1714349818,
@@ -51,19 +50,18 @@ func TestHTTPLLMServiceWithMockServer(t *testing.T) {
 						"index": 0,
 						"message": {
 							"role": "assistant",
-							"content": "The article has a left-leaning bias. Score: -0.7\\nConfidence: 0.9\\n"+
-								"Reasoning: The article emphasizes progressive viewpoints and criticizes conservative positions."
+							"content": "The article has a left-leaning bias. Score: -0.7\\nConfidence: 0.9\\nReasoning: The article emphasizes progressive viewpoints and criticizes conservative positions."
 						},
 						"finish_reason": "stop"
 					}
 				]
 			}`,
-			responseStatus: http.StatusOK,
-			expectError:    false,
-			expectedScore:  -0.7,
-			expectedConf:   0.9,
-			description:    "Valid response with score and confidence extracted successfully",
-		},
+		responseStatus: http.StatusOK,
+		expectError:    false,
+		expectedScore:  -0.7,
+		expectedConf:   0.9,
+		description:    "Valid response with score and confidence extracted successfully",
+	},
 		{
 			name: "Response with missing content",
 			responseBody: `{

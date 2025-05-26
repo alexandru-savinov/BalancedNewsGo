@@ -56,30 +56,30 @@ Modify the health check loop in `reanalyzeHandler` (`internal/api/api.go`) to tr
                     healthCheckTimeout = time.Duration(s) * time.Second
                 }
             }
-            llmClient.SetHTTPLLMTimeout(healthCheckTimeout) 
+            llmClient.SetHTTPLLMTimeout(healthCheckTimeout)
 
-            var lastHealthCheckError error 
+            var lastHealthCheckError error
 
             for _, modelConfig := range cfg.Models {
                 log.Printf("[reanalyzeHandler %d] Health checking model: %s", articleID, modelConfig.ModelName)
                 // 'article' object is already fetched in reanalyzeHandler; ScoreWithModel expects this object.
-                _, healthCheckErr := llmClient.ScoreWithModel(article, modelConfig.ModelName) 
-                
+                _, healthCheckErr := llmClient.ScoreWithModel(article, modelConfig.ModelName)
+
                 if healthCheckErr == nil {
                     workingModel = modelConfig.ModelName
-                    lastHealthCheckError = nil 
+                    lastHealthCheckError = nil
                     log.Printf("[reanalyzeHandler %d] Health check PASSED for model: %s", articleID, workingModel)
-                    break 
+                    break
                 }
-                
+
                 log.Printf("[reanalyzeHandler %d] Health check FAILED for model %s: %v. Trying next model.", articleID, modelConfig.ModelName, healthCheckErr)
-                lastHealthCheckError = healthCheckErr 
+                lastHealthCheckError = healthCheckErr
             }
             llmClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
 
             if workingModel == "" { // All models failed health check
-                healthErr = lastHealthCheckError 
-                if healthErr == nil { 
+                healthErr = lastHealthCheckError
+                if healthErr == nil {
                     healthErr = apperrors.New("All models failed health check", "llm_service_unavailable")
                 }
             }
@@ -137,7 +137,7 @@ func (c *LLMClient) GetHTTPLLMTimeout() time.Duration {
     }
     // Fallback to the package-level default LLM timeout if not specifically set or accessible
     log.Printf("[GetHTTPLLMTimeout] Warning: Could not retrieve specific timeout from HTTPLLMService, returning default: %v", defaultLLMTimeout)
-    return defaultLLMTimeout 
+    return defaultLLMTimeout
 }
 
 ```
@@ -151,7 +151,7 @@ func (c *LLMClient) GetHTTPLLMTimeout() time.Duration {
 ## 5. Potential Considerations
 
 *   **Health Check Duration:** If many models are configured and all are slow (but not dead), the health check phase could take longer (e.g., N models * 2s timeout). This is likely acceptable for initiating a background task.
-*   **Error Propagation:** The `lastHealthCheckError` provides better context than a generic failure if all models fail the health check. 
+*   **Error Propagation:** The `lastHealthCheckError` provides better context than a generic failure if all models fail the health check.
 
 ## 6. Testing Strategy
 
@@ -260,4 +260,4 @@ Assume a configuration with at least three models (e.g., ModelA, ModelB, ModelC)
 
 *   Ensure all new tests have appropriate logging and use `t.Parallel()` where suitable.
 *   Clean up any environment variables set during tests (e.g., `HEALTH_CHECK_TIMEOUT_SECONDS`, `NO_AUTO_ANALYZE`).
-*   Extend existing test files (`internal/api/api_integration_test.go` and `internal/llm/llm_test.go`) rather than creating new ones unless a new testing paradigm is needed. 
+*   Extend existing test files (`internal/api/api_integration_test.go` and `internal/llm/llm_test.go`) rather than creating new ones unless a new testing paradigm is needed.

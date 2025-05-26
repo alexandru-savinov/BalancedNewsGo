@@ -73,7 +73,7 @@ The application includes several test suites:
    ```powershell
    $env:NO_AUTO_ANALYZE='true'; go test ./...
    ```
-   
+
    Or test specific packages:
    ```powershell
    $env:NO_AUTO_ANALYZE='true'; go test ./internal/db -v
@@ -130,8 +130,8 @@ This error indicates that port 8080 is already in use by another application. Th
 
 **Solution:**
 ```powershell
-Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue | 
-   Select-Object -ExpandProperty OwningProcess | 
+Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue |
+   Select-Object -ExpandProperty OwningProcess |
    ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
 ```
 
@@ -273,4 +273,4 @@ A new, more comprehensive and strict test suite is available:
 - **Implement all tested endpoints** (bias, ensemble, summary, SSE, etc.)
 - **Review `test-results/updated_backend_cli.txt`** for detailed failure reasons
 
-> **Note:** The `unified_backend_tests.json` suite is more forgiving and will pass even if some advanced features or strict error handling are missing. Use `updated_backend_tests.json` for full coverage and to catch subtle or edge-case bugs. 
+> **Note:** The `unified_backend_tests.json` suite is more forgiving and will pass even if some advanced features or strict error handling are missing. Use `updated_backend_tests.json` for full coverage and to catch subtle or edge-case bugs.

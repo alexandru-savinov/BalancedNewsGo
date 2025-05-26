@@ -11,7 +11,7 @@ const colors = {
   blink: '\x1b[5m',
   reverse: '\x1b[7m',
   hidden: '\x1b[8m',
-  
+
   black: '\x1b[30m',
   red: '\x1b[31m',
   green: '\x1b[32m',
@@ -20,7 +20,7 @@ const colors = {
   magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[37m',
-  
+
   bgBlack: '\x1b[40m',
   bgRed: '\x1b[41m',
   bgGreen: '\x1b[42m',
@@ -64,7 +64,7 @@ function printTestSummary(result) {
   }
 
   console.log(`\n${colors.bright}${colors.cyan}Test Collection: ${result.collection.info.name}${colors.reset}`);
-  
+
   if (result.run.stats) {
     const stats = result.run.stats;
     console.log(`\n${colors.bright}Execution Summary:${colors.reset}`);
@@ -74,7 +74,7 @@ function printTestSummary(result) {
     console.log(`  Assertions: ${stats.assertions.total} (Failed: ${stats.assertions.failed})`);
     console.log(`  Total Run Duration: ${result.run.timings.completed - result.run.timings.started}ms`);
   }
-  
+
   if (result.run.failures && result.run.failures.length > 0) {
     console.log(`\n${colors.bright}${colors.red}Failures:${colors.reset}`);
     result.run.failures.forEach((failure, index) => {
@@ -92,21 +92,21 @@ function printDetailedTestResults(result) {
   }
 
   console.log(`\n${colors.bright}${colors.cyan}Detailed Test Results for: ${result.collection.info.name}${colors.reset}`);
-  
+
   if (result.run.executions) {
     result.run.executions.forEach((execution, index) => {
       const item = execution.item;
       const response = execution.response;
       const assertions = execution.assertions || [];
-      
+
       const hasFailedAssertions = assertions.some(a => !a.passed);
       const statusColor = hasFailedAssertions ? colors.red : colors.green;
-      
+
       console.log(`\n${colors.bright}${statusColor}${index + 1}. ${item.name}${colors.reset}`);
       console.log(`  Request: ${execution.request.method} ${execution.request.url.toString()}`);
       console.log(`  Status: ${response ? response.code : 'N/A'} ${response ? response.status : ''}`);
       console.log(`  Response Time: ${response ? response.responseTime : 'N/A'}ms`);
-      
+
       console.log(`\n  ${colors.bright}Assertions:${colors.reset}`);
       assertions.forEach(assertion => {
         const assertionColor = assertion.passed ? colors.green : colors.red;
@@ -115,7 +115,7 @@ function printDetailedTestResults(result) {
           console.log(`      ${colors.red}Error: ${assertion.error.message}${colors.reset}`);
         }
       });
-      
+
       if (response && response.body) {
         console.log(`\n  ${colors.bright}Response Body:${colors.reset}`);
         try {
@@ -133,14 +133,14 @@ function printDetailedTestResults(result) {
 function analyzeTestResult(filePath) {
   const result = readTestResults(filePath);
   if (!result) return;
-  
+
   printTestSummary(result);
-  
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
   });
-  
+
   rl.question(`\n${colors.yellow}Do you want to see detailed results? (y/n) ${colors.reset}`, (answer) => {
     if (answer.toLowerCase() === 'y') {
       printDetailedTestResults(result);
@@ -156,17 +156,17 @@ function analyzeAllTestResults() {
     console.log(`${colors.yellow}No test result files found in test-results directory${colors.reset}`);
     return;
   }
-  
+
   console.log(`${colors.bright}${colors.cyan}Available Test Result Files:${colors.reset}`);
   files.forEach((file, index) => {
     console.log(`  ${index + 1}. ${path.basename(file)}`);
   });
-  
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
   });
-  
+
   rl.question(`\n${colors.yellow}Enter the number of the file to analyze (or 'all' for summary of all): ${colors.reset}`, (answer) => {
     if (answer.toLowerCase() === 'all') {
       files.forEach(file => {
@@ -194,7 +194,7 @@ function analyzeAllTestResults() {
 function main() {
   const args = process.argv.slice(2);
   const command = args[0];
-  
+
   if (!command || command === 'help') {
     console.log(`\n${colors.bright}${colors.cyan}Test Result Analyzer${colors.reset}`);
     console.log(`\nUsage: node analyze_test_results.js [command] [options]`);
@@ -205,7 +205,7 @@ function main() {
     console.log(`  help                 Show this help message`);
     return;
   }
-  
+
   if (command === 'list') {
     const files = listTestResultFiles();
     console.log(`${colors.bright}${colors.cyan}Test Result Files:${colors.reset}`);
@@ -214,29 +214,29 @@ function main() {
     });
     return;
   }
-  
+
   if (command === 'analyze') {
     const fileName = args[1];
     if (!fileName) {
       console.log(`${colors.red}Error: No file specified${colors.reset}`);
       return;
     }
-    
+
     const filePath = path.join(__dirname, 'test-results', fileName);
     if (!fs.existsSync(filePath)) {
       console.log(`${colors.red}Error: File not found: ${filePath}${colors.reset}`);
       return;
     }
-    
+
     analyzeTestResult(filePath);
     return;
   }
-  
+
   if (command === 'analyze-all') {
     analyzeAllTestResults();
     return;
   }
-  
+
   console.log(`${colors.red}Error: Unknown command: ${command}${colors.reset}`);
 }
 

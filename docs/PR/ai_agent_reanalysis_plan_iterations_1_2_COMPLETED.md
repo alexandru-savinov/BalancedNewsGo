@@ -31,7 +31,7 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
             <h3>Political Bias Analysis</h3>
             <span id="article-score"></span>
             <span id="article-confidence"></span>
-            
+
             <div class="bias-slider-container">
                 <div class="bias-slider" id="bias-slider">
                     <div id="bias-indicator" class="bias-indicator"></div>
@@ -42,7 +42,7 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                     <span class="label-right">Right</span>
                 </div>
             </div>
-            
+
             <!-- New re-analysis button component -->
             <div class="article-actions" style="margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background-color: var(--secondary-bg); border: 1px solid var(--border-color);">
                 <button id="reanalyzeArticleBtn" style="background-color: var(--accent-color); color: white; border: none; border-radius: 4px; padding: 0.5rem 1rem; cursor: pointer; font-weight: 500; transition: background-color 0.2s;">
@@ -78,12 +78,12 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
             const statusMessageEl = document.getElementById('reanalyzeStatusMessage');
             const progressBar = document.getElementById('reanalyzeProgressBar');
             const progressBarInner = document.getElementById('reanalyzeProgressBarInner');
-            
+
             if (!reanalyzeBtn || !statusMessageEl || !statusContainer) {
                 console.warn('Re-analysis UI elements not found in the DOM.');
                 return;
             }
-            
+
             // Get article ID from the current URL path, article container, or URL params
             function getArticleId() {
                 // Try from URL path first (most common case)
@@ -91,32 +91,32 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                 if (idFromPath && !isNaN(idFromPath)) {
                     return idFromPath;
                 }
-                
+
                 // Try from URL query params
                 const params = new URLSearchParams(window.location.search);
                 const idFromQuery = params.get('id');
                 if (idFromQuery && !isNaN(idFromQuery)) {
                     return idFromQuery;
                 }
-                
+
                 // Try from data attribute on article container
                 const articleContainer = document.getElementById('article-container');
                 if (articleContainer && articleContainer.dataset.articleId) {
                     return articleContainer.dataset.articleId;
                 }
-                
+
                 return null;
             }
-            
+
             // Update status message with appropriate styling
             function showStatus(type, message, showProgress = false) {
                 statusMessageEl.textContent = message;
-                
+
                 // Reset previous styling
                 statusMessageEl.style.backgroundColor = '';
                 statusMessageEl.style.color = '';
                 statusMessageEl.style.border = '';
-                
+
                 // Apply styling based on message type
                 if (type === 'info') {
                     statusMessageEl.style.backgroundColor = '#e7f3fe';
@@ -131,15 +131,15 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                     statusMessageEl.style.color = '#721c24';
                     statusMessageEl.style.border = '1px solid #f5c6cb';
                 }
-                
+
                 // Show/hide progress bar
                 if (progressBar) {
                     progressBar.style.display = showProgress ? 'block' : 'none';
                 }
-                
+
                 statusContainer.style.display = 'block';
             }
-            
+
             // Update progress bar
             function updateProgress(percent) {
                 if (progressBarInner && !isNaN(percent)) {
@@ -148,27 +148,27 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                     progressBarInner.style.width = `${clampedPercent}%`;
                 }
             }
-            
+
             // Toggle loading state
             function setLoading(isLoading) {
                 if (!reanalyzeBtn || !btnTextEl || !loadingEl) return;
-                
+
                 reanalyzeBtn.disabled = isLoading;
                 btnTextEl.style.display = isLoading ? 'none' : 'inline';
                 loadingEl.style.display = isLoading ? 'inline' : 'none';
-                
+
                 if (!isLoading && progressBar) {
                     // Reset progress on completion
                     progressBar.style.display = 'none';
                     progressBarInner.style.width = '0%';
                 }
             }
-            
+
             // Error handler with detailed error classification
             function handleError(error, response) {
                 let errorMessage = 'An unknown error occurred';
                 let errorDetail = '';
-                
+
                 if (response) {
                     // Server responded with an error
                     switch (response.status) {
@@ -193,7 +193,7 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                         default:
                             errorMessage = `Error (${response.status})`;
                     }
-                    
+
                     // Try to extract more details from response
                     try {
                         const data = response._bodyText || response._bodyInit || '';
@@ -210,26 +210,26 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                     // Network or client-side error
                     errorMessage = error.message || 'Network error';
                 }
-                
+
                 // Combine messages if we have details
-                const fullMessage = errorDetail 
-                    ? `${errorMessage}: ${errorDetail}` 
+                const fullMessage = errorDetail
+                    ? `${errorMessage}: ${errorDetail}`
                     : errorMessage;
-                
+
                 showStatus('error', fullMessage);
                 console.error('Re-analysis error:', fullMessage);
             }
-            
+
             // Connect to SSE endpoint for progress updates
             let eventSource = null;
-            
+
             function connectProgressSSE(articleId) {
                 if (eventSource) {
                     eventSource.close();
                 }
-                
+
                 eventSource = new EventSource(`/api/llm/score-progress/${articleId}`);
-                
+
                 eventSource.onmessage = function(event) {
                     try {
                         const progress = JSON.parse(event.data);
@@ -237,12 +237,12 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                         if (progress.status === "Complete" || progress.status === "Success") {
                             showStatus('success', progress.message || 'Analysis complete!');
                             updateProgress(100);
-                            
+
                             // Disconnect SSE
                             eventSource.close();
                             eventSource = null;
                             setLoading(false);
-                            
+
                             // Reload the article data to show new scores
                             setTimeout(() => {
                                 // Clear cache to ensure fresh data
@@ -264,7 +264,7 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                         console.error('Error parsing SSE data:', e);
                     }
                 };
-                
+
                 eventSource.onerror = function() {
                     console.error('SSE connection error');
                     eventSource.close();
@@ -273,7 +273,7 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                     setLoading(false);
                 };
             }
-            
+
             // Clean up SSE connection when navigating away
             window.addEventListener('beforeunload', () => {
                 if (eventSource) {
@@ -281,7 +281,7 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                     eventSource = null;
                 }
             });
-            
+
             // Handle button click
             reanalyzeBtn.addEventListener('click', async () => {
                 const articleId = getArticleId();
@@ -289,11 +289,11 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                     showStatus('error', 'Could not determine article ID');
                     return;
                 }
-                
+
                 setLoading(true);
                 showStatus('info', 'Sending re-analysis request...', true);
                 updateProgress(5); // Show initial progress
-                
+
                 try {
                     const response = await fetch(`/api/llm/reanalyze/${articleId}`, {
                         method: 'POST',
@@ -302,12 +302,12 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                         },
                         body: JSON.stringify({})
                     });
-                    
+
                     if (response.status === 202 || response.status === 200) {
                         const data = await response.json();
                         showStatus('success', 'Re-analysis started. Tracking progress...', true);
                         updateProgress(10); // Update progress after successful request
-                        
+
                         // Connect to SSE for progress updates
                         connectProgressSSE(articleId);
                     } else {
@@ -320,7 +320,7 @@ Generate the HTML snippet to be added to `web/article.html` and the JS code to b
                 }
             });
         }
-        
+
         // Call setup function when document is ready
         setupReanalysisFeature();
         ```
@@ -359,7 +359,7 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
             <h3>Political Bias Analysis</h3>
             <span id="article-score"></span>
             <span id="article-confidence"></span>
-            
+
             <div class="bias-slider-container">
                 <div class="bias-slider" id="bias-slider">
                     <div id="bias-indicator" class="bias-indicator"></div>
@@ -370,7 +370,7 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                     <span class="label-right">Right</span>
                 </div>
             </div>
-            
+
             <!-- Enhanced re-analysis button component -->
             <div class="article-actions" style="margin-top: 1rem; padding: 0.75rem; border-radius: 6px; background-color: var(--secondary-bg); border: 1px solid var(--border-color);">
                 <button id="reanalyzeArticleBtn" style="background-color: var(--accent-color); color: white; border: none; border-radius: 4px; padding: 0.5rem 1rem; cursor: pointer; font-weight: 500; transition: background-color 0.2s;">
@@ -406,12 +406,12 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
             const statusMessageEl = document.getElementById('reanalyzeStatusMessage');
             const progressBar = document.getElementById('reanalyzeProgressBar');
             const progressBarInner = document.getElementById('reanalyzeProgressBarInner');
-            
+
             if (!reanalyzeBtn || !statusMessageEl || !statusContainer) {
                 console.warn('Re-analysis UI elements not found in the DOM.');
                 return;
             }
-            
+
             // Get article ID from the current URL path, article container, or URL params
             function getArticleId() {
                 // Try from URL path first (most common case)
@@ -419,32 +419,32 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                 if (idFromPath && !isNaN(idFromPath)) {
                     return idFromPath;
                 }
-                
+
                 // Try from URL query params
                 const params = new URLSearchParams(window.location.search);
                 const idFromQuery = params.get('id');
                 if (idFromQuery && !isNaN(idFromQuery)) {
                     return idFromQuery;
                 }
-                
+
                 // Try from data attribute on article container
                 const articleContainer = document.getElementById('article-container');
                 if (articleContainer && articleContainer.dataset.articleId) {
                     return articleContainer.dataset.articleId;
                 }
-                
+
                 return null;
             }
-            
+
             // Update status message with appropriate styling
             function showStatus(type, message, showProgress = false) {
                 statusMessageEl.textContent = message;
-                
+
                 // Reset previous styling
                 statusMessageEl.style.backgroundColor = '';
                 statusMessageEl.style.color = '';
                 statusMessageEl.style.border = '';
-                
+
                 // Apply styling based on message type
                 if (type === 'info') {
                     statusMessageEl.style.backgroundColor = '#e7f3fe';
@@ -459,15 +459,15 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                     statusMessageEl.style.color = '#721c24';
                     statusMessageEl.style.border = '1px solid #f5c6cb';
                 }
-                
+
                 // Show/hide progress bar
                 if (progressBar) {
                     progressBar.style.display = showProgress ? 'block' : 'none';
                 }
-                
+
                 statusContainer.style.display = 'block';
             }
-            
+
             // Update progress bar
             function updateProgress(percent) {
                 if (progressBarInner && !isNaN(percent)) {
@@ -476,27 +476,27 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                     progressBarInner.style.width = `${clampedPercent}%`;
                 }
             }
-            
+
             // Toggle loading state
             function setLoading(isLoading) {
                 if (!reanalyzeBtn || !btnTextEl || !loadingEl) return;
-                
+
                 reanalyzeBtn.disabled = isLoading;
                 btnTextEl.style.display = isLoading ? 'none' : 'inline';
                 loadingEl.style.display = isLoading ? 'inline' : 'none';
-                
+
                 if (!isLoading && progressBar) {
                     // Reset progress on completion
                     progressBar.style.display = 'none';
                     progressBarInner.style.width = '0%';
                 }
             }
-            
+
             // Error handler with detailed error classification
             function handleError(error, response) {
                 let errorMessage = 'An unknown error occurred';
                 let errorDetail = '';
-                
+
                 if (response) {
                     // Server responded with an error
                     switch (response.status) {
@@ -521,7 +521,7 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                         default:
                             errorMessage = `Error (${response.status})`;
                     }
-                    
+
                     // Try to extract more details from response
                     try {
                         const data = response._bodyText || response._bodyInit || '';
@@ -538,26 +538,26 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                     // Network or client-side error
                     errorMessage = error.message || 'Network error';
                 }
-                
+
                 // Combine messages if we have details
-                const fullMessage = errorDetail 
-                    ? `${errorMessage}: ${errorDetail}` 
+                const fullMessage = errorDetail
+                    ? `${errorMessage}: ${errorDetail}`
                     : errorMessage;
-                
+
                 showStatus('error', fullMessage);
                 console.error('Re-analysis error:', fullMessage);
             }
-            
+
             // Connect to SSE endpoint for progress updates
             let eventSource = null;
-            
+
             function connectProgressSSE(articleId) {
                 if (eventSource) {
                     eventSource.close();
                 }
-                
+
                 eventSource = new EventSource(`/api/llm/score-progress/${articleId}`);
-                
+
                 eventSource.onmessage = function(event) {
                     try {
                         const progress = JSON.parse(event.data);
@@ -565,12 +565,12 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                         if (progress.status === "Complete" || progress.status === "Success") {
                             showStatus('success', progress.message || 'Analysis complete!');
                             updateProgress(100);
-                            
+
                             // Disconnect SSE
                             eventSource.close();
                             eventSource = null;
                             setLoading(false);
-                            
+
                             // Reload the article data to show new scores
                             setTimeout(() => {
                                 // Clear cache to ensure fresh data
@@ -592,7 +592,7 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                         console.error('Error parsing SSE data:', e);
                     }
                 };
-                
+
                 eventSource.onerror = function() {
                     console.error('SSE connection error');
                     eventSource.close();
@@ -601,7 +601,7 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                     setLoading(false);
                 };
             }
-            
+
             // Clean up SSE connection when navigating away
             window.addEventListener('beforeunload', () => {
                 if (eventSource) {
@@ -609,7 +609,7 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                     eventSource = null;
                 }
             });
-            
+
             // Handle button click
             reanalyzeBtn.addEventListener('click', async () => {
                 const articleId = getArticleId();
@@ -617,11 +617,11 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                     showStatus('error', 'Could not determine article ID');
                     return;
                 }
-                
+
                 setLoading(true);
                 showStatus('info', 'Sending re-analysis request...', true);
                 updateProgress(5); // Show initial progress
-                
+
                 try {
                     const response = await fetch(`/api/llm/reanalyze/${articleId}`, {
                         method: 'POST',
@@ -630,12 +630,12 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                         },
                         body: JSON.stringify({})
                     });
-                    
+
                     if (response.status === 202 || response.status === 200) {
                         const data = await response.json();
                         showStatus('success', 'Re-analysis started. Tracking progress...', true);
                         updateProgress(10); // Update progress after successful request
-                        
+
                         // Connect to SSE for progress updates
                         connectProgressSSE(articleId);
                     } else {
@@ -648,7 +648,7 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
                 }
             });
         }
-        
+
         // Call setup function when document is ready
         setupReanalysisFeature();
         ```
@@ -657,11 +657,11 @@ Enhance the existing implementation from Iteration 1 with more robust error hand
 *   [✓] HTML: Enhanced UI with progress bar for better visual feedback
 *   [✓] HTML: Loading animation matches existing site patterns using the 'pulse' animation
 *   [✓] HTML: Progress visualization is well-integrated with the bias analysis section
-*   [✓] JavaScript: More robust article ID extraction with multiple strategies 
+*   [✓] JavaScript: More robust article ID extraction with multiple strategies
 *   [✓] JavaScript: Enhanced error handling with specific error messages for different status codes
 *   [✓] JavaScript: Progress bar updates based on SSE progress updates
 *   [✓] JavaScript: Proper cleanup of SSE connection when navigating away
 *   [✓] JavaScript: Updates article view after successful re-analysis
 *   [✓] JavaScript: Better integration with existing article loading patterns
 
-The enhanced implementation now provides a seamless, real-time progress tracking experience that matches the existing UI patterns while adding robust error handling and progress visualization. 
+The enhanced implementation now provides a seamless, real-time progress tracking experience that matches the existing UI patterns while adding robust error handling and progress visualization.

@@ -6,6 +6,8 @@ import (
 	"html/template"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -19,6 +21,27 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
+
+// findTemplateGlob dynamically finds the template directory
+func findTemplateGlob() string {
+	// Try different possible paths relative to where tests might run
+	candidates := []string{
+		"../../web/templates/*", // from cmd/server/
+		"./web/templates/*",     // from project root
+		"web/templates/*",       // from project root without ./
+	}
+
+	for _, candidate := range candidates {
+		// Check if the directory exists by removing the /* and checking the dir
+		dir := filepath.Dir(candidate)
+		if _, err := os.Stat(dir); err == nil {
+			return candidate
+		}
+	}
+
+	// Fallback to original path if nothing found
+	return "../../web/templates/*"
+}
 
 // Test constants to avoid duplication
 const (
@@ -561,7 +584,7 @@ func TestTemplateIndexHandler(t *testing.T) {
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
 	})
-	router.LoadHTMLGlob(templateGlob)
+	router.LoadHTMLGlob(findTemplateGlob())
 	router.GET("/", templateIndexHandler(dbConn))
 
 	// Create test request
@@ -602,7 +625,6 @@ func TestTemplateIndexHandlerWithFilters(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(100))
 	mock.ExpectQuery(queryCountSources).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5))
-
 	// Setup router and handler
 	router := gin.New()
 	router.SetFuncMap(template.FuncMap{
@@ -611,7 +633,7 @@ func TestTemplateIndexHandlerWithFilters(t *testing.T) {
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
 	})
-	router.LoadHTMLGlob(templateGlob)
+	router.LoadHTMLGlob(findTemplateGlob())
 	router.GET("/", templateIndexHandler(dbConn))
 
 	// Create test request with query parameter
@@ -662,7 +684,6 @@ func TestTemplateArticleHandler(t *testing.T) {
 
 	mock.ExpectQuery(querySelectArticles).
 		WillReturnRows(recentRows)
-
 	// Mock stats queries
 	mock.ExpectQuery(queryCountArticles).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(100))
@@ -677,7 +698,7 @@ func TestTemplateArticleHandler(t *testing.T) {
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
 	})
-	router.LoadHTMLGlob(templateGlob)
+	router.LoadHTMLGlob(findTemplateGlob())
 	router.GET(articleIDRoute, templateArticleHandler(dbConn))
 
 	// Create test request
@@ -703,9 +724,8 @@ func TestTemplateArticleHandlerInvalidID(t *testing.T) {
 		"add":   func(a, b int) int { return a + b },
 		"sub":   func(a, b int) int { return a - b },
 		"mul":   func(a, b float64) float64 { return a * b },
-		"split": func(s, sep string) []string { return strings.Split(s, sep) },
-	})
-	router.LoadHTMLGlob(templateGlob)
+		"split": func(s, sep string) []string { return strings.Split(s, sep) }})
+	router.LoadHTMLGlob(findTemplateGlob())
 	router.GET(articleIDRoute, templateArticleHandler(dbConn))
 
 	// Create test request with invalid ID
@@ -736,9 +756,8 @@ func TestTemplateArticleHandlerNotFound(t *testing.T) {
 		"add":   func(a, b int) int { return a + b },
 		"sub":   func(a, b int) int { return a - b },
 		"mul":   func(a, b float64) float64 { return a * b },
-		"split": func(s, sep string) []string { return strings.Split(s, sep) },
-	})
-	router.LoadHTMLGlob(templateGlob)
+		"split": func(s, sep string) []string { return strings.Split(s, sep) }})
+	router.LoadHTMLGlob(findTemplateGlob())
 	router.GET(articleIDRoute, templateArticleHandler(dbConn))
 
 	// Create test request

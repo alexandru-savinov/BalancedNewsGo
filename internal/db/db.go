@@ -332,7 +332,7 @@ func InsertFeedback(db *sqlx.DB, feedback *Feedback) error {
 func FetchLatestEnsembleScore(db *sqlx.DB, articleID int64) (float64, error) {
 	var score float64
 	err := db.Get(&score, `
-        SELECT score FROM llm_scores 
+        SELECT score FROM llm_scores
         WHERE article_id = ? AND model = 'ensemble'
         ORDER BY created_at DESC LIMIT 1`,
 		articleID)
@@ -574,7 +574,7 @@ func FetchLLMScores(db *sqlx.DB, articleID int64) ([]LLMScore, error) {
 // UpdateArticleScore updates the composite score for an article
 func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
 	_, err := db.Exec(`
-        UPDATE articles 
+        UPDATE articles
         SET composite_score = ?, confidence = ?, score_source = 'llm'
         WHERE id = ?`,
 		score, confidence, articleID)
@@ -590,7 +590,7 @@ func UpdateArticleScoreLLM(exec sqlx.ExtContext, articleID int64, score float64,
 		articleID, score, confidence)
 
 	result, err := exec.ExecContext(context.Background(), `
-        UPDATE articles 
+        UPDATE articles
         SET composite_score = ?, confidence = ?, score_source = 'llm'
         WHERE id = ?`,
 		score, confidence, articleID)

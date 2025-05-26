@@ -404,10 +404,10 @@ func TestArticleWithNewFields(t *testing.T) {
 
 	// Test SQL write for these fields specifically
 	_, err = dbConn.Exec(`
-		UPDATE articles SET 
-			status = 'failed', 
-			fail_count = 5, 
-			last_attempt = ?, 
+		UPDATE articles SET
+			status = 'failed',
+			fail_count = 5,
+			last_attempt = ?,
 			escalated = 1
 		WHERE id = ?
 	`, time.Now(), id)

@@ -79,4 +79,4 @@
 
 *   **Rationale/Benefit:**
     *   Provides an essential moderation tool for correcting or curating article scores.
-    *   Allows for human oversight and intervention in the automated scoring process. 
+    *   Allows for human oversight and intervention in the automated scoring process.

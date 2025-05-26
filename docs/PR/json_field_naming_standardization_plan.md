@@ -62,13 +62,13 @@ The migration will be implemented in four phases to ensure backward compatibilit
            "composite_score": a.CompositeScore,
            "confidence":      a.Confidence,
            "score_source":    a.ScoreSource,
-           
+
            // New camelCase fields
            "pubDate":        a.PubDate,
            "createdAt":      a.CreatedAt,
            "compositeScore": a.CompositeScore,
            "scoreSource":    a.ScoreSource,
-           
+
            // Legacy PascalCase fields expected by Postman tests
            "Title":          a.Title,
            "Content":        a.Content,
@@ -76,7 +76,7 @@ The migration will be implemented in four phases to ensure backward compatibilit
            "Source":         a.Source,
            "CompositeScore": a.CompositeScore,
            "Confidence":     a.Confidence,
-           
+
            // New field format for backward compatibility
            "article_id":     a.ID,
            "articleId":      a.ID,
@@ -99,7 +99,7 @@ The migration will be implemented in four phases to ensure backward compatibilit
                    article_id: { type: 'number' },
                    articleId: { type: 'number' },
                    id: { type: 'number' },
-                   
+
                    // Other fields with both formats
                    // ...
                }
@@ -240,4 +240,4 @@ The migration will be considered successful when:
 2. All tests pass with the new field naming convention
 3. No client-reported issues due to field naming changes
 4. API documentation is updated to reflect the new conventions
-5. Codebase is more maintainable with consistent patterns 
+5. Codebase is more maintainable with consistent patterns

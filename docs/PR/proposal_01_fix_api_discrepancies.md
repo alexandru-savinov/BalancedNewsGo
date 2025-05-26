@@ -121,11 +121,11 @@ Before or alongside the API changes, the following database schema modifications
      // FetchFeedbackByArticleID retrieves all feedback entries for a specific article
      func FetchFeedbackByArticleID(db *sqlx.DB, articleID int64) ([]Feedback, error) {
          var feedbackEntries []Feedback // Renamed for clarity if `Feedback` is also a struct name
-         query := `SELECT id, article_id, user_id, feedback_text, category, ensemble_output_id, source, created_at 
-                  FROM feedback 
-                  WHERE article_id = ? 
+         query := `SELECT id, article_id, user_id, feedback_text, category, ensemble_output_id, source, created_at
+                  FROM feedback
+                  WHERE article_id = ?
                   ORDER BY created_at DESC`
-         
+
          err := db.Select(&feedbackEntries, query, articleID)
          if err != nil {
              // It's common for db.Select to return sql.ErrNoRows if no results are found.
@@ -135,7 +135,7 @@ Before or alongside the API changes, the following database schema modifications
              }
              return nil, handleError(err, "error fetching feedback by article ID")
          }
-         
+
          return feedbackEntries, nil
      }
      ```
@@ -164,16 +164,16 @@ Before or alongside the API changes, the following database schema modifications
                  RespondError(c, NewAppError(ErrValidation, "Missing required query parameter: article_id"))
                  return
              }
-             
+
              articleID, err := strconv.ParseInt(articleIDStr, 10, 64)
              if err != nil || articleID < 1 {
                  RespondError(c, NewAppError(ErrValidation, "Invalid article ID format or value"))
                  return
              }
-             
+
              // Check if article exists to give a 404 if not
              // Assuming db.FetchArticleByID exists and returns db.ErrArticleNotFound
-             _, err = db.FetchArticleByID(dbConn, articleID) 
+             _, err = db.FetchArticleByID(dbConn, articleID)
              if err != nil {
                  if errors.Is(err, db.ErrArticleNotFound) { // Use your project's specific error for not found
                      RespondError(c, NewAppError(ErrNotFound, "Article not found"))
@@ -182,20 +182,20 @@ Before or alongside the API changes, the following database schema modifications
                  RespondError(c, WrapError(err, ErrInternal, "Failed to verify article existence"))
                  return
              }
-             
+
              feedbackItems, err := db.FetchFeedbackByArticleID(dbConn, articleID)
              if err != nil {
                  // The DB function now handles sql.ErrNoRows, so this should be an actual error
                  RespondError(c, WrapError(err, ErrInternal, "Failed to fetch feedback"))
                  return
              }
-             
+
              // db.FetchFeedbackByArticleID now returns an empty slice if no feedback,
              // so this explicit check might no longer be needed if feedbackItems is initialized.
              // if feedbackItems == nil {
              //     feedbackItems = []db.Feedback{}
              // }
-             
+
              RespondSuccess(c, feedbackItems)
              LogPerformance("getFeedbackHandler", start)
          }
@@ -312,7 +312,7 @@ Before or alongside the API changes, the following database schema modifications
          var sources []string
          // Ensure filtering out NULL or empty strings, and order for consistent output
          query := `SELECT DISTINCT source FROM articles WHERE source IS NOT NULL AND source != '' ORDER BY source ASC`
-         
+
          err := db.Select(&sources, query)
          if err != nil {
              if errors.Is(err, sql.ErrNoRows) { // If no articles or no sources found
@@ -320,7 +320,7 @@ Before or alongside the API changes, the following database schema modifications
              }
              return nil, handleError(err, "error fetching distinct sources")
          }
-         
+
          return sources, nil
      }
      ```
@@ -341,7 +341,7 @@ Before or alongside the API changes, the following database schema modifications
      func getSourcesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
          return func(c *gin.Context) {
              start := time.Now()
-             
+
              cacheKey := "news_sources_list" // Make cache key specific
              // Assuming articlesCache and articlesCacheLock are defined globally/accessibly in api.go
              articlesCacheLock.RLock()
@@ -356,23 +356,23 @@ Before or alongside the API changes, the following database schema modifications
                  LogError(c, errors.New("cached news_sources data has unexpected type"), "getSourcesHandler cache type error")
              }
              articlesCacheLock.RUnlock() // Ensure RUnlock is called if not returned early
-             
+
              dbSources, err := db.FetchDistinctSources(dbConn)
              if err != nil {
                  RespondError(c, WrapError(err, ErrInternal, "Failed to fetch news sources from database"))
                  // LogError already part of WrapError or RespondError typically
                  return
              }
-             
+
              // db.FetchDistinctSources now returns empty slice if none found
              // if dbSources == nil {
              //     dbSources = []string{}
              // }
-             
+
              articlesCacheLock.Lock()
              articlesCache.Set(cacheKey, dbSources, 5*time.Minute) // Configurable cache duration
              articlesCacheLock.Unlock()
-             
+
              RespondSuccess(c, dbSources)
              LogPerformance("getSourcesHandler (db fetch)", start)
          }
@@ -535,4 +535,4 @@ If issues arise after deployment:
 **Schema Changes:**
 *   `schema.sql`: Addition of 2 new indexes. Potential modification to `articles.source` column for `COLLATE NOCASE`.
 
-</rewritten_file> 
+</rewritten_file>

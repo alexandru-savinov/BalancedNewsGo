@@ -152,7 +152,7 @@ If migrating from development to production:
    ```bash
    # Export data
    sqlite3 dev.db ".mode insert" ".output data.sql" "SELECT * FROM articles;"
-   
+
    # Import to production
    sqlite3 production.db < data.sql
    ```
@@ -193,7 +193,7 @@ If migrating from development to production:
    server {
        listen 80;
        server_name newsbalancer.example.com;
-       
+
        location / {
            proxy_pass http://localhost:8080;
            proxy_set_header Host $host;
@@ -281,7 +281,7 @@ For production, redirect logs to a log management system:
    ```bash
    # Regular backups (SQLite only)
    sqlite3 /app/data/news.db ".backup '/backup/news-$(date +%Y%m%d).db'"
-   
+
    # Keep last 7 days of backups
    find /backup -name "news-*.db" -mtime +7 -delete
    ```
@@ -292,4 +292,4 @@ For production, redirect logs to a log management system:
 
 3. **Recovery Testing**
    - Regularly test database restoration procedures
-   - Document and practice recovery steps 
+   - Document and practice recovery steps
