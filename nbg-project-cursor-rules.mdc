@@ -115,3 +115,7 @@ alwaysApply: true
 - Consider using a reverse proxy (Nginx, Caddy) for production.
 - Database backup strategy is essential for production use.
 - Configure appropriate timeouts for LLM services based on observed performance.
+
+## 10. Local CI Workflow
+- For a consistent development experience and to prevent CI failures, follow the local CI workflow documented in `docs/local_ci_workflow.md`.
+- This includes steps for environment setup, running linters, unit tests, integration tests, and coverage checks that mirror the GitHub Actions CI pipeline.
