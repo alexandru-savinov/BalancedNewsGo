@@ -176,19 +176,6 @@ func main() {
 	}
 }
 
-// Editorial UI template handlers
-func templateIndexHandler(_ *sqlx.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", nil)
-	}
-}
-
-func templateArticleHandler(_ *sqlx.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.HTML(http.StatusOK, "article.html", nil)
-	}
-}
-
 func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager, *llm.ProgressManager, *api.SimpleCache) {
 	// Load environment variables from .env file if present
 	err := godotenv.Load()
