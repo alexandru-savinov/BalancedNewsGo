@@ -7,22 +7,32 @@ repos:
       - id: trailing-whitespace
       - id: check-yaml
       - id: check-added-large-files
-  - repo: https://github.com/dnephin/pre-commit-golang
-    rev: "v0.5.1"
+  - repo: local
     hooks:
       - id: go-mod-tidy
+        name: go mod tidy
+        entry: go mod tidy
+        language: system
         files: "^go\\.mod$"
+        pass_filenames: false
       - id: go-fmt
-        args: ["-s"]
+        name: go fmt
+        entry: go fmt
+        language: system
         files: "^(cmd|internal)/.*\\.go$"
-      - id: go-imports
-        files: "^(cmd|internal)/.*\\.go$"
+        args: ["./..."]
+        pass_filenames: false
       - id: go-vet
+        name: go vet
+        entry: go vet
+        language: system
         files: "^(cmd|internal)/.*\\.go$"
-  - repo: https://github.com/golangci/golangci-lint
-    rev: "v1.56.2"
-    hooks:
-      - id: golangci-lint
-        args: ["run", "--config=.golangci.yml", "--timeout=5m"]
+        args: ["./..."]
+        pass_filenames: false
+      - id: go-unit-tests
+        name: go unit tests
+        entry: make unit ENABLE_RACE_DETECTION=false
+        language: system
         files: "^(cmd|internal)/.*\\.go$"
+        pass_filenames: false
         require_serial: true
