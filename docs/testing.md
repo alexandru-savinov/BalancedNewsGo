@@ -274,3 +274,317 @@ A new, more comprehensive and strict test suite is available:
 - **Review `test-results/updated_backend_cli.txt`** for detailed failure reasons
 
 > **Note:** The `unified_backend_tests.json` suite is more forgiving and will pass even if some advanced features or strict error handling are missing. Use `updated_backend_tests.json` for full coverage and to catch subtle or edge-case bugs.
+
+## Web Testing and Browser Automation
+
+### Overview
+
+The NewsBalancer Go project includes comprehensive web testing capabilities through Puppeteer-based automation. Due to limitations with the MCP (Model Context Protocol) framework's browser navigation tools, we have implemented robust workaround solutions.
+
+### MCP Navigation Issue
+
+**Problem**: The native `#puppeteer_navigate` MCP tool fails with error:
+```
+MPC -32603: Attempted to use detached Frame '[frame_id]'
+```
+
+**Root Cause**: This is a protocol-level limitation where browser frames become detached from the MCP context, not a code issue in our application.
+
+### MCP Navigation Workaround Solutions
+
+We have implemented multiple working solutions to bypass the MCP browser navigation limitations:
+
+#### 1. MCP Navigation Workaround Script (Recommended)
+
+**File**: `web/tests/mcp-navigation-workaround.js`
+
+This is a full-featured CLI tool that provides working browser navigation functionality.
+
+**Basic Usage:**
+```bash
+# Simple navigation
+node web/tests/mcp-navigation-workaround.js "https://example.com"
+
+# Navigation with screenshot
+node web/tests/mcp-navigation-workaround.js "https://httpbin.org/get" --screenshot
+
+# Full-page screenshot with page info
+node web/tests/mcp-navigation-workaround.js "https://www.google.com" --fullpage --info
+```
+
+**Available Options:**
+- `--screenshot`: Take a screenshot after navigation
+- `--fullpage`: Take a full-page screenshot (captures entire page content)
+- `--info`: Display page information (URL, title, content preview)
+- `--help`: Show usage help
+
+**Programmatic Usage:**
+```javascript
+const MCPNavigationWorkaround = require('./web/tests/mcp-navigation-workaround');
+
+async function testWebsite() {
+    const navigator = new MCPNavigationWorkaround();
+
+    try {
+        // Initialize browser
+        await navigator.initialize();
+
+        // Navigate to URL
+        const result = await navigator.navigate('https://example.com');
+
+        if (result.success) {
+            console.log(`Navigation successful: ${result.url}`);
+            console.log(`Page title: ${result.title}`);
+
+            // Take screenshot
+            await navigator.takeScreenshot({ fullPage: true });
+
+            // Get page information
+            const info = await navigator.getPageInfo();
+            console.log(`Content length: ${info.contentLength} characters`);
+        }
+    } finally {
+        await navigator.cleanup();
+    }
+}
+```
+
+#### 2. Simple MCP Navigation Function
+
+**File**: `web/tests/simple-mcp-nav.js`
+
+A lightweight, fire-and-forget navigation function for quick testing.
+
+**Usage:**
+```javascript
+const { mcpSafeNavigate } = require('./web/tests/simple-mcp-nav');
+
+// Simple navigation test
+async function quickTest() {
+    const result = await mcpSafeNavigate('https://httpbin.org/status/200');
+
+    if (result.success) {
+        console.log('Navigation successful:', result.data);
+    } else {
+        console.log('Navigation failed:', result.error);
+    }
+}
+```
+
+**Direct CLI test:**
+```bash
+# Test navigation using Node.js one-liner
+node -e "const { mcpSafeNavigate } = require('./web/tests/simple-mcp-nav.js'); mcpSafeNavigate('https://httpbin.org/status/200').then(r => console.log('Result:', r.success ? 'SUCCESS' : 'FAILED')).catch(e => console.log('Error:', e.message));"
+```
+
+#### 3. Enhanced Puppeteer Helper
+
+**File**: `web/tests/puppeteer-helper.js`
+
+A comprehensive browser management class with MCP compatibility and advanced error recovery.
+
+**Features:**
+- Automatic MCP environment detection
+- Aggressive recovery mechanisms for detached frames
+- Fresh browser instances for each navigation in MCP mode
+- Comprehensive error handling for MCP-specific issues
+
+**Usage:**
+```javascript
+const PuppeteerHelper = require('./web/tests/puppeteer-helper');
+
+async function advancedTesting() {
+    const helper = new PuppeteerHelper();
+
+    try {
+        await helper.initialize();
+        const page = await helper.navigate('https://example.com');
+
+        // Perform additional page operations
+        await page.waitForSelector('body');
+        const title = await page.title();
+
+        console.log(`Page loaded: ${title}`);
+    } finally {
+        await helper.cleanup();
+    }
+}
+```
+
+### Web Testing Best Practices
+
+#### 1. Environment Setup
+
+**Prerequisites:**
+- Node.js installed with npm/npx
+- Puppeteer package installed: `npm install puppeteer`
+- Chrome/Chromium browser (automatically managed by Puppeteer)
+
+**Installation:**
+```bash
+# Install dependencies
+npm install puppeteer
+
+# Verify installation
+node -e "console.log('Puppeteer installed:', require('puppeteer').version())"
+```
+
+#### 2. Testing Workflow
+
+**Step 1: Choose the Right Tool**
+- Use `mcp-navigation-workaround.js` for comprehensive testing with screenshots
+- Use `simple-mcp-nav.js` for quick navigation validation
+- Use `puppeteer-helper.js` for complex browser automation tasks
+
+**Step 2: Test Navigation**
+```bash
+# Test basic connectivity
+node web/tests/mcp-navigation-workaround.js "https://httpbin.org/status/200"
+
+# Test your local server
+node web/tests/mcp-navigation-workaround.js "http://localhost:8080" --info
+
+# Test external sites with screenshots
+node web/tests/mcp-navigation-workaround.js "https://example.com" --screenshot
+```
+
+**Step 3: Validate Results**
+- Check console output for success/failure messages
+- Review generated screenshots in `web/tests/` directory
+- Verify page information matches expectations
+
+#### 3. Common Testing Scenarios
+
+**Testing Local Development Server:**
+```bash
+# Ensure server is running first
+go run cmd/server/main.go &
+
+# Test local endpoints
+node web/tests/mcp-navigation-workaround.js "http://localhost:8080" --info
+node web/tests/mcp-navigation-workaround.js "http://localhost:8080/articles" --screenshot
+```
+
+**Testing API Endpoints:**
+```bash
+# Test API responses
+node web/tests/mcp-navigation-workaround.js "http://localhost:8080/api/articles" --info
+node web/tests/mcp-navigation-workaround.js "http://localhost:8080/ping" --info
+```
+
+**Testing External Site Scraping:**
+```bash
+# Test news source accessibility
+node web/tests/mcp-navigation-workaround.js "https://www.bbc.com/news" --screenshot --info
+node web/tests/mcp-navigation-workaround.js "https://www.reuters.com" --fullpage
+```
+
+#### 4. Error Handling and Troubleshooting
+
+**Common Issues:**
+1. **Browser Launch Failures**
+   ```
+   Error: Failed to launch the browser process
+   ```
+   **Solution**: Ensure Puppeteer is properly installed and Chrome is available
+   ```bash
+   npm install puppeteer --force
+   ```
+
+2. **Navigation Timeouts**
+   ```
+   Error: Navigation timeout of 60000 ms exceeded
+   ```
+   **Solution**: Check internet connectivity or increase timeout in script options
+
+3. **Screenshot Failures**
+   ```
+   Error: Protocol error: Page.screenshot
+   ```
+   **Solution**: Ensure page is fully loaded before taking screenshots
+
+**Debugging Steps:**
+1. Test with a simple URL first: `https://httpbin.org/status/200`
+2. Check if the target site blocks automated browsers
+3. Use `--info` flag to see page loading details
+4. Review generated log files in `web/tests/` directory
+
+#### 5. Integration with Existing Tests
+
+**Adding to Newman Test Suites:**
+You can integrate browser testing into your existing Newman API tests by calling the navigation scripts from your test collections:
+
+```javascript
+// In a Postman test script
+const exec = require('child_process').exec;
+
+pm.test("Web interface accessibility", function (done) {
+    exec('node web/tests/simple-mcp-nav.js http://localhost:8080', (error, stdout, stderr) => {
+        if (error) {
+            pm.expect.fail(`Navigation failed: ${error.message}`);
+        } else {
+            pm.expect(stdout).to.include('SUCCESS');
+        }
+        done();
+    });
+});
+```
+
+**Custom Test Scripts:**
+Create specific test scripts for your use cases:
+
+```javascript
+// web/tests/custom-test.js
+const { mcpSafeNavigate } = require('./simple-mcp-nav.js');
+
+async function testNewsBalancerInterface() {
+    const tests = [
+        'http://localhost:8080',
+        'http://localhost:8080/articles',
+        'http://localhost:8080/api/articles'
+    ];
+
+    for (const url of tests) {
+        console.log(`Testing: ${url}`);
+        const result = await mcpSafeNavigate(url);
+        console.log(`Result: ${result.success ? 'PASS' : 'FAIL'}`);
+    }
+}
+
+testNewsBalancerInterface();
+```
+
+### Performance Considerations
+
+- **Browser Instances**: Each navigation creates a fresh browser instance to avoid frame detachment
+- **Memory Usage**: Browser processes are cleaned up automatically after each test
+- **Timeout Settings**: Default timeouts are set conservatively (60 seconds) for reliability
+- **Headless Mode**: All tools run in headless mode by default for better performance
+
+### Files Created/Modified
+
+The following files implement the MCP navigation workaround solutions:
+
+- `web/tests/mcp-navigation-workaround.js` - Full-featured CLI navigation tool
+- `web/tests/simple-mcp-nav.js` - Lightweight navigation function
+- `web/tests/puppeteer-helper.js` - Enhanced browser management class
+- `web/tests/MCP_NAVIGATION_FIX_README.md` - Detailed technical documentation
+
+### Success Verification
+
+To verify the solutions are working correctly:
+
+```bash
+# Test 1: Simple navigation
+node web/tests/simple-mcp-nav.js
+
+# Test 2: CLI tool
+node web/tests/mcp-navigation-workaround.js "https://httpbin.org/get" --info
+
+# Test 3: Programmatic usage
+node -e "const { mcpSafeNavigate } = require('./web/tests/simple-mcp-nav.js'); mcpSafeNavigate('https://httpbin.org/status/200').then(r => console.log('Navigation:', r.success ? 'SUCCESS' : 'FAILED'));"
+```
+
+Expected output should show successful navigation with page details and no "detached frame" errors.
+
+## Editorial Template Integration Testing Results

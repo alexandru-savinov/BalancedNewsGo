@@ -30,6 +30,7 @@
     "@types/node": "^22.14.1",
     "eventsource": "^3.0.6",
     "newman": "^6.2.1",
+    "puppeteer": "^24.9.0",
     "typescript": "^5.8.3"
   },
   "dependencies": {

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Error - NewsBalancer">
+    <meta name="author" content="NewsBalancer">
+    <meta name="robots" content="noindex, nofollow">
+
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; script-src 'self'; connect-src 'self'; img-src 'self' data:;">
+    <meta http-equiv="Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/css/main.css">
+
+    <title>Error - NewsBalancer</title>
+</head>
+<body>
+    <!-- Skip link for accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <!-- Header with Navigation -->
+    <header class="header" role="banner">
+        <nav class="container" aria-label="Main navigation">
+            <div class="flex items-center justify-between py-4">
+                <div class="nav-brand">
+                    <a href="/articles" class="text-2xl font-bold text-primary">
+                        NewsBalancer
+                    </a>
+                </div>
+                <ul class="flex space-x-6" role="menubar">
+                    <li role="none">
+                        <a href="/articles"
+                           role="menuitem"
+                           class="nav-link">
+                            Articles
+                        </a>
+                    </li>
+                    <li role="none">
+                        <a href="/admin"
+                           role="menuitem"
+                           class="nav-link">
+                            Admin
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main id="main-content" class="container py-16" role="main">
+        <div class="error-container max-w-2xl mx-auto text-center">
+            <!-- Error Icon -->
+            <div class="error-icon mb-8">
+                <svg class="mx-auto h-24 w-24 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+            </div>
+
+            <!-- Error Message -->
+            <div class="error-content mb-8">
+                <h1 class="text-4xl font-bold text-primary mb-4" id="error-title">
+                    Something went wrong
+                </h1>
+
+                <p class="text-lg text-secondary mb-6" id="error-message">
+                    We're sorry, but an unexpected error has occurred. Please try again later.
+                </p>
+
+                <!-- Error Details (hidden by default, shown for specific errors) -->
+                <details class="error-details text-left bg-neutral-100 p-4 rounded-lg mb-6 hidden" id="error-details">
+                    <summary class="cursor-pointer font-medium mb-2">Technical Details</summary>
+                    <div class="error-code text-sm font-mono text-neutral-600">
+                        <div class="mb-2">
+                            <strong>Error Code:</strong> <span id="error-code">-</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Request ID:</strong> <span id="request-id">-</span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Timestamp:</strong> <span id="error-timestamp">-</span>
+                        </div>
+                        <div>
+                            <strong>Details:</strong> <span id="error-details-text">-</span>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="error-actions flex flex-col sm:flex-row gap-4 justify-center">
+                <button type="button" class="btn btn-primary" onclick="window.location.reload()">
+                    Try Again
+                </button>
+
+                <a href="/articles" class="btn btn-outline">
+                    Go to Articles
+                </a>
+
+                <button type="button" class="btn btn-outline" onclick="window.history.back()">
+                    Go Back
+                </button>
+            </div>
+
+            <!-- Help Text -->
+            <div class="error-help mt-12 text-sm text-secondary">
+                <p>
+                    If this problem persists, please contact support with the error details above.
+                </p>
+                <p class="mt-2">
+                    <a href="mailto:support@newsbalancer.com" class="text-primary hover:underline">
+                        support@newsbalancer.com
+                    </a>
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer mt-16 py-8 border-t" role="contentinfo">
+        <div class="container">
+            <div class="text-center text-sm text-secondary">
+                <p>&copy; 2025 NewsBalancer. All rights reserved.</p>
+                <p class="mt-2">
+                    <a href="/about" class="footer-link">About</a> •
+                    <a href="/privacy" class="footer-link">Privacy</a> •
+                    <a href="/terms" class="footer-link">Terms</a>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript for error handling -->
+    <script>
+        // Extract error information from URL parameters or other sources
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const errorCode = urlParams.get('code');
+            const errorMessage = urlParams.get('message');
+            const requestId = urlParams.get('requestId');
+
+            // Update error display based on error type
+            if (errorCode) {
+                document.getElementById('error-code').textContent = errorCode;
+
+                // Show specific error messages
+                switch (errorCode) {
+                    case '404':
+                        document.getElementById('error-title').textContent = 'Page Not Found';
+                        document.getElementById('error-message').textContent = 'The page you\'re looking for doesn\'t exist or has been moved.';
+                        break;
+                    case '403':
+                        document.getElementById('error-title').textContent = 'Access Denied';
+                        document.getElementById('error-message').textContent = 'You don\'t have permission to access this resource.';
+                        break;
+                    case '500':
+                        document.getElementById('error-title').textContent = 'Server Error';
+                        document.getElementById('error-message').textContent = 'An internal server error occurred. Our team has been notified.';
+                        break;
+                    case 'network':
+                        document.getElementById('error-title').textContent = 'Connection Error';
+                        document.getElementById('error-message').textContent = 'Unable to connect to the server. Please check your internet connection.';
+                        break;
+                    default:
+                        if (errorMessage) {
+                            document.getElementById('error-message').textContent = decodeURIComponent(errorMessage);
+                        }
+                }
+
+                // Show error details if available
+                if (requestId || errorMessage) {
+                    document.getElementById('error-details').classList.remove('hidden');
+                    if (requestId) {
+                        document.getElementById('request-id').textContent = requestId;
+                    }
+                    if (errorMessage) {
+                        document.getElementById('error-details-text').textContent = decodeURIComponent(errorMessage);
+                    }
+                    document.getElementById('error-timestamp').textContent = new Date().toISOString();
+                }
+            }
+
+            // Report error to analytics/monitoring (if available)
+            if (window.analytics && errorCode) {
+                window.analytics.track('Error Page Viewed', {
+                    errorCode: errorCode,
+                    errorMessage: errorMessage,
+                    requestId: requestId,
+                    userAgent: navigator.userAgent,
+                    url: window.location.href,
+                    referrer: document.referrer
+                });
+            }
+        })();
+    </script>
+
+    <script src="/js/main.js" defer></script>
+</body>
+</html>
