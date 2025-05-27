@@ -306,8 +306,7 @@
                         "in": "path",
                         "required": true
                     }
-                ],
-                "responses": {
+                ],                "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
@@ -316,6 +315,12 @@
                     },
                     "404": {
                         "description": "Ensemble data not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "All LLM perspectives returned invalid scores (no valid analysis possible)",
                         "schema": {
                             "$ref": "#/definitions/internal_api.ErrorResponse"
                         }
@@ -450,9 +455,14 @@
                         "schema": {
                             "$ref": "#/definitions/internal_api.ErrorResponse"
                         }
-                    },
-                    "404": {
+                    },                    "404": {
                         "description": "Article not found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "All LLM perspectives returned invalid scores (no valid analysis possible)",
                         "schema": {
                             "$ref": "#/definitions/internal_api.ErrorResponse"
                         }

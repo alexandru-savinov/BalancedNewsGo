@@ -151,8 +151,8 @@ func TestComputeCompositeScoreEdgeCases(t *testing.T) {
 				createScoreWithConfidence("right", 1.5, 0.85), // Outside default -1 to 1
 			},
 			configOverride: &CompositeScoreConfig{HandleInvalid: "ignore", DefaultMissing: 0.0, MinScore: -1.0, MaxScore: 1.0, Formula: "average", ConfidenceMethod: "count_valid"},
-			expectedScore:  0.1, // Only center score is valid
-			expectedConf:   0.8, // Only center confidence is valid
+			expectedScore:  0.1,       // Only center score is valid
+			expectedConf:   1.0 / 3.0, // 1/3 perspectives valid = 0.333
 			expectError:    false,
 		},
 		{

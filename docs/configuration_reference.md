@@ -82,7 +82,7 @@ This file defines the LLM ensemble strategy and composite score calculation conf
 | `min_score` | Float | Minimum bound for normalized scores (typically -1.0) |
 | `max_score` | Float | Maximum bound for normalized scores (typically 1.0) |
 | `default_missing` | Float | Default value to use when perspective is missing (used if handle_invalid is "default") |
-| `handle_invalid` | String | How to handle NaN/Infinity values: "ignore" or "default" |
+| `handle_invalid` | String | How to handle NaN/Infinity values: "ignore" or "default". When "ignore", invalid scores are excluded from composite calculation; when "default", they're replaced with default_missing value |
 | `formula` | String | Method to combine perspective scores: "average" or "weighted" |
 | `weights` | Object | Used when formula is "weighted"; perspective-to-weight mapping |
 | `confidence_method` | String | How to calculate confidence: "average", "min", "max", or "spread_based" |
@@ -99,6 +99,22 @@ LLM prompt templates are located in `internal/llm/configs/*.txt` and are used by
 ## Web Server Configuration
 
 The web server (Gin) runs on port 8080 by default. This can be modified by editing the `cmd/server/main.go` file.
+
+## Error Handling Behavior
+
+### LLM Score Validation and Fallback
+
+The system validates LLM scores and handles invalid values (NaN, ±Infinity, or out-of-bounds scores) according to the `handle_invalid` configuration:
+
+- **"ignore"**: Invalid scores are excluded from composite score calculation
+- **"default"**: Invalid scores are replaced with the `default_missing` value
+
+**Critical Error Case**: When **all** perspectives return invalid scores after processing:
+- The system returns `ErrAllPerspectivesInvalid` error instead of falling back to 0.0
+- This ensures that API clients receive proper error responses rather than misleading zero scores
+- This behavior prevents false "neutral" bias scores when all LLM models fail to provide valid analysis
+
+This error handling improvement was introduced to fix cases where invalid LLM responses would result in misleading composite scores of 0.0, which could be interpreted as "neutral" bias when the actual issue was that no valid analysis could be performed.
 
 ## Database Schema
 
