@@ -58,7 +58,7 @@ type IndividualScoreResult struct {
 // @Description Request body for submitting user feedback
 type FeedbackRequest struct {
 	ArticleID        int64  `json:"article_id" binding:"required"`    // Article ID
-	UserID           string `json:"user_id" binding:"required"`       // User ID
+	UserID           string `json:"user_id,omitempty"`                // User ID (optional in single-user mode)
 	FeedbackText     string `json:"feedback_text" binding:"required"` // Feedback content
 	Category         string `json:"category" example:"agree"`         // Feedback category: agree, disagree, unclear, other
 	EnsembleOutputID *int64 `json:"ensemble_output_id,omitempty"`     // ID of specific ensemble output

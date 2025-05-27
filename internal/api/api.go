@@ -1345,9 +1345,12 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 		if req.FeedbackText == "" {
 			missingFields = append(missingFields, "feedback_text")
 		}
+
+		// For single-user mode: provide default user_id if not specified
 		if req.UserID == "" {
-			missingFields = append(missingFields, "user_id")
+			req.UserID = "default_user" // Default user ID for single-user mode
 		}
+
 		if len(missingFields) > 0 {
 			RespondError(c, NewAppError(ErrValidation, "Missing required fields: "+strings.Join(missingFields, ", ")))
 			return

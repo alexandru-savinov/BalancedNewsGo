@@ -477,17 +477,16 @@ async function submitFeedback(articleId) {
 
         const submitButton = document.getElementById('submit-feedback');
         submitButton.disabled = true;
-        submitButton.textContent = 'Submitting...';
-
-        const response = await fetch(`/api/feedback`, {
+        submitButton.textContent = 'Submitting...';        const response = await fetch(`/api/feedback`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 article_id: articleId,
-                user_score: userScore,
-                comment: comment
+                feedback_text: comment || `User rated article as ${userScore.toFixed(1)}`,
+                category: userScore > 0.1 ? "agree" : (userScore < -0.1 ? "disagree" : "unclear"),
+                source: "web"
             })
         });
 
