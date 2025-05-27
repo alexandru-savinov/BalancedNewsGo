@@ -15,7 +15,7 @@ import (
 
 // Template file constants
 const (
-	indexTemplate   = "index.html"
+	indexTemplate   = "articles.html"
 	articleTemplate = "article.html"
 )
 
