@@ -25,10 +25,8 @@ func isInvalid(v float64, cfg *CompositeScoreConfig) bool {
 //
 // Matching order:
 //  1. If the model name is empty, return the perspective for the first model in the config with an empty name (if any).
-//  2. If the normalized model name exactly matches a normalized config model name, return its perspective
-//     (first match wins, including duplicates).
-//  3. If no exact match, but the normalized model name has a config model name as a prefix
-//     (for cases like extra slashes or suffixes), return its perspective (first match wins).
+//  2. If the normalized model name exactly matches a normalized config model name, return its perspective (first match wins, including duplicates).
+//  3. If no exact match, but the normalized model name has a config model name as a prefix (for cases like extra slashes or suffixes), return its perspective (first match wins).
 //  4. If no config match, but the normalized model name is "left", "center", or "right", return that as the perspective.
 //  5. If none of the above, return an empty string.
 func MapModelToPerspective(modelName string, cfg *CompositeScoreConfig) string {
@@ -182,22 +180,30 @@ func processScoresByPerspective(perspectiveModels map[string][]db.LLMScore, cfg 
 		})
 
 		// Select the first (highest confidence) valid score for this perspective
+		foundValidScore := false
 		for _, s := range models {
 			if isInvalid(s.Score, cfg) {
 				if cfg.HandleInvalid == "ignore" {
-					continue
+					continue // Skip invalid scores when ignoring
 				} else { // Default to default value
 					scoreMap[perspective] = cfg.DefaultMissing
 					(*validCount)++                 // Count this perspective as valid because we are using a default
 					validModels[perspective] = true // Mark as valid for averaging
-					break                           // Use default, don't look further for this perspective
+					foundValidScore = true
+					break // Use default, don't look further for this perspective
 				}
 			} else {
 				scoreMap[perspective] = s.Score
 				(*validCount)++
 				validModels[perspective] = true // Mark perspective as valid
-				break                           // Use this score, don't look further
+				foundValidScore = true
+				break // Use this score, don't look further
 			}
+		}
+		// If we ignored all invalid scores and found no valid ones, don't mark this perspective as valid
+		if !foundValidScore && cfg.HandleInvalid == "ignore" {
+			// Don't increment validCount or mark as valid
+			// The perspective will keep its default value but won't be counted as valid
 		}
 	}
 }
@@ -253,8 +259,7 @@ func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) ma
 }
 
 // calculateCompositeScore calculates the final composite score based on the configuration and intermediate values
-func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64, sum float64, weightedSum float64,
-	weightTotal float64, actualValidCount int, validModels map[string]bool) (float64, error) {
+func calculateCompositeScore(cfg *CompositeScoreConfig, scoreMap map[string]float64, sum float64, weightedSum float64, weightTotal float64, actualValidCount int, validModels map[string]bool) (float64, error) {
 	if actualValidCount == 0 {
 		return 0.0, ErrAllPerspectivesInvalid
 	}
@@ -347,8 +352,8 @@ func calculateConfidence(cfg *CompositeScoreConfig, validModels map[string]bool,
 		confidence = float64(perspectiveCount) / 3.0
 	}
 
-	// Only apply confidence limits if we don't have all perspectives
-	if perspectiveCount < 3 {
+	// Only apply confidence limits if we don't have all perspectives AND limits are properly configured
+	if perspectiveCount < 3 && cfg.MaxConfidence > cfg.MinConfidence {
 		if confidence < cfg.MinConfidence {
 			confidence = cfg.MinConfidence
 		}
@@ -379,78 +384,45 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *Composi
 		return 0, 0, fmt.Errorf("composite score config is nil: %w", ErrAllPerspectivesInvalid)
 	}
 
-	// --------------------------------------------------
-	// 0. Group all valid scores and confidences by perspective (for averaging)
-	// --------------------------------------------------
-	perspectiveScores := map[string][]float64{"left": {}, "center": {}, "right": {}}
-	perspectiveConfs := map[string][]float64{"left": {}, "center": {}, "right": {}}
-	for _, s := range scores {
-		if math.IsNaN(s.Score) || math.IsInf(s.Score, 0) || s.Score < cfg.MinScore || s.Score > cfg.MaxScore {
-			if cfg.HandleInvalid == "ignore" {
-				continue
-			}
-			return 0, 0, ErrAllPerspectivesInvalid
-		}
-		p := MapModelToPerspective(s.Model, cfg)
-		if p == "" {
-			continue
-		}
-		perspectiveScores[p] = append(perspectiveScores[p], s.Score)
-		// Parse confidence from metadata
-		conf := 0.0
-		if s.Metadata != "" {
-			var meta map[string]interface{}
-			if err := json.Unmarshal([]byte(s.Metadata), &meta); err == nil {
-				if c, ok := meta["confidence"]; ok {
-					switch v := c.(type) {
-					case float64:
-						conf = v
-					case int:
-						conf = float64(v)
-					}
-				}
-			}
-		}
-		perspectiveConfs[p] = append(perspectiveConfs[p], conf)
+	// Map for left/center/right
+	scoreMap := map[string]float64{
+		LabelLeft:   cfg.DefaultMissing,
+		LabelCenter: cfg.DefaultMissing,
+		LabelRight:  cfg.DefaultMissing,
 	}
 
-	// Average scores and confidences for each perspective
-	scoreMap := map[string]float64{"left": 0, "center": 0, "right": 0}
-	confMap := map[string]float64{"left": 0, "center": 0, "right": 0}
-	validModels := make(map[string]bool)
-	for p, scores := range perspectiveScores {
-		if len(scores) > 0 {
-			sum := 0.0
-			for _, v := range scores {
-				sum += v
-			}
-			scoreMap[p] = sum / float64(len(scores))
-			validModels[p] = true
-		}
-	}
-	for p, confs := range perspectiveConfs {
-		if len(confs) > 0 {
-			sum := 0.0
-			for _, v := range confs {
-				sum += v
-			}
-			confMap[p] = sum / float64(len(confs))
-		}
-	}
-	actualValidCount := len(validModels)
-
-	if actualValidCount == 0 {
-		return cfg.DefaultMissing, 0.0, ErrAllPerspectivesInvalid
-	}
-
-	// Calculate sums based ONLY on valid models
+	validCount := 0
 	sum := 0.0
 	weightedSum := 0.0
 	weightTotal := 0.0
-	confSum := 0.0
-	confCount := 0
+	validModels := make(map[string]bool)
+
+	// Process scores by perspective
+	perspectiveModels := mapModelsToPerspectives(scores, cfg)
+	processScoresByPerspective(perspectiveModels, cfg, scoreMap, &validCount, validModels)
+
+	// Check if no valid scores were found after processing
+	if validCount == 0 {
+		// Handle the case where only invalid scores existed and were ignored/defaulted
+		log.Printf("[WARN][CONFIDENCE] No valid model scores found after processing. Returning default score.")
+		return cfg.DefaultMissing, 0.0, ErrAllPerspectivesInvalid // Changed to use ErrAllPerspectivesInvalid
+	}
+
+	// Check if we have only ensemble scores (This check might be redundant now with validCount check above)
+	// if validCount == 1 && validModels["center"] { ... } // Consider removing if validCount handles it
+
+	// Calculate sums based ONLY on valid models
+	sum = 0.0
+	weightedSum = 0.0
+	weightTotal = 0.0
+	actualValidCount := 0 // Use a new counter for the loop
+
+	log.Printf("[DEBUG] Pre-Sum: validCount=%d, len(validModels)=%d", validCount, len(validModels))
+	log.Printf("[DEBUG] Pre-Sum: Score map: %v", scoreMap)
+	log.Printf("[DEBUG] Pre-Sum: Valid models map: %v", validModels)
+
 	for perspective, score := range scoreMap {
-		if _, isValid := validModels[perspective]; isValid {
+		if _, isValid := validModels[perspective]; isValid { // Only sum scores from perspectives marked as valid
 			w := 1.0
 			if cfg.Formula == "weighted" {
 				if weight, ok := cfg.Weights[perspective]; ok {
@@ -460,19 +432,28 @@ func ComputeCompositeScoreWithConfidenceFixed(scores []db.LLMScore, cfg *Composi
 			weightedSum += score * w
 			weightTotal += w
 			sum += score
-			// Add confidence for this perspective
-			confSum += confMap[perspective]
-			confCount++
+			actualValidCount++
 		}
 	}
 
+	// Handle division by zero if somehow actualValidCount is 0 despite validCount > 0
+	if actualValidCount == 0 {
+		log.Printf("[ERROR][CONFIDENCE] Logic error: validCount > 0 but actualValidCount is 0.")
+		return cfg.DefaultMissing, 0.0, fmt.Errorf("internal calculation error: no valid scores counted")
+	}
+
+	log.Printf("[DEBUG] Pre-Calc: sum=%.4f, weightedSum=%.4f, weightTotal=%.4f, actualValidCount=%d",
+		sum, weightedSum, weightTotal, actualValidCount)
+
+	// Final calculation
 	compositeScore, calcErr := calculateCompositeScore(cfg, scoreMap, sum, weightedSum, weightTotal, actualValidCount, validModels)
 	if calcErr != nil {
+		log.Printf("[ERROR] Error in calculateCompositeScore: %v. actualValidCount=%d", calcErr, actualValidCount)
 		return 0.0, 0.0, calcErr
 	}
-	confidence := 0.0
-	if confCount > 0 {
-		confidence = confSum / float64(confCount)
-	}
+
+	// Calculate confidence using the proper calculation function
+	confidence := calculateConfidence(cfg, validModels, scoreMap)
+
 	return compositeScore, confidence, nil
 }

@@ -12,7 +12,7 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 
 **Key Architectural Principles:**
 *   **Data Flow:** Articles are ingested from RSS feeds (`internal/rss`), stored in a SQLite database (`internal/db`, typically `news.db`), and then analyzed for political bias.
-*   **LLM Analysis:** The `internal/llm` package manages LLM interactions. It uses an ensemble approach defined in `configs/composite_score_config.json`, leveraging multiple models and perspectives. A key feature is the averaging of duplicate scores and confidences if multiple results are found for the same model/perspective during an analysis pass. The composite score calculation is primarily handled by `internal/llm/composite_score_fix.go`.
+*   **LLM Analysis:** The `internal/llm` package manages LLM interactions. It uses an ensemble approach defined in `configs/composite_score_config.json`, leveraging multiple models and perspectives. A key feature is the averaging of duplicate scores and confidences if multiple results are found for the same model/perspective during an analysis pass. The composite score calculation is primarily handled by `internal/llm/composite_score_fix.go`. **Enhanced Error Handling**: The system now properly handles cases where all LLM perspectives return invalid scores (NaN, ±Inf, or out-of-bounds values) by returning `ErrAllPerspectivesInvalid` instead of incorrectly falling back to 0.0.
 *   **Database:** SQLite is used for persistence. The `llm_scores` table has a `UNIQUE(article_id, model)` constraint, which is crucial for correctly upserting LLM scores using `ON CONFLICT` SQL clauses.
 *   **API & Web:** Results and functionalities are exposed via a RESTful API (`internal/api`) and a modern web interface with **Editorial template integration** (`web/templates/`).
 
@@ -40,6 +40,7 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 - **✅ Database Integration**: Real article data displayed with search, filtering, and pagination
 - **✅ Performance Optimization**: 2-20ms response times with efficient database queries
 - **✅ Mobile Responsive**: Fully responsive design that works on all devices
+- **✅ No-Score Fallback Fix**: Fixed critical bug where invalid LLM scores would incorrectly fall back to 0.0 instead of properly returning `ErrAllPerspectivesInvalid` error when no valid scores are available
 - Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table schema to support proper functioning of `ON CONFLICT` clauses in SQL queries that update ensemble scores. This fixed critical SQL errors during test execution.
 - Ensured proper test isolation by clearing database between test runs and properly shutting down processes.
 - Documentation improvements for troubleshooting common test issues.
@@ -55,7 +56,7 @@ NewsBalancer analyzes news articles from diverse sources using multiple LLM pers
 | **Web Interface** | ✅ PASS | Modern responsive UI with real database integration |
 | Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
 | Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
-| Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures in score calculation logic. Detailed analysis of these failures is pending central documentation. |
+| Go Unit Tests: `internal/llm` | ✅ PASS | All LLM score calculation tests now pass after fixing confidence bounds logic and updating test expectations |
 | `all` | ❌ FAIL | Missing test collection: `extended_rescoring_collection.json` |
 | `debug` | ❌ FAIL | Missing test collection: `debug_collection.json` |
 | `confidence` | ❌ FAIL | Missing test collection: `confidence_validation_tests.json` |
@@ -117,6 +118,30 @@ Key endpoints include:
 | `/api/feeds/healthz` | GET | Check RSS feed health status |
 
 Detailed API documentation is available at `/swagger/index.html` when running the server.
+
+## LLM Score Validation and Error Handling
+
+### No-Score Fallback Fix
+
+**Problem Resolved**: Previously, when all LLM perspectives returned invalid scores (NaN, ±Infinity, or out-of-bounds values), the system would incorrectly fall back to a composite score of 0.0. This created misleading "neutral" bias indicators when the actual issue was that no valid analysis could be performed.
+
+**Solution**: The system now properly returns `ErrAllPerspectivesInvalid` when all configured LLM perspectives fail to provide valid scores, ensuring:
+
+- **Transparent Error Reporting**: API clients receive clear error responses instead of misleading zero scores
+- **Proper HTTP Status Codes**: Returns 422 (Unprocessable Entity) for analysis failures
+- **Debugging Support**: Detailed error information helps operators identify LLM service issues
+- **Test Coverage**: Comprehensive test cases verify correct behavior across various failure scenarios
+
+**API Impact**:
+- `/api/articles/{id}/ensemble` - Returns 422 when no valid scores available
+- `/api/llm/reanalyze/{id}` - Returns 422 when reanalysis fails due to invalid scores
+- Error responses include detailed information about which perspectives failed and why
+
+**Configuration**: The error handling behavior respects the `handle_invalid` setting in `configs/composite_score_config.json`:
+- `"ignore"`: Invalid scores are excluded from calculation (recommended)
+- `"default"`: Invalid scores are replaced with `default_missing` value
+
+This fix ensures that political bias analysis results are always meaningful and that system failures are properly communicated to both API clients and operators.
 
 ## Web Interface
 

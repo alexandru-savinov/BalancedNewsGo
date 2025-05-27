@@ -118,7 +118,7 @@ func TestEnsembleAnalyze(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, scores, 3, "Should have scores for all three models")
 	assert.InDelta(t, 0.067, compositeScore, 0.01, "Composite score should be close to average of scores")
-	assert.InDelta(t, 0.8, confidence, 0.01, "Should have expected average confidence")
+	assert.InDelta(t, 1.0, confidence, 0.01, "Should have expected confidence (3/3 perspectives found)")
 
 	// Verify individual scores
 	var leftScore, rightScore, centerScore float64

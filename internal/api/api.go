@@ -826,9 +826,8 @@ func scoreProgressSSEHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := getValidArticleID(c)
 		if !ok {
-			if _, err := c.Writer.Write([]byte("event: error\ndata: {\"error\":\"Invalid article ID\"}\n\n\n")); err != nil {
-				log.Printf("Error writing SSE error for invalid article ID: %v", err)
-			}
+			c.Writer.WriteHeader(http.StatusBadRequest)
+			c.Writer.Write([]byte("event: error\ndata: {\"error\":\"Invalid article ID\"}\n\n"))
 			return
 		}
 		articleID := id
@@ -1025,11 +1024,8 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			LogError(c, nil, "biasHandler: invalid sort order")
 			return
 		}
-
 		// Caching
-		cacheKey := "bias:" + strconv.FormatInt(id, 10) + ":" +
-			c.DefaultQuery("min_score", "-1") + ":" +
-			c.DefaultQuery("max_score", "1") + ":" + sortOrder
+		cacheKey := "bias:" + strconv.FormatInt(id, 10) + ":" + c.DefaultQuery("min_score", "-1") + ":" + c.DefaultQuery("max_score", "1") + ":" + sortOrder
 		articlesCacheLock.RLock()
 		if cached, found := articlesCache.Get(cacheKey); found {
 			articlesCacheLock.RUnlock()
