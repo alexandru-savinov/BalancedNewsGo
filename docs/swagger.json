@@ -809,11 +809,9 @@
         },
         "internal_api.FeedbackRequest": {
             "description": "Request body for submitting user feedback",
-            "type": "object",
-            "required": [
+            "type": "object",            "required": [
                 "article_id",
-                "feedback_text",
-                "user_id"
+                "feedback_text"
             ],
             "properties": {
                 "article_id": {
