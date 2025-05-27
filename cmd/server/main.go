@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -91,8 +92,20 @@ func main() {
 		},
 	})
 
-	// Load Editorial HTML templates
-	router.LoadHTMLGlob("web/templates/*.html")
+	// Load Editorial HTML templates - check multiple possible paths
+	templatesPattern := "web/templates/*.html"
+	if matches, _ := filepath.Glob(templatesPattern); len(matches) == 0 {
+		// Try alternative paths if running from different directories
+		if matches, _ := filepath.Glob("./web/templates/*.html"); len(matches) > 0 {
+			templatesPattern = "./web/templates/*.html"
+		} else if matches, _ := filepath.Glob("../web/templates/*.html"); len(matches) > 0 {
+			templatesPattern = "../web/templates/*.html"
+		} else {
+			log.Fatalf("Could not find HTML templates. Searched: %s", templatesPattern)
+		}
+	}
+	log.Printf("Loading templates from: %s", templatesPattern)
+	router.LoadHTMLGlob(templatesPattern)
 
 	// Serve static assets (CSS, JS, images, fonts)
 	router.Static("/static", "./web")
