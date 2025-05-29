@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProgressIndicator Component Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f8fafc;
+            color: #1f2937;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .header h1 {
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .header p {
+            color: #6b7280;
+            font-size: 1.1rem;
+        }
+        
+        .demo-section {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .demo-section h2 {
+            color: #374151;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 0.5rem;
+        }
+        
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            margin-top: 1.5rem;
+        }
+        
+        .demo-item {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1.5rem;
+            background: #f9fafb;
+        }
+        
+        .demo-item h3 {
+            margin-top: 0;
+            color: #374151;
+            font-size: 1.1rem;
+        }
+        
+        .demo-item p {
+            color: #6b7280;
+            margin-bottom: 1rem;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin: 1rem 0;
+        }
+        
+        .controls button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background-color 0.2s;
+        }
+        
+        .controls button:hover {
+            background: #2563eb;
+        }
+        
+        .controls button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        .controls button.secondary {
+            background: #6b7280;
+        }
+        
+        .controls button.secondary:hover {
+            background: #4b5563;
+        }
+        
+        .controls button.danger {
+            background: #ef4444;
+        }
+        
+        .controls button.danger:hover {
+            background: #dc2626;
+        }
+        
+        .controls input, .controls select {
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        
+        .controls label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: #374151;
+        }
+        
+        .event-log {
+            background: #111827;
+            color: #f3f4f6;
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+        
+        .event-log .timestamp {
+            color: #9ca3af;
+        }
+        
+        .event-log .event-type {
+            color: #60a5fa;
+            font-weight: bold;
+        }
+        
+        .event-log .progress {
+            color: #34d399;
+        }
+        
+        .event-log .error {
+            color: #f87171;
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin: 0.5rem 0;
+        }
+        
+        .status-indicator.idle {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        
+        .status-indicator.connecting {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-indicator.processing {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        .status-indicator.completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-indicator.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .test-runner {
+            text-align: center;
+            margin: 2rem 0;
+        }
+        
+        .test-runner button {
+            background: #059669;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        
+        .test-runner button:hover {
+            background: #047857;
+        }
+        
+        progress-indicator {
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔄 ProgressIndicator Component Demo</h1>
+        <p>Interactive testing for real-time progress tracking with Server-Sent Events</p>
+    </div>
+
+    <div class="test-runner">
+        <button onclick="runComponentTests()">🧪 Run All Tests</button>
+    </div>
+
+    <div class="demo-section">
+        <h2>Basic Progress Indicators</h2>
+        <div class="demo-grid">
+            <div class="demo-item">
+                <h3>Standard Mode</h3>
+                <p>Default progress indicator with manual updates</p>
+                <progress-indicator id="basic-indicator"></progress-indicator>
+                <div class="controls">
+                    <button onclick="updateProgress('basic-indicator', 25)">25%</button>
+                    <button onclick="updateProgress('basic-indicator', 50)">50%</button>
+                    <button onclick="updateProgress('basic-indicator', 75)">75%</button>
+                    <button onclick="updateProgress('basic-indicator', 100)">100%</button>
+                    <button onclick="resetIndicator('basic-indicator')" class="secondary">Reset</button>
+                </div>
+                <div class="status-indicator" id="basic-status">Status: <span>idle</span></div>
+            </div>
+
+            <div class="demo-item">
+                <h3>Details Mode</h3>
+                <p>Progress indicator with detailed information and ETA</p>
+                <progress-indicator id="details-indicator" show-details="true"></progress-indicator>
+                <div class="controls">
+                    <button onclick="updateProgressWithDetails('details-indicator')">Simulate Processing</button>
+                    <button onclick="resetIndicator('details-indicator')" class="secondary">Reset</button>
+                </div>
+                <div class="status-indicator" id="details-status">Status: <span>idle</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>SSE Integration Testing</h2>
+        <div class="demo-grid">
+            <div class="demo-item">
+                <h3>Live SSE Connection</h3>
+                <p>Connect to server endpoint for real-time updates</p>
+                <progress-indicator id="sse-indicator" show-details="true"></progress-indicator>
+                <div class="controls">
+                    <label>
+                        Article ID:
+                        <input type="text" id="article-id-input" value="test-article-123" placeholder="Enter article ID">
+                    </label>
+                    <button onclick="connectSSE()">Connect</button>
+                    <button onclick="disconnectSSE()" class="secondary">Disconnect</button>
+                    <button onclick="resetIndicator('sse-indicator')" class="danger">Reset</button>
+                </div>
+                <div class="status-indicator" id="sse-status">Status: <span>idle</span></div>
+            </div>
+
+            <div class="demo-item">
+                <h3>Auto-Connect Mode</h3>
+                <p>Automatically connects when article-id is set</p>
+                <progress-indicator id="auto-indicator" auto-connect="true" show-details="true"></progress-indicator>
+                <div class="controls">
+                    <label>
+                        Article ID:
+                        <input type="text" id="auto-article-id" value="auto-test-456" placeholder="Enter article ID">
+                    </label>
+                    <button onclick="setAutoArticleId()">Set Article ID</button>
+                    <button onclick="clearAutoArticleId()" class="secondary">Clear</button>
+                </div>
+                <div class="status-indicator" id="auto-status">Status: <span>idle</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>Event Monitoring</h2>
+        <p>Real-time event log for all progress indicators</p>
+        <div class="controls">
+            <button onclick="clearEventLog()" class="secondary">Clear Log</button>
+            <label>
+                <input type="checkbox" id="auto-scroll" checked>
+                Auto-scroll
+            </label>
+        </div>
+        <div class="event-log" id="event-log"></div>
+    </div>
+
+    <!-- Load components -->
+    <script src="/js/components/ProgressIndicator.js"></script>
+    <script src="/js/components/ProgressIndicator.test.js"></script>
+
+    <script>
+        // Event logging
+        const eventLog = document.getElementById('event-log');
+        const autoScroll = document.getElementById('auto-scroll');
+
+        function logEvent(type, data, source = 'demo') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            
+            logEntry.innerHTML = `
+                <span class="timestamp">[${timestamp}]</span> 
+                <span class="event-type">${type}</span>: 
+                <span class="${type.includes('error') ? 'error' : type.includes('progress') ? 'progress' : ''}">${JSON.stringify(data)}</span>
+                <span style="color: #9ca3af;"> (${source})</span>
+            `;
+            
+            eventLog.appendChild(logEntry);
+            
+            if (autoScroll.checked) {
+                eventLog.scrollTop = eventLog.scrollHeight;
+            }
+        }
+
+        function clearEventLog() {
+            eventLog.innerHTML = '';
+        }
+
+        // Status updates
+        function updateStatusIndicator(indicatorId, status) {
+            const statusElement = document.getElementById(indicatorId.replace('-indicator', '-status'));
+            if (statusElement) {
+                const span = statusElement.querySelector('span');
+                span.textContent = status;
+                statusElement.className = `status-indicator ${status}`;
+            }
+        }
+
+        // Set up event listeners for all progress indicators
+        function setupEventListeners() {
+            document.querySelectorAll('progress-indicator').forEach(indicator => {
+                const id = indicator.id;
+                
+                indicator.addEventListener('progressupdate', (e) => {
+                    logEvent('progressupdate', e.detail, id);
+                });
+                
+                indicator.addEventListener('statuschange', (e) => {
+                    logEvent('statuschange', e.detail, id);
+                    updateStatusIndicator(id, e.detail.status);
+                });
+                
+                indicator.addEventListener('connectionerror', (e) => {
+                    logEvent('connectionerror', e.detail, id);
+                });
+                
+                indicator.addEventListener('completed', (e) => {
+                    logEvent('completed', e.detail, id);
+                });
+            });
+        }
+
+        // Demo functions
+        function updateProgress(indicatorId, progress) {
+            const indicator = document.getElementById(indicatorId);
+            const stages = ['Initializing', 'Processing', 'Analyzing', 'Finalizing'];
+            const stage = stages[Math.floor(progress / 25)] || 'Completed';
+            
+            indicator.updateProgress({
+                progress,
+                status: progress === 100 ? 'completed' : 'processing',
+                stage,
+                eta: progress < 100 ? Math.round((100 - progress) / 10) : null
+            });
+        }
+
+        function updateProgressWithDetails(indicatorId) {
+            const indicator = document.getElementById(indicatorId);
+            let progress = 0;
+            
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 100) progress = 100;
+                
+                const models = ['sentiment', 'bias', 'quality', 'relevance'];
+                const modelProgress = {};
+                
+                models.forEach((model, i) => {
+                    const modelProg = Math.min(100, progress + (i * 10));
+                    modelProgress[model] = {
+                        progress: modelProg,
+                        status: modelProg === 100 ? 'completed' : 'processing'
+                    };
+                });
+                
+                indicator.updateProgress({
+                    progress: Math.round(progress),
+                    status: progress === 100 ? 'completed' : 'processing',
+                    stage: progress < 30 ? 'Initializing models' : 
+                           progress < 70 ? 'Running analysis' : 
+                           progress < 95 ? 'Aggregating results' : 'Finalizing',
+                    eta: progress < 100 ? Math.round((100 - progress) / 8) : null,
+                    modelProgress
+                });
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                }
+            }, 500);
+        }
+
+        function resetIndicator(indicatorId) {
+            const indicator = document.getElementById(indicatorId);
+            indicator.reset();
+        }
+
+        function connectSSE() {
+            const indicator = document.getElementById('sse-indicator');
+            const articleId = document.getElementById('article-id-input').value;
+            
+            if (!articleId.trim()) {
+                alert('Please enter an article ID');
+                return;
+            }
+            
+            indicator.connect(articleId);
+        }
+
+        function disconnectSSE() {
+            const indicator = document.getElementById('sse-indicator');
+            indicator.disconnect();
+        }
+
+        function setAutoArticleId() {
+            const indicator = document.getElementById('auto-indicator');
+            const articleId = document.getElementById('auto-article-id').value;
+            
+            if (!articleId.trim()) {
+                alert('Please enter an article ID');
+                return;
+            }
+            
+            indicator.setAttribute('article-id', articleId);
+        }
+
+        function clearAutoArticleId() {
+            const indicator = document.getElementById('auto-indicator');
+            indicator.removeAttribute('article-id');
+            indicator.reset();
+        }
+
+        // Test runner
+        async function runComponentTests() {
+            if (window.ProgressIndicatorTests) {
+                const tests = new ProgressIndicatorTests();
+                await tests.runAllTests();
+            } else {
+                console.error('ProgressIndicatorTests not available');
+            }
+        }
+
+        // Initialize demo
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            logEvent('demo-ready', { message: 'ProgressIndicator demo initialized' });
+        });
+    </script>
+</body>
+</html>
