@@ -90,7 +90,7 @@ export class WebSocketClient {
 
             this.#websocket.onerror = (event) => {
                 this.#emit('error', { event });
-                ErrorHandler.handleError(new Error('WebSocket error'), { 
+                ErrorHandler.handleError(new Error('WebSocket error'), {
                     context: 'WebSocketClient',
                     url: this.#url
                 });
@@ -148,10 +148,10 @@ export class WebSocketClient {
             );
 
             this.#setState(WS_STATES.RECONNECTING);
-            this.#emit('reconnecting', { 
-                attempt: this.#reconnectAttempts + 1, 
+            this.#emit('reconnecting', {
+                attempt: this.#reconnectAttempts + 1,
                 maxAttempts: this.#maxReconnectAttempts,
-                delay 
+                delay
             });
 
             this.#reconnectTimer = setTimeout(() => {
@@ -161,7 +161,7 @@ export class WebSocketClient {
 
         } else {
             this.#setState(WS_STATES.FAILED);
-            this.#emit('failed', { 
+            this.#emit('failed', {
                 reason: 'Max reconnection attempts reached',
                 attempts: this.#reconnectAttempts
             });
@@ -217,7 +217,7 @@ export class WebSocketClient {
         if (this.#messageQueue.length > 0) {
             const queue = [...this.#messageQueue];
             this.#messageQueue = [];
-            
+
             queue.forEach(message => {
                 this.send(message, false); // Don't queue again
             });

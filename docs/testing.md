@@ -11,6 +11,10 @@ Based on recent debugging efforts (documented in `docs/PR/`), the following impr
 1. **Schema Fix**: Added `UNIQUE(article_id, model)` constraint to the `llm_scores` table to fix SQL `ON CONFLICT` issues
 2. **Enhanced Documentation**: Detailed troubleshooting steps for common test failures
 3. **Test Process**: Improved cleanup procedures to prevent port conflicts and database locks
+4. **✅ Performance Optimization (Task 4.1)**: Complete implementation with automated testing
+   - Critical CSS inlining, dynamic imports, service worker caching
+   - Resource hints and image optimization
+   - Performance testing with Puppeteer verifying Core Web Vitals targets
 
 ## Current Test Status
 
@@ -21,6 +25,7 @@ Based on recent debugging efforts (documented in `docs/PR/`), the following impr
 | `api` | ✅ PASS | All API endpoints function correctly |
 | **Editorial Templates** | ✅ PASS | **Template rendering, static assets, and responsive design verified** |
 | **Web Interface** | ✅ PASS | **Client-side functionality, caching, and user interactions working** |
+| **✅ Performance Tests** | ✅ PASS | **Puppeteer tests verify Core Web Vitals targets met (FCP: 60-424ms vs 1800ms target)** |
 | Go Unit Tests: `internal/db` | ✅ PASS | All database operations function correctly |
 | Go Unit Tests: `internal/api` | ✅ PASS | API layer works correctly |
 | Go Unit Tests: `internal/llm` | ❌ FAIL | Various failures related to score calculation logic. Specific details are pending further investigation and documentation. |

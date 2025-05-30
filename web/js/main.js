@@ -14,41 +14,41 @@ class NewsBalancerApp {
             performanceConsoleEnabled: true,
             debugMode: false
         };
-        
+
         this.init();
     }
 
     async init() {
         try {
             console.log('🚀 NewsBalancer Application Starting...');
-            
+
             // Register service worker for caching
             await this.registerServiceWorker();
-            
+
             // Initialize performance monitoring
             if (this.config.enablePerformanceMonitoring) {
                 await this.initializePerformanceMonitoring();
             }
-            
+
             // Initialize lazy loading
             if (this.config.enableLazyLoading) {
                 await this.initializeLazyLoading();
             }
-            
+
             // Set up global error handling
             this.setupErrorHandling();
-            
+
             // Initialize performance console if enabled
             if (this.config.performanceConsoleEnabled) {
                 this.setupPerformanceConsole();
             }
-            
+
             this.isInitialized = true;
             console.log('✅ NewsBalancer Application Initialized Successfully');
-            
+
             // Dispatch application ready event
             this.dispatchAppReadyEvent();
-            
+
         } catch (error) {
             console.error('❌ Failed to initialize NewsBalancer Application:', error);
         }
@@ -61,7 +61,7 @@ class NewsBalancerApp {
                 const registration = await navigator.serviceWorker.register('/static/sw.js', {
                     scope: '/'
                 });
-                
+
                 registration.addEventListener('updatefound', () => {
                     console.log('🔄 Service Worker update found');
                     const newWorker = registration.installing;
@@ -72,7 +72,7 @@ class NewsBalancerApp {
                         }
                     });
                 });
-                
+
                 console.log('✅ Service Worker registered successfully');
             } catch (error) {
                 console.warn('⚠️  Service Worker registration failed:', error);

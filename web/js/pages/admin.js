@@ -24,10 +24,10 @@ class AdminDashboardPage {
     this.feedHealthMonitor = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
-    
+
     // Initialize API client
     this.apiClient = new ApiClient();
-    
+
     this.init();
   }
 
@@ -41,7 +41,7 @@ class AdminDashboardPage {
       this.setupRealTimeUpdates();
       this.updatePageTitle();
       this.hideLoadingState();
-      
+
       // Set up periodic refresh
       this.setupPeriodicRefresh();
     } catch (error) {
@@ -55,15 +55,15 @@ class AdminDashboardPage {
       // Load feed health data
       const feedHealthResponse = await this.apiClient.get('/api/admin/feeds/health');
       this.feedHealthData = feedHealthResponse.data;
-      
+
       // Load system statistics
       const statsResponse = await this.apiClient.get('/api/admin/stats');
       this.systemStats = statsResponse.data;
-      
+
       this.renderFeedHealth();
       this.renderSystemStats();
       this.renderFeedManagement();
-      
+
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
       throw error;
@@ -89,7 +89,7 @@ class AdminDashboardPage {
     if (!container || !this.feedHealthData) return;
 
     const { feeds, overall } = this.feedHealthData;
-    
+
     // Overall status card
     const overallCard = document.getElementById('overall-status-card');
     if (overallCard) {
@@ -159,7 +159,7 @@ class AdminDashboardPage {
           </div>
         </div>
       `).join('');
-      
+
       feedListContainer.innerHTML = feedsHtml;
     }
   }
@@ -169,7 +169,7 @@ class AdminDashboardPage {
     if (!container || !this.systemStats) return;
 
     const stats = this.systemStats;
-    
+
     container.innerHTML = `
       <div class="stats-grid">
         <div class="stat-card">
@@ -241,7 +241,7 @@ class AdminDashboardPage {
 
     const ctx = canvas.getContext('2d');
     const { feeds } = this.feedHealthData;
-    
+
     const statusCounts = {
       healthy: 0,
       warning: 0,
@@ -358,7 +358,7 @@ class AdminDashboardPage {
   setupTextCharts() {
     // Fallback text-based charts for when Chart.js is not available
     console.log('Using text-based charts as fallback');
-    
+
     const feedHealthChart = document.getElementById('feed-health-chart');
     if (feedHealthChart && this.feedHealthData) {
       const { feeds } = this.feedHealthData;
@@ -424,11 +424,11 @@ class AdminDashboardPage {
           this.reconnectAttempts = 0;
           this.updateConnectionStatus('connected');
         },
-        
+
         onHealthUpdate: (data) => {
           this.handleFeedHealthUpdate(data);
         },
-        
+
         onError: (error) => {
           console.error('Feed health monitoring error:', error);
           this.updateConnectionStatus('error');
@@ -448,7 +448,7 @@ class AdminDashboardPage {
       this.renderFeedHealth();
       this.updateFeedHealthCharts();
     }
-    
+
     // Handle different update types
     switch (data.type) {
       case 'feed_update':
@@ -470,8 +470,8 @@ class AdminDashboardPage {
     const statusElement = document.querySelector('.connection-status');
     if (statusElement) {
       statusElement.className = `connection-status connection-status--${status}`;
-      statusElement.textContent = status === 'connected' ? 'Connected' : 
-                                  status === 'error' ? 'Connection Error' : 
+      statusElement.textContent = status === 'connected' ? 'Connected' :
+                                  status === 'error' ? 'Connection Error' :
                                   'Connection Failed';
     }
   }
@@ -479,7 +479,7 @@ class AdminDashboardPage {
   updateFeedStatus(feedUrl, newStatus) {
     if (this.feedHealthData && this.feedHealthData.feeds[feedUrl]) {
       this.feedHealthData.feeds[feedUrl] = { ...this.feedHealthData.feeds[feedUrl], ...newStatus };
-      
+
       // Update the feed item in the UI
       const feedItem = document.querySelector(`[data-feed-url="${feedUrl}"]`);
       if (feedItem) {
@@ -489,7 +489,7 @@ class AdminDashboardPage {
           statusElement.textContent = newStatus.status.toUpperCase();
         }
       }
-      
+
       // Update the chart if available
       if (this.charts.feedHealth) {
         this.updateFeedHealthChart();
@@ -516,7 +516,7 @@ class AdminDashboardPage {
       statusCounts.warning,
       statusCounts.error
     ];
-    
+
     this.charts.feedHealth.update();
   }
 
@@ -713,7 +713,7 @@ class AdminDashboardPage {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
-    
+
     // Destroy charts to prevent memory leaks
     Object.values(this.charts).forEach(chart => {
       if (chart && typeof chart.destroy === 'function') {

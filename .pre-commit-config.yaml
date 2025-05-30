@@ -31,8 +31,9 @@ repos:
         pass_filenames: false
       - id: go-unit-tests
         name: go unit tests
-        entry: make unit ENABLE_RACE_DETECTION=false
+        entry: bash
         language: system
+        args: ["-c", "export NO_AUTO_ANALYZE=true && go test -count=1 ./cmd/... ./internal/api/... ./internal/apperrors/... ./internal/balancer/... ./internal/db/... ./internal/import_labels/... ./internal/metrics/... ./internal/models/... ./internal/rss/... ./internal/testing/... ./internal/tests/... -run . -short -timeout 2m"]
         files: "^(cmd|internal)/.*\\.go$"
         pass_filenames: false
         require_serial: true

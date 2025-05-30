@@ -9,41 +9,51 @@
  * - ARIA accessibility features
  * - Router integration for SPA-style navigation
  * - Brand logo and navigation links
+ * - Performance monitoring integration
  */
 
+// Import utilities for enhanced functionality
+import '../utils/ComponentPerformanceMonitor.js';
+
 class Navigation extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-
-    // Component state
-    this.#activeRoute = '';       // Current active route
-    this.#routes = [];           // Available navigation routes
-    this.#isMobileMenuOpen = false; // Mobile menu state
-    this.#brand = 'NewsBalancer';   // Brand text
-
-    // Bind event handlers
-    this.#handleNavClick = this.#handleNavClick.bind(this);
-    this.#handleKeyDown = this.#handleKeyDown.bind(this);
-    this.#handleMobileToggle = this.#handleMobileToggle.bind(this);
-    this.#handleResize = this.#handleResize.bind(this);
-    this.#handleFocus = this.#handleFocus.bind(this);
-    this.#handleBlur = this.#handleBlur.bind(this);
-
-    this.#render();
-    this.#attachEventListeners();
-  }
-
-  static get observedAttributes() {
-    return ['active-route', 'routes', 'brand', 'mobile-breakpoint'];
-  }
-
   // Private properties
   #activeRoute = '';
   #routes = [];
   #isMobileMenuOpen = false;
   #brand = 'NewsBalancer';
   #mobileBreakpoint = 768;
+  #renderStartTime = 0;
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });    // Initialize performance monitoring with debugging
+    try {
+      console.log('Navigation: Initializing performance monitoring...');
+      console.log('ComponentPerformanceMonitor available:', typeof window.ComponentPerformanceMonitor);
+
+      this.performanceMonitor = new window.ComponentPerformanceMonitor('Navigation');
+      this.performanceMonitor.startRender();
+
+      console.log('Navigation: Performance monitor created successfully');
+    } catch (error) {
+      console.error('Navigation: Failed to initialize performance monitoring:', error);
+      this.performanceMonitor = null;
+    }
+
+    // Set initial render time
+    this.#renderStartTime = performance.now();
+
+    this.#render();
+    this.#attachEventListeners();
+    this.#recordRenderTime();
+
+    if (this.performanceMonitor) {
+      this.performanceMonitor.endRender();
+    }
+  }
+
+  static get observedAttributes() {
+    return ['active-route', 'routes', 'brand', 'mobile-breakpoint'];
+  }
 
   // Getters and setters
   get activeRoute() {
@@ -115,9 +125,10 @@ class Navigation extends HTMLElement {
       preventDefault: false
     });
   }
-
   // Lifecycle methods
   connectedCallback() {
+    this.performanceMonitor?.mount();
+
     this.#updateFromAttributes();
     this.#setupDefaultRoutes();
 
@@ -132,6 +143,8 @@ class Navigation extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.performanceMonitor?.unmount();
+
     window.removeEventListener('resize', this.#handleResize);
     window.removeEventListener('popstate', this.#handlePopState.bind(this));
   }
@@ -549,10 +562,16 @@ class Navigation extends HTMLElement {
       brandLink.addEventListener('click', this.#handleNavClick);
     }
   }
-
   #handleNavClick(event) {
     const target = event.currentTarget;
     const route = target.getAttribute('data-route') || target.getAttribute('href');
+
+    // Track interaction
+    this.performanceMonitor?.trackInteraction('nav-click', {
+      route: route,
+      target: target.tagName,
+      isMobile: this.#isMobileMenuOpen
+    });
 
     // Dispatch navigation event
     const navigationEvent = this.#dispatchEvent('navigationchange', {
@@ -621,8 +640,13 @@ class Navigation extends HTMLElement {
         break;
     }
   }
-
   #handleMobileToggle() {
+    // Track interaction
+    this.performanceMonitor?.trackInteraction('mobile-toggle', {
+      isOpen: this.#isMobileMenuOpen,
+      screenWidth: window.innerWidth
+    });
+
     this.toggleMobileMenu();
   }
 
@@ -761,6 +785,20 @@ class Navigation extends HTMLElement {
 
     this.dispatchEvent(event);
     return event;
+  }
+
+  #recordRenderTime() {
+    const endTime = performance.now();
+    const renderTime = endTime - this.#renderStartTime;
+
+    // Track render performance
+    this.performanceMonitor?.trackEvent('render-complete', {
+      duration: renderTime,
+      routeCount: this.#routes.length,
+      isMobile: this.#isMobileMenuOpen
+    });
+
+    console.log(`Navigation rendered in ${renderTime.toFixed(2)}ms`);
   }
 }
 

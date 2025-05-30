@@ -24,10 +24,10 @@ class ArticleDetailPage {
     this.progressIndicator = null;
     this.biasSlider = null;
     this.feedbackForm = null;
-    
+
     // Initialize API client
     this.apiClient = new ApiClient();
-    
+
     this.init();
   }
 
@@ -106,8 +106,8 @@ class ArticleDetailPage {
           <span class="article-word-count">${this.article.metadata.wordCount} words</span>
         </div>
         <div class="article-actions">
-          <a href="${this.escapeHtml(this.article.url)}" 
-             target="_blank" 
+          <a href="${this.escapeHtml(this.article.url)}"
+             target="_blank"
              rel="noopener noreferrer"
              class="btn btn-outline">
             Read Original
@@ -126,8 +126,8 @@ class ArticleDetailPage {
     if (!contentContainer || !this.article.content) return;
 
     // Sanitize content using DOMPurify if available
-    const sanitizedContent = window.DOMPurify ? 
-      window.DOMPurify.sanitize(this.article.content) : 
+    const sanitizedContent = window.DOMPurify ?
+      window.DOMPurify.sanitize(this.article.content) :
       this.escapeHtml(this.article.content);
 
     contentContainer.innerHTML = `
@@ -157,12 +157,12 @@ class ArticleDetailPage {
           <span class="confidence-value">${confidence.toFixed(1)}%</span>
         </div>
       </div>
-      
+
       <div class="main-bias-slider">
         <label for="article-bias-slider" class="bias-slider-label">
           Overall Bias Score: <strong>${biasLabel}</strong>
         </label>
-        <bias-slider 
+        <bias-slider
           id="article-bias-slider"
           value="${this.article.bias.score}"
           article-id="${this.articleId}"
@@ -172,7 +172,7 @@ class ArticleDetailPage {
       </div>
 
       ${this.article.analysis ? this.renderBiasBreakdown() : ''}
-      
+
       ${this.isAdmin ? this.renderManualScoringControls() : ''}
     `;
   }
@@ -219,8 +219,8 @@ class ArticleDetailPage {
         </div>
         <div class="model-bias-indicator">
           <div class="bias-bar">
-            <div class="bias-fill" 
-                 style="left: ${(model.score + 1) * 50}%; 
+            <div class="bias-fill"
+                 style="left: ${(model.score + 1) * 50}%;
                         background-color: ${this.getBiasColor(model.score)}">
             </div>
           </div>
@@ -257,27 +257,27 @@ class ArticleDetailPage {
         <form id="manual-score-form">
           <div class="form-group">
             <label for="manual-score">Bias Score (-1 to 1)</label>
-            <input type="number" 
-                   id="manual-score" 
-                   min="-1" 
-                   max="1" 
-                   step="0.01" 
+            <input type="number"
+                   id="manual-score"
+                   min="-1"
+                   max="1"
+                   step="0.01"
                    value="${this.article.bias.score}"
                    required>
           </div>
           <div class="form-group">
             <label for="manual-confidence">Confidence (0 to 1)</label>
-            <input type="number" 
-                   id="manual-confidence" 
-                   min="0" 
-                   max="1" 
-                   step="0.01" 
+            <input type="number"
+                   id="manual-confidence"
+                   min="0"
+                   max="1"
+                   step="0.01"
                    value="${this.article.bias.confidence}"
                    required>
           </div>
           <div class="form-group">
             <label for="scoring-notes">Notes (optional)</label>
-            <textarea id="scoring-notes" 
+            <textarea id="scoring-notes"
                       placeholder="Explanation for manual scoring..."></textarea>
           </div>
           <div class="form-actions">
@@ -309,12 +309,12 @@ class ArticleDetailPage {
     const progressContainer = document.querySelector('.progress-container');
     if (progressContainer) {
       progressContainer.innerHTML = `
-        <progress-indicator 
+        <progress-indicator
           id="analysis-progress"
           style="display: none;">
         </progress-indicator>
       `;
-      
+
       this.progressIndicator = document.querySelector('#analysis-progress');
     }
   }
@@ -338,8 +338,8 @@ class ArticleDetailPage {
         </div>
         <div class="form-group">
           <label for="feedback-message">Message</label>
-          <textarea id="feedback-message" 
-                    required 
+          <textarea id="feedback-message"
+                    required
                     placeholder="Please describe your feedback..."></textarea>
         </div>
         <button type="submit" class="btn btn-primary">Submit Feedback</button>
@@ -395,7 +395,7 @@ class ArticleDetailPage {
     } catch (error) {
       console.error('Failed to update bias score:', error);
       this.showErrorMessage('Failed to update bias score');
-      
+
       // Revert the slider
       if (this.biasSlider) {
         this.biasSlider.value = this.article.bias.score;
@@ -436,16 +436,16 @@ class ArticleDetailPage {
       onConnect: () => {
         console.log('Progress tracking connected');
       },
-      
+
       onProgress: (progress) => {
         this.updateProgressIndicator(progress);
       },
-      
+
       onComplete: (result) => {
         this.progressTracker.stop();
         this.onAnalysisComplete();
       },
-      
+
       onError: (error) => {
         console.error('Progress tracking error:', error);
         this.progressTracker.stop();
@@ -458,7 +458,7 @@ class ArticleDetailPage {
     this.analysisInProgress = false;
     this.hideProgressIndicator();
     this.showSuccessMessage('Article re-analysis completed');
-    
+
     // Reload article data
     await this.loadArticle();
   }
@@ -477,7 +477,7 @@ class ArticleDetailPage {
     const shouldShow = show !== null ? show : !isVisible;
 
     manualScoring.style.display = shouldShow ? 'block' : 'none';
-    
+
     if (shouldShow) {
       const scoreInput = document.querySelector('#manual-score');
       if (scoreInput) scoreInput.focus();
@@ -502,7 +502,7 @@ class ArticleDetailPage {
 
       this.article.bias.score = score;
       this.article.bias.confidence = confidence;
-      
+
       this.renderBiasAnalysis();
       this.toggleManualScoring(false);
       this.showSuccessMessage('Manual score updated successfully');
@@ -548,7 +548,7 @@ class ArticleDetailPage {
     if (!relatedSection || !articles.length) return;
 
     const articlesHtml = articles.map(article => `
-      <article-card 
+      <article-card
         article-id="${article.id}"
         compact="true"
         clickable="true">
@@ -591,7 +591,7 @@ class ArticleDetailPage {
   checkUserPermissions() {
     // Check if user has admin permissions
     // This would typically check authentication/authorization
-    this.isAdmin = window.location.pathname.includes('/admin') || 
+    this.isAdmin = window.location.pathname.includes('/admin') ||
                   document.body.classList.contains('admin-mode');
   }
 

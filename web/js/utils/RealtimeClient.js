@@ -135,7 +135,7 @@ export class RealtimeClient {
         // Convert HTTP endpoint to WebSocket URL
         const wsUrl = endpoint.replace(/^https?:/, window.location.protocol === 'https:' ? 'wss:' : 'ws:');
         const url = new URL(wsUrl, window.location.origin);
-        
+
         // Add parameters as query string for WebSocket
         Object.entries(params).forEach(([key, value]) => {
             url.searchParams.append(key, value);
@@ -217,7 +217,7 @@ export class RealtimeClient {
      */
     #handleConnectionError(error) {
         console.error('RealtimeClient: Connection error', error);
-        
+
         this.#setConnectionState(CONNECTION_STATES.FAILED);
         this.#cleanup();
 
@@ -237,7 +237,7 @@ export class RealtimeClient {
             );
 
             console.log(`RealtimeClient: Reconnecting in ${delay}ms (attempt ${this.#reconnectAttempts + 1})`);
-            
+
             this.#setConnectionState(CONNECTION_STATES.RECONNECTING);
             this.#reconnectTimer = setTimeout(() => {
                 this.#reconnect();
@@ -267,7 +267,7 @@ export class RealtimeClient {
         this.#lastHeartbeat = Date.now();
         this.#heartbeatInterval = setInterval(() => {
             const timeSinceLastHeartbeat = Date.now() - this.#lastHeartbeat;
-            
+
             if (timeSinceLastHeartbeat > this.options.heartbeatInterval * 2) {
                 console.warn('RealtimeClient: Heartbeat timeout, connection may be stale');
                 this.#handleConnectionError(new Error('Heartbeat timeout'));
@@ -282,10 +282,10 @@ export class RealtimeClient {
         if (this.#connectionState !== state) {
             const previousState = this.#connectionState;
             this.#connectionState = state;
-            this.#emit('connection_state_changed', { 
-                state, 
+            this.#emit('connection_state_changed', {
+                state,
                 previousState,
-                reconnectAttempts: this.#reconnectAttempts 
+                reconnectAttempts: this.#reconnectAttempts
             });
         }
     }

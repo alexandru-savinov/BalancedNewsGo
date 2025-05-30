@@ -32,13 +32,13 @@ class ArticleCard extends HTMLElement {
     try {
       console.log('ArticleCard: Initializing performance monitoring...');
       console.log('ComponentPerformanceMonitor available:', typeof window.ComponentPerformanceMonitor);
-      
+
       this.performanceMonitor = new window.ComponentPerformanceMonitor('ArticleCard');
       console.log('Created performance monitor:', this.performanceMonitor);
       console.log('Performance monitor methods:', Object.getOwnPropertyNames(this.performanceMonitor));
-      
+
       this.performanceMonitor.startRender();
-      
+
       console.log('ArticleCard: Performance monitor created successfully');
     } catch (error) {
       console.error('ArticleCard: Failed to initialize performance monitoring:', error);
@@ -51,7 +51,7 @@ class ArticleCard extends HTMLElement {
     this.#render();
     this.#attachEventListeners();
     this.#recordRenderTime();
-    
+
     if (this.performanceMonitor) {
       this.performanceMonitor.endRender();
     }
@@ -128,7 +128,7 @@ class ArticleCard extends HTMLElement {
   }
   connectedCallback() {
     this.performanceMonitor?.mount();
-    
+
     // Set initial attributes from element attributes
     if (this.hasAttribute('article-data')) {
       this.article = this.getAttribute('article-data');
@@ -497,7 +497,7 @@ class ArticleCard extends HTMLElement {
             <picture>
               <source type="image/avif" data-srcset="">
               <source type="image/webp" data-srcset="">
-              <img class="lazy-image" 
+              <img class="lazy-image"
                    data-src=""
                    alt=""
                    width="300"
@@ -689,30 +689,30 @@ class ArticleCard extends HTMLElement {
     if (!this.#article || !this.imageContainer || !this.imageElement) return;
 
     const imageUrl = this.#article.image_url || this.#article.thumbnail || this.#article.image;
-    
+
     if (imageUrl) {
       // Show image container
       this.imageContainer.hidden = false;
-      
+
       // Set up optimized image sources
       const baseUrl = imageUrl.replace(/\.(jpg|jpeg|png)$/i, '');
       const extension = imageUrl.match(/\.(jpg|jpeg|png)$/i)?.[1] || 'jpg';
-      
+
       // Update picture sources for modern formats
       const avifSource = this.pictureElement.querySelector('source[type="image/avif"]');
       const webpSource = this.pictureElement.querySelector('source[type="image/webp"]');
-      
+
       if (avifSource) {
         avifSource.setAttribute('data-srcset', `${baseUrl}.avif`);
       }
       if (webpSource) {
         webpSource.setAttribute('data-srcset', `${baseUrl}.webp`);
       }
-      
+
       // Set fallback image
       this.imageElement.setAttribute('data-src', imageUrl);
       this.imageElement.alt = this.#escapeHtml(this.#article.title || 'Article image');
-      
+
       // Initialize lazy loading
       if (window.LazyLoader) {
         window.LazyLoader.observe(this.imageElement, {

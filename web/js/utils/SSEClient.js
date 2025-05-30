@@ -35,7 +35,7 @@ export class SSEClient {
      */
     connect(url, params = {}) {
         this.#url = url;
-        
+
         // Build URL with parameters
         const fullUrl = new URL(url, window.location.origin);
         Object.entries(params).forEach(([key, value]) => {
@@ -64,7 +64,7 @@ export class SSEClient {
 
             this.#eventSource.onerror = (event) => {
                 this.#isConnected = false;
-                
+
                 if (this.#eventSource.readyState === EventSource.CLOSED) {
                     this.#emit('disconnected', { event });
                     this.#handleReconnection();
@@ -85,17 +85,17 @@ export class SSEClient {
     #handleReconnection() {
         if (this.#reconnectAttempts < this.#maxReconnectAttempts) {
             const delay = this.#reconnectDelay * Math.pow(2, this.#reconnectAttempts);
-            
+
             setTimeout(() => {
                 this.#reconnectAttempts++;
-                this.#emit('reconnecting', { 
-                    attempt: this.#reconnectAttempts, 
-                    maxAttempts: this.#maxReconnectAttempts 
+                this.#emit('reconnecting', {
+                    attempt: this.#reconnectAttempts,
+                    maxAttempts: this.#maxReconnectAttempts
                 });
                 this.connect(this.#url);
             }, delay);
         } else {
-            this.#emit('failed', { 
+            this.#emit('failed', {
                 reason: 'Max reconnection attempts reached',
                 attempts: this.#reconnectAttempts
             });
@@ -194,7 +194,7 @@ export class SSEClient {
  */
 export function trackProgress(taskId, { onProgress, onComplete, onError, onConnect } = {}) {
     const client = new SSEClient();
-    
+
     // Set up event listeners
     if (onConnect) client.addEventListener('connected', onConnect);
     if (onProgress) client.addEventListener('progress', onProgress);
@@ -216,7 +216,7 @@ export function trackProgress(taskId, { onProgress, onComplete, onError, onConne
  */
 export function monitorFeedHealth({ onHealthUpdate, onConnect, onError } = {}) {
     const client = new SSEClient();
-    
+
     // Set up event listeners
     if (onConnect) client.addEventListener('connected', onConnect);
     if (onHealthUpdate) client.addEventListener('feed_health', onHealthUpdate);

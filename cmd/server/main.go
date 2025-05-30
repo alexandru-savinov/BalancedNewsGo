@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -59,13 +60,8 @@ import (
 // @tag.name Analysis
 // @tag.description Operations related to article analysis and summaries
 
-var legacyHTML bool
-
 func main() {
 	flag.Parse()
-
-	// Override the legacy HTML flag to always be false
-	legacyHTML = false
 
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
 
@@ -91,24 +87,23 @@ func main() {
 			return strings.Split(s, sep)
 		},
 	})
-
-	// Load Editorial HTML templates - check multiple possible paths
-	templatesPattern := "web/templates/*.html"
-	if matches, _ := filepath.Glob(templatesPattern); len(matches) == 0 {
-		// Try alternative paths if running from different directories
-		if matches, _ := filepath.Glob("./web/templates/*.html"); len(matches) > 0 {
-			templatesPattern = "./web/templates/*.html"
-		} else if matches, _ := filepath.Glob("../web/templates/*.html"); len(matches) > 0 {
-			templatesPattern = "../web/templates/*.html"
-		} else {
-			log.Fatalf("Could not find HTML templates. Searched: %s", templatesPattern)
-		}
+	// Get the directory of the currently running file (main.go)
+	_, mainGoFilePath, _, ok := runtime.Caller(0)
+	if !ok {
+		log.Fatal("Could not get current file path")
 	}
-	log.Printf("Loading templates from: %s", templatesPattern)
-	router.LoadHTMLGlob(templatesPattern)
+	cmdServerDir := filepath.Dir(mainGoFilePath) // Directory of main.go (e.g., d:/Dev/newbalancer_go/cmd/server)
+	cmdDir := filepath.Dir(cmdServerDir)         // cmd directory (e.g., d:/Dev/newbalancer_go/cmd)
+	projectRoot := filepath.Dir(cmdDir)          // Project root (e.g., d:/Dev/newbalancer_go)
 
-	// Serve static assets (CSS, JS, images, fonts)
-	router.Static("/static", "./web")
+	templatesPath := filepath.Join(projectRoot, "web", "templates", "*.html")
+	staticDir := filepath.Join(projectRoot, "web", "static") // The directory to serve static files from
+
+	log.Printf("Loading templates from: %s", templatesPath)
+	router.LoadHTMLGlob(templatesPath)
+
+	log.Printf("Serving static files from /static mapped to directory: %s", staticDir)
+	router.Static("/static", staticDir)
 
 	// @Summary Health Check
 	// @Description Returns the health status of the server.

@@ -7,6 +7,7 @@ var (
 	ErrLLMServiceUnavailable   = errors.New("LLM service unavailable")
 	ErrRateLimited             = ErrBothLLMKeysRateLimited // Alias for compatibility with old code
 	ErrAllScoresZeroConfidence = errors.New("all LLMs returned empty or zero-confidence responses")
+	ErrAllPerspectivesInvalid  = errors.New("all perspectives returned invalid scores")
 )
 
 // ErrAllPerspectivesInvalid indicates that despite attempting analysis across

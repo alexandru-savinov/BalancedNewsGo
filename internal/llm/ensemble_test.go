@@ -138,8 +138,8 @@ func TestEnsembleAnalyze(t *testing.T) {
 	assert.InDelta(t, 0.0, centerScore, 0.01)
 }
 
-// TestScoreWithModel_CacheUsage tests that ScoreWithModel uses the cache
-func TestScoreWithModel_CacheUsage(t *testing.T) {
+// TestScoreWithModelCacheUsage tests that ScoreWithModel uses the cache
+func TestScoreWithModelCacheUsage(t *testing.T) {
 	// Create a mock service that counts calls
 	callCount := 0
 	mockService := &mockLLMServiceTestEnsemble{
@@ -205,7 +205,7 @@ func (m *MockLLMService) ScoreContent(ctx context.Context, content, systemPrompt
 	return args.Get(0).(*db.LLMScore), args.Error(1)
 }
 
-func TestLLMClient_StreamingErrorDetection(t *testing.T) {
+func TestLLMClientStreamingErrorDetection(t *testing.T) {
 	// Test cases to check if streaming-related errors are properly detected and categorized
 	testCases := []struct {
 		name          string
@@ -264,13 +264,14 @@ func TestLLMClient_StreamingErrorDetection(t *testing.T) {
 				// Verify the converted error has the right properties
 				assert.Equal(t, ErrTypeStreaming, convertedError.ErrorType)
 				assert.Equal(t, 503, convertedError.StatusCode)
+				assert.Equal(t, "LLM streaming response failed", convertedError.Message)
 				assert.Contains(t, convertedError.ResponseBody, tc.errorMessage)
 			}
 		})
 	}
 }
 
-func TestLLMAPIError_ErrorPropagation(t *testing.T) {
+func TestLLMAPIErrorErrorPropagation(t *testing.T) {
 	// Test various types of LLMAPIError and verify their string representation
 	errorCases := []struct {
 		name           string

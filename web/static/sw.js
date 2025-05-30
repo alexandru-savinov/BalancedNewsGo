@@ -26,7 +26,7 @@ const STATIC_CACHE_URLS = [
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   console.log('[ServiceWorker] Install');
-  
+
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -46,7 +46,7 @@ self.addEventListener('install', (event) => {
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   console.log('[ServiceWorker] Activate');
-  
+
   event.waitUntil(
     caches.keys()
       .then((cacheNames) => {
@@ -70,12 +70,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  
+
   // Only handle GET requests
   if (request.method !== 'GET') {
     return;
   }
-  
+
   // Handle static assets with cache-first strategy
   if (isStaticAsset(url)) {
     event.respondWith(
@@ -84,21 +84,21 @@ self.addEventListener('fetch', (event) => {
           if (cachedResponse) {
             return cachedResponse;
           }
-          
+
           return fetch(request)
             .then((response) => {
               // Don't cache if not a valid response
               if (!response || response.status !== 200 || response.type !== 'basic') {
                 return response;
               }
-              
+
               // Clone the response to cache it
               const responseToCache = response.clone();
               caches.open(CACHE_NAME)
                 .then((cache) => {
                   cache.put(request, responseToCache);
                 });
-              
+
               return response;
             });
         })
@@ -110,7 +110,7 @@ self.addEventListener('fetch', (event) => {
         })
     );
   }
-  
+
   // Handle API requests with network-first strategy
   else if (isApiRequest(url)) {
     event.respondWith(
@@ -149,7 +149,7 @@ self.addEventListener('fetch', (event) => {
                     }
                   }
                 }
-                
+
                 // Return a basic offline response for API requests
                 return new Response(
                   JSON.stringify({
@@ -167,13 +167,13 @@ self.addEventListener('fetch', (event) => {
         })
     );
   }
-  
+
   // For all other requests, use default browser behavior
 });
 
 // Helper functions
 function isStaticAsset(url) {
-  return url.pathname.startsWith('/static/') || 
+  return url.pathname.startsWith('/static/') ||
          url.pathname.endsWith('.css') ||
          url.pathname.endsWith('.js') ||
          url.pathname.endsWith('.html') ||
@@ -190,7 +190,7 @@ function isApiRequest(url) {
 // Background sync for offline actions (future enhancement)
 self.addEventListener('sync', (event) => {
   console.log('[ServiceWorker] Background sync:', event.tag);
-  
+
   if (event.tag === 'background-sync') {
     event.waitUntil(
       // Handle background sync operations
@@ -202,7 +202,7 @@ self.addEventListener('sync', (event) => {
 // Push notifications (future enhancement)
 self.addEventListener('push', (event) => {
   console.log('[ServiceWorker] Push received');
-  
+
   const options = {
     body: 'New articles available',
     icon: '/static/icons/icon-192x192.png',
@@ -220,7 +220,7 @@ self.addEventListener('push', (event) => {
       }
     ]
   };
-  
+
   event.waitUntil(
     self.registration.showNotification('NewsBalancer', options)
   );
