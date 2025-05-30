@@ -18,11 +18,11 @@ class PerformanceMonitor {
 
     init() {
         if (typeof window === 'undefined') return;
-        
+
         // Core Web Vitals targets from requirements
         this.targets = {
             LCP: 2500,  // Largest Contentful Paint < 2.5s
-            FID: 100,   // First Input Delay < 100ms  
+            FID: 100,   // First Input Delay < 100ms
             CLS: 0.1,   // Cumulative Layout Shift < 0.1
             FCP: 1800,  // First Contentful Paint < 1.8s
             TTI: 3500   // Time to Interactive < 3.5s
@@ -34,7 +34,7 @@ class PerformanceMonitor {
         this.observeFCP();
         this.observeResourceTiming();
         this.startReporting();
-        
+
         // Track custom application metrics
         this.trackPageLoad();
         this.trackAPICallPerformance();
@@ -50,14 +50,14 @@ class PerformanceMonitor {
             const observer = new PerformanceObserver((entryList) => {
                 const entries = entryList.getEntries();
                 const lastEntry = entries[entries.length - 1];
-                
+
                 this.recordMetric('LCP', lastEntry.startTime, {
                     element: lastEntry.element?.tagName || 'unknown',
                     url: lastEntry.url || window.location.href,
                     isGood: lastEntry.startTime <= this.targets.LCP
                 });
             });
-            
+
             observer.observe({ entryTypes: ['largest-contentful-paint'] });
             this.observers.set('LCP', observer);
         } catch (error) {
@@ -66,7 +66,7 @@ class PerformanceMonitor {
     }
 
     /**
-     * Observe First Input Delay (FID)  
+     * Observe First Input Delay (FID)
      */
     observeFID() {
         if (!('PerformanceObserver' in window)) return;
@@ -80,7 +80,7 @@ class PerformanceMonitor {
                     });
                 }
             });
-            
+
             observer.observe({ entryTypes: ['first-input'] });
             this.observers.set('FID', observer);
         } catch (error) {
@@ -102,12 +102,12 @@ class PerformanceMonitor {
                         clsValue += entry.value;
                     }
                 }
-                
+
                 this.recordMetric('CLS', clsValue, {
                     isGood: clsValue <= this.targets.CLS
                 });
             });
-            
+
             observer.observe({ entryTypes: ['layout-shift'] });
             this.observers.set('CLS', observer);
         } catch (error) {
@@ -131,7 +131,7 @@ class PerformanceMonitor {
                     }
                 }
             });
-            
+
             observer.observe({ entryTypes: ['paint'] });
             this.observers.set('FCP', observer);
         } catch (error) {
@@ -157,7 +157,7 @@ class PerformanceMonitor {
                     }
                 }
             });
-            
+
             observer.observe({ entryTypes: ['resource'] });
             this.observers.set('RESOURCE', observer);
         } catch (error) {
@@ -189,11 +189,11 @@ class PerformanceMonitor {
         window.fetch = async (...args) => {
             const start = performance.now();
             const url = args[0];
-            
+
             try {
                 const response = await originalFetch.apply(this, args);
                 const duration = performance.now() - start;
-                
+
                 if (typeof url === 'string' && url.includes('/api/')) {
                     this.recordMetric('API_CALL', duration, {
                         url: url,
@@ -201,7 +201,7 @@ class PerformanceMonitor {
                         success: response.ok
                     });
                 }
-                
+
                 return response;
             } catch (error) {
                 const duration = performance.now() - start;
@@ -261,7 +261,7 @@ class PerformanceMonitor {
             const metric = Array.from(this.metrics.values())
                 .filter(m => m.name === name)
                 .sort((a, b) => b.timestamp - a.timestamp)[0];
-            
+
             if (metric) {
                 summary.coreWebVitals[name] = {
                     value: metric.value,
@@ -313,10 +313,10 @@ class PerformanceMonitor {
         if (this.pendingMetrics.length === 0) return;
 
         const metricsToSend = this.pendingMetrics.splice(0, this.config.batchSize);
-        
+
         try {
             const method = immediate ? 'sendBeacon' : 'fetch';
-            
+
             if (immediate && 'sendBeacon' in navigator) {
                 navigator.sendBeacon(
                     this.config.reportingEndpoint,
@@ -352,17 +352,17 @@ class PerformanceMonitor {
     getPerformanceScore() {
         const summary = this.getPerformanceSummary();
         const vitals = summary.coreWebVitals;
-        
+
         let score = 0;
         let totalVitals = 0;
-        
+
         for (const [name, data] of Object.entries(vitals)) {
             if (data && typeof data.value === 'number') {
                 totalVitals++;
                 if (data.isGood) score += 25; // Each vital worth 25 points
             }
         }
-        
+
         return totalVitals > 0 ? (score / totalVitals) * 4 : 0; // Scale to 0-100
     }
 }

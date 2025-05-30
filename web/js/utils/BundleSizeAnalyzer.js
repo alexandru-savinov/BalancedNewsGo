@@ -13,7 +13,7 @@ class BundleSizeAnalyzer {
       loadTimes: {},
       compressionRatio: null
     };
-    
+
     this.init();
   }
 
@@ -75,7 +75,7 @@ class BundleSizeAnalyzer {
               transferSize: entry.transferSize || 0,
               encodedBodySize: entry.encodedBodySize || 0,
               decodedBodySize: entry.decodedBodySize || 0,
-              compressionRatio: entry.encodedBodySize > 0 
+              compressionRatio: entry.encodedBodySize > 0
                 ? (entry.decodedBodySize / entry.encodedBodySize).toFixed(2)
                 : 1
             };
@@ -189,11 +189,11 @@ class BundleSizeAnalyzer {
 
   displayReport() {
     const report = this.generateReport();
-    
+
     console.group('📊 Bundle Size Analysis Report');
     console.log('Summary:', report.summary);
     console.log('Performance:', report.performance);
-    
+
     if (report.recommendations.length > 0) {
       console.group('💡 Recommendations');
       report.recommendations.forEach(rec => {
@@ -202,9 +202,9 @@ class BundleSizeAnalyzer {
       });
       console.groupEnd();
     }
-    
+
     console.groupEnd();
-    
+
     return report;
   }
 
@@ -214,7 +214,7 @@ class BundleSizeAnalyzer {
       const link = document.createElement('link');
       link.rel = 'preload';
       link.href = url;
-      
+
       if (url.endsWith('.js')) {
         link.as = 'script';
       } else if (url.endsWith('.css')) {
@@ -222,7 +222,7 @@ class BundleSizeAnalyzer {
       } else if (url.match(/\.(jpg|jpeg|png|webp|svg)$/i)) {
         link.as = 'image';
       }
-      
+
       document.head.appendChild(link);
     });
   }
@@ -244,9 +244,9 @@ class BundleSizeAnalyzer {
           const lastEntry = entries[entries.length - 1];
           resolve(lastEntry ? lastEntry.startTime : null);
         });
-        
+
         observer.observe({ entryTypes: ['largest-contentful-paint'] });
-        
+
         // Fallback timeout
         setTimeout(() => resolve(null), 5000);
       } else {

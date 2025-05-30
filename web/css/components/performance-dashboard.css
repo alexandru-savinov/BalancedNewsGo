@@ -287,27 +287,27 @@
         background-color: #1f2937;
         border-color: #374151;
     }
-    
+
     .metric-card-header h3,
     .chart-title,
     .log-title,
     .section-title {
         color: #f9fafb;
     }
-    
+
     .metric-value {
         color: #f9fafb;
     }
-    
+
     .log-container {
         background-color: #111827;
         border-color: #374151;
     }
-    
+
     .log-time {
         color: #9ca3af;
     }
-    
+
     .log-message {
         color: #d1d5db;
     }

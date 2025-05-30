@@ -10,17 +10,17 @@ class CriticalCSS {
             maxInlineSize: 14000, // 14KB recommended limit for critical CSS
             loadTimeout: 3000
         };
-        
+
         this.init();
     }
 
     init() {
         // Extract critical CSS that should be inlined
         this.defineCriticalStyles();
-        
+
         // Defer non-critical CSS loading
         this.deferNonCriticalCSS();
-        
+
         // Handle font loading optimization
         this.optimizeFontLoading();
     }
@@ -45,14 +45,14 @@ class CriticalCSS {
                 align-items: center;
                 padding: 0 1rem;
             }
-            
+
             .nav-brand {
                 font-size: 1.25rem;
                 font-weight: 600;
                 color: #333;
                 text-decoration: none;
             }
-            
+
             .nav-links {
                 display: flex;
                 list-style: none;
@@ -60,11 +60,11 @@ class CriticalCSS {
                 padding: 0;
                 margin-left: auto;
             }
-            
+
             .nav-links li {
                 margin-left: 1rem;
             }
-            
+
             .nav-links a {
                 color: #666;
                 text-decoration: none;
@@ -72,7 +72,7 @@ class CriticalCSS {
                 border-radius: 4px;
                 transition: color 0.2s ease;
             }
-            
+
             .nav-links a:hover,
             .nav-links a[aria-current="page"] {
                 color: #f56a6a;
@@ -85,7 +85,7 @@ class CriticalCSS {
             * {
                 box-sizing: border-box;
             }
-            
+
             body {
                 margin: 0;
                 padding: 0;
@@ -96,18 +96,18 @@ class CriticalCSS {
                 background: #ffffff;
                 padding-top: 60px; /* Account for fixed nav */
             }
-            
+
             .container {
                 max-width: 1200px;
                 margin: 0 auto;
                 padding: 0 1rem;
             }
-            
+
             .main-content {
                 min-height: calc(100vh - 60px);
                 padding: 2rem 0;
             }
-            
+
             /* Loading states */
             .loading {
                 display: flex;
@@ -116,7 +116,7 @@ class CriticalCSS {
                 padding: 2rem;
                 color: #999;
             }
-            
+
             .loading::after {
                 content: '';
                 width: 20px;
@@ -127,12 +127,12 @@ class CriticalCSS {
                 animation: spin 1s linear infinite;
                 margin-left: 0.5rem;
             }
-            
+
             @keyframes spin {
                 0% { transform: rotate(0deg); }
                 100% { transform: rotate(360deg); }
             }
-            
+
             /* Error states */
             .error {
                 background: #fff5f5;
@@ -153,7 +153,7 @@ class CriticalCSS {
                 gap: 1.5rem;
                 margin: 2rem 0;
             }
-            
+
             .article-card {
                 background: #fff;
                 border: 1px solid #e0e0e0;
@@ -162,11 +162,11 @@ class CriticalCSS {
                 transition: box-shadow 0.2s ease;
                 cursor: pointer;
             }
-            
+
             .article-card:hover {
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
             }
-            
+
             .article-title {
                 font-size: 1.1rem;
                 font-weight: 600;
@@ -174,7 +174,7 @@ class CriticalCSS {
                 margin-bottom: 0.5rem;
                 line-height: 1.4;
             }
-            
+
             .article-meta {
                 display: flex;
                 align-items: center;
@@ -183,15 +183,15 @@ class CriticalCSS {
                 font-size: 0.9rem;
                 color: #666;
             }
-            
+
             .article-source {
                 font-weight: 500;
             }
-            
+
             .article-date {
                 opacity: 0.8;
             }
-            
+
             /* Bias slider critical styles */
             .bias-slider {
                 position: relative;
@@ -200,7 +200,7 @@ class CriticalCSS {
                 border-radius: 3px;
                 margin: 1rem 0;
             }
-            
+
             .bias-indicator {
                 position: absolute;
                 top: -3px;
@@ -220,34 +220,34 @@ class CriticalCSS {
                 .nav-links {
                     display: none;
                 }
-                
+
                 .container {
                     padding: 0 0.5rem;
                 }
-                
+
                 .articles-grid {
                     grid-template-columns: 1fr;
                     gap: 1rem;
                 }
-                
+
                 .article-card {
                     padding: 1rem;
                 }
-                
+
                 body {
                     font-size: 12pt;
                 }
             }
-            
+
             @media (max-width: 480px) {
                 .main-content {
                     padding: 1rem 0;
                 }
-                
+
                 .article-title {
                     font-size: 1rem;
                 }
-                
+
                 body {
                     font-size: 11pt;
                 }
@@ -260,16 +260,16 @@ class CriticalCSS {
      */
     injectCriticalCSS() {
         const criticalCSS = Array.from(this.criticalStyles.values()).join('\n');
-        
+
         // Check if critical CSS would exceed size limit
         if (criticalCSS.length > this.config.maxInlineSize) {
             console.warn(`Critical CSS size (${criticalCSS.length}) exceeds recommended limit (${this.config.maxInlineSize})`);
         }
-        
+
         const style = document.createElement('style');
         style.textContent = criticalCSS;
         style.setAttribute('data-critical', 'true');
-        
+
         // Insert before any existing stylesheets
         const firstLink = document.head.querySelector('link[rel="stylesheet"]');
         if (firstLink) {
@@ -277,7 +277,7 @@ class CriticalCSS {
         } else {
             document.head.appendChild(style);
         }
-        
+
         console.log(`Injected ${criticalCSS.length} bytes of critical CSS`);
     }
 
@@ -287,7 +287,7 @@ class CriticalCSS {
     deferNonCriticalCSS() {
         // Mark existing stylesheets as non-critical
         const stylesheets = document.querySelectorAll('link[rel="stylesheet"]');
-        
+
         stylesheets.forEach(link => {
             if (!this.isCriticalStylesheet(link.href)) {
                 this.deferStylesheet(link);
@@ -303,7 +303,7 @@ class CriticalCSS {
             '/css/normalize.css',
             '/css/critical.css'
         ];
-        
+
         return criticalPatterns.some(pattern => href.includes(pattern));
     }
 
@@ -317,7 +317,7 @@ class CriticalCSS {
             link.media = 'all';
             this.loadedStyles.add(link.href);
         };
-        
+
         // Fallback for browsers that don't support onload
         setTimeout(() => {
             if (!this.loadedStyles.has(link.href)) {
@@ -337,13 +337,13 @@ class CriticalCSS {
                 font-family: 'Open Sans';
                 font-display: swap;
             }
-            
+
             @font-face {
                 font-family: 'Roboto Slab';
                 font-display: swap;
             }
         `;
-        
+
         const style = document.createElement('style');
         style.textContent = fontOptimizations;
         style.setAttribute('data-font-optimizations', 'true');
@@ -359,24 +359,24 @@ class CriticalCSS {
                 resolve();
                 return;
             }
-            
+
             const link = document.createElement('link');
             link.rel = 'stylesheet';
             link.href = href;
-            
+
             if (options.media) {
                 link.media = options.media;
             }
-            
+
             link.onload = () => {
                 this.loadedStyles.add(href);
                 resolve();
             };
-            
+
             link.onerror = () => {
                 reject(new Error(`Failed to load CSS: ${href}`));
             };
-            
+
             document.head.appendChild(link);
         });
     }

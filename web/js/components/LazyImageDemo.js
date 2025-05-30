@@ -164,7 +164,7 @@ class LazyImageDemo extends HTMLElement {
     return images.map((image, index) => `
       <div class="image-card">
         <div class="image-container">
-          <img 
+          <img
             class="lazy-image"
             data-src="${image.src}"
             alt="${image.title}"

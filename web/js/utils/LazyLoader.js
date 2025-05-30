@@ -1,6 +1,6 @@
 /**
  * LazyLoader - Lazy loading utility for images and content
- * 
+ *
  * Features:
  * - Image lazy loading with IntersectionObserver
  * - Blur-to-clear progressive loading
@@ -110,11 +110,11 @@ class LazyLoader {
     } = config;
 
     const img = document.createElement('img');
-    
+
     // Set basic attributes
     img.alt = alt;
     img.className = `lazy-image ${className}`.trim();
-    
+
     if (width) img.width = width;
     if (height) img.height = height;
     if (sizes) img.sizes = sizes;
@@ -185,7 +185,7 @@ class LazyLoader {
    */
   async loadImage(img) {
     const startTime = performance.now();
-    
+
     try {
       // Get actual source
       const src = img.dataset.src;
@@ -197,7 +197,7 @@ class LazyLoader {
 
       // Create new image for preloading
       const newImg = new Image();
-      
+
       if (srcset) newImg.srcset = srcset;
       if (img.sizes) newImg.sizes = img.sizes;
 
@@ -232,7 +232,7 @@ class LazyLoader {
 
     } catch (error) {
       console.warn('LazyLoader: Failed to load image', img.dataset.src, error);
-      
+
       // Set error placeholder
       img.src = this.options.errorPlaceholder;
       img.classList.remove(this.options.loadingClass);
@@ -259,7 +259,7 @@ class LazyLoader {
   generatePlaceholder(width = 300, height = 200, blur = false) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
+
     canvas.width = width;
     canvas.height = height;
 
@@ -267,7 +267,7 @@ class LazyLoader {
     const gradient = ctx.createLinearGradient(0, 0, width, height);
     gradient.addColorStop(0, this.options.placeholderColor);
     gradient.addColorStop(1, '#e0e0e0');
-    
+
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
 
@@ -304,7 +304,7 @@ class LazyLoader {
   preloadCriticalImages() {
     // Look for images marked as critical
     const criticalImages = document.querySelectorAll('img[data-critical="true"]');
-    
+
     criticalImages.forEach(img => {
       const src = img.dataset.src || img.src;
       if (src && !this.loadedImages.has(src)) {
@@ -391,8 +391,8 @@ class LazyLoader {
       totalImages: entries.length,
       successfulLoads: successful.length,
       failedLoads: failed.length,
-      averageLoadTime: successful.length > 0 
-        ? successful.reduce((sum, e) => sum + e.loadTime, 0) / successful.length 
+      averageLoadTime: successful.length > 0
+        ? successful.reduce((sum, e) => sum + e.loadTime, 0) / successful.length
         : 0,
       totalDataTransferred: successful.reduce((sum, e) => sum + e.size, 0),
       successRate: entries.length > 0 ? (successful.length / entries.length) * 100 : 0
@@ -407,7 +407,7 @@ class LazyLoader {
       this.observer.disconnect();
       this.observer = null;
     }
-    
+
     this.lazyImages.clear();
     this.loadedImages.clear();
     this.performanceEntries = [];

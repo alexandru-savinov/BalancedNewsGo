@@ -18,7 +18,7 @@ class CodeSplitter {
      */
     async loadChart() {
         const moduleKey = 'chart';
-        
+
         if (this.loadedModules.has(moduleKey)) {
             return this.loadedModules.get(moduleKey);
         }
@@ -45,11 +45,11 @@ class CodeSplitter {
 
             // Fallback to CDN
             await this._loadScript('https://cdn.jsdelivr.net/npm/chart.js');
-            
+
             if (typeof window.Chart === 'undefined') {
                 throw new Error('Chart.js failed to load');
             }
-            
+
             return window.Chart;
         });
 
@@ -69,7 +69,7 @@ class CodeSplitter {
      */
     async loadDOMPurify() {
         const moduleKey = 'dompurify';
-        
+
         if (this.loadedModules.has(moduleKey)) {
             return this.loadedModules.get(moduleKey);
         }
@@ -96,11 +96,11 @@ class CodeSplitter {
 
             // Fallback to CDN
             await this._loadScript('https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js');
-            
+
             if (typeof window.DOMPurify === 'undefined') {
                 throw new Error('DOMPurify failed to load');
             }
-            
+
             return window.DOMPurify;
         });
 
@@ -159,11 +159,11 @@ class CodeSplitter {
             link.rel = 'preload';
             link.href = resource.href;
             link.as = resource.as;
-            
+
             if (resource.as === 'script') {
                 link.crossOrigin = 'anonymous';
             }
-            
+
             document.head.appendChild(link);
         });
     }
@@ -173,7 +173,7 @@ class CodeSplitter {
      */
     async _loadComponent(element) {
         const componentName = element.dataset.lazyComponent;
-        
+
         try {
             switch (componentName) {
                 case 'chart':
@@ -183,29 +183,29 @@ class CodeSplitter {
                         this._initializeChart(element);
                     }
                     break;
-                    
+
                 case 'bias-slider':
                     if (!customElements.get('bias-slider')) {
                         await this._loadScript('/js/components/BiasSlider.js');
                     }
                     break;
-                    
+
                 case 'article-card':
                     if (!customElements.get('article-card')) {
                         await this._loadScript('/js/components/ArticleCard.js');
                     }
                     break;
-                    
+
                 case 'progress-indicator':
                     if (!customElements.get('progress-indicator')) {
                         await this._loadScript('/js/components/ProgressIndicator.js');
                     }
                     break;
-                    
+
                 default:
                     console.warn(`Unknown lazy component: ${componentName}`);
             }
-            
+
             element.classList.add('lazy-loaded');
         } catch (error) {
             console.error(`Failed to load component ${componentName}:`, error);
@@ -218,8 +218,8 @@ class CodeSplitter {
      */
     async _loadAllComponents() {
         const components = ['BiasSlider', 'ArticleCard', 'ProgressIndicator', 'Navigation', 'Modal'];
-        
-        const loadPromises = components.map(component => 
+
+        const loadPromises = components.map(component =>
             this._loadScript(`/js/components/${component}.js`).catch(error => {
                 console.warn(`Failed to load ${component}:`, error);
             })
@@ -235,7 +235,7 @@ class CodeSplitter {
         try {
             const chartData = JSON.parse(element.dataset.chartData);
             const Chart = this.loadedModules.get('chart');
-            
+
             if (Chart && chartData) {
                 new Chart(element, chartData);
             }
@@ -252,21 +252,21 @@ class CodeSplitter {
             const script = document.createElement('script');
             script.src = src;
             script.async = true;
-            
+
             const timeout = setTimeout(() => {
                 reject(new Error(`Script load timeout: ${src}`));
             }, this.config.chunkLoadTimeout);
-            
+
             script.onload = () => {
                 clearTimeout(timeout);
                 resolve();
             };
-            
+
             script.onerror = () => {
                 clearTimeout(timeout);
                 reject(new Error(`Script load error: ${src}`));
             };
-            
+
             document.head.appendChild(script);
         });
     }
@@ -276,13 +276,13 @@ class CodeSplitter {
      */
     async _loadWithRetry(loadFunction) {
         let lastError;
-        
+
         for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
             try {
                 return await loadFunction();
             } catch (error) {
                 lastError = error;
-                
+
                 if (attempt < this.config.retryAttempts) {
                     const delay = this.config.retryDelay * attempt;
                     await new Promise(resolve => setTimeout(resolve, delay));
@@ -290,7 +290,7 @@ class CodeSplitter {
                 }
             }
         }
-        
+
         throw lastError;
     }
 

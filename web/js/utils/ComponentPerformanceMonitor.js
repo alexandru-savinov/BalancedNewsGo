@@ -1,6 +1,6 @@
 /**
  * ComponentPerformanceMonitor - Performance tracking for web components
- * 
+ *
  * Features:
  * - Component render time tracking
  * - User interaction performance metrics
@@ -18,7 +18,7 @@ class ComponentMonitorWrapper {
     this.componentName = componentName;
     this.renderStartTime = null;
     this.isEnabled = true;
-    
+
     // Get reference to global monitor instance (will be created later)
     this.globalMonitor = null;
   }
@@ -35,9 +35,9 @@ class ComponentMonitorWrapper {
 
   endRender() {
     if (!this.isEnabled || !this.renderStartTime || !this.globalMonitor) return;
-    
+
     this.globalMonitor.trackComponentRender(
-      this.componentName, 
+      this.componentName,
       this.renderStartTime
     );
     this.renderStartTime = null;
@@ -56,9 +56,9 @@ class ComponentMonitorWrapper {
   trackInteraction(type, data = {}) {
     if (!this.isEnabled || !this.globalMonitor) return;
     this.globalMonitor.trackInteraction(
-      this.componentName, 
-      type, 
-      performance.now(), 
+      this.componentName,
+      type,
+      performance.now(),
       data
     );
   }
@@ -195,7 +195,7 @@ class ComponentPerformanceMonitor {
     // Calculate time between phases if previous phase exists
     const componentTimings = this.lifecycleTimings.get(componentName);
     const phases = Array.from(componentTimings.keys());
-    
+
     if (phases.length > 1) {
       const previousPhase = phases[phases.length - 2];
       const previousTiming = componentTimings.get(previousPhase);
@@ -230,10 +230,10 @@ class ComponentPerformanceMonitor {
 
     component[methodName] = function(...args) {
       const startTime = performance.now();
-      
+
       try {
         const result = originalMethod.apply(this, args);
-        
+
         // Handle async methods
         if (result && typeof result.then === 'function') {
           return result.finally(() => {
@@ -318,10 +318,10 @@ class ComponentPerformanceMonitor {
 
       // Wrap constructor to auto-instrument components
       const originalConstructor = constructor;
-      
+
       // Note: This is a simplified approach. In practice, you might need more
       // sophisticated detection of component creation
-      
+
       return result;
     };
   }
@@ -335,9 +335,9 @@ class ComponentPerformanceMonitor {
     if (!this.componentMetrics.has(componentName)) {
       this.componentMetrics.set(componentName, []);
     }
-    
+
     this.componentMetrics.get(componentName).push(metric);
-    
+
     // Keep only last 100 metrics per component
     const metrics = this.componentMetrics.get(componentName);
     if (metrics.length > 100) {
@@ -354,9 +354,9 @@ class ComponentPerformanceMonitor {
     if (!this.interactionMetrics.has(componentName)) {
       this.interactionMetrics.set(componentName, []);
     }
-    
+
     this.interactionMetrics.get(componentName).push(metric);
-    
+
     // Keep only last 50 interaction metrics per component
     const metrics = this.interactionMetrics.get(componentName);
     if (metrics.length > 50) {
@@ -474,27 +474,27 @@ window.ComponentPerformanceMonitorClass = ComponentPerformanceMonitor;
 
 // Global utilities instance
 window.ComponentPerformanceUtils = {
-  track: (componentName, startTime, metadata) => 
+  track: (componentName, startTime, metadata) =>
     componentPerformanceMonitor.trackComponentRender(componentName, startTime, metadata),
-  
+
   trackInteraction: (componentName, type, startTime, data) =>
     componentPerformanceMonitor.trackInteraction(componentName, type, startTime, data),
-  
+
   trackLifecycle: (componentName, phase, metadata) =>
     componentPerformanceMonitor.trackLifecycle(componentName, phase, metadata),
-  
+
   instrument: (component, name, methods) =>
     componentPerformanceMonitor.instrumentComponent(component, name, methods),
-  
+
   getStats: (componentName) =>
     componentPerformanceMonitor.getComponentStats(componentName),
-  
+
   getAllStats: () =>
     componentPerformanceMonitor.getOverallStats(),
-  
+
   clear: () =>
     componentPerformanceMonitor.clear(),
-  
+
   setEnabled: (enabled) =>
     componentPerformanceMonitor.setEnabled(enabled)
 };

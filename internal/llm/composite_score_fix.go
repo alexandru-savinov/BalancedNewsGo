@@ -124,17 +124,17 @@ func hasNonZeroConfidenceInMetadata(score db.LLMScore) bool {
 	if score.Metadata == "" {
 		return false
 	}
-	
+
 	var metadata map[string]interface{}
 	if err := json.Unmarshal([]byte(score.Metadata), &metadata); err != nil {
 		return false // Malformed metadata treated as zero confidence
 	}
-	
+
 	confidenceValue, ok := metadata["confidence"]
 	if !ok {
 		return false
 	}
-	
+
 	confidenceFloat, ok := confidenceValue.(float64)
 	return ok && confidenceFloat > 0.0
 }
@@ -143,26 +143,26 @@ func hasNonZeroConfidenceInMetadata(score db.LLMScore) bool {
 func countNonEnsembleScores(scores []db.LLMScore) (int, bool) {
 	nonEnsembleCount := 0
 	allZeroConfidence := true
-	
+
 	for _, score := range scores {
 		if isEnsembleModel(score.Model) {
 			continue
 		}
-		
+
 		nonEnsembleCount++
 		if hasNonZeroConfidenceInMetadata(score) {
 			allZeroConfidence = false
 			break // Found one with non-zero confidence, no need to check further
 		}
 	}
-	
+
 	return nonEnsembleCount, allZeroConfidence
 }
 
 // checkForAllZeroResponses detects if all non-ensemble LLM responses have zero confidence.
 func checkForAllZeroResponses(scores []db.LLMScore) (bool, error) {
 	nonEnsembleCount, allZeroConfidence := countNonEnsembleScores(scores)
-	
+
 	if nonEnsembleCount == 0 {
 		return false, nil // No non-ensemble scores to check
 	}
@@ -180,7 +180,7 @@ func extractConfidenceFromMetadata(metadata string) float64 {
 	if metadata == "" {
 		return 0.0
 	}
-	
+
 	var metadataMap map[string]interface{}
 	if err := json.Unmarshal([]byte(metadata), &metadataMap); err == nil {
 		if conf, ok := metadataMap["confidence"].(float64); ok {
@@ -217,7 +217,7 @@ func processScoreForPerspective(score db.LLMScore, perspective string, cfg *Comp
 		validModels[perspective] = true
 		return true
 	}
-	
+
 	// Valid score
 	scoreMap[perspective] = score.Score
 	(*validCount)++
@@ -252,7 +252,7 @@ func processScoresByPerspective(perspectiveModels map[string][]db.LLMScore, cfg 
 				break
 			}
 		}
-		
+
 		// If we ignored all invalid scores and found no valid ones, don't mark this perspective as valid
 		if !foundValidScore && cfg.HandleInvalid == "ignore" {
 			// The perspective will keep its default value but won't be counted as valid
@@ -327,7 +327,7 @@ func logPerspectiveResults(perspectiveModels map[string][]db.LLMScore) {
 // mapModelsToPerspectives groups scores by perspective based on the configuration
 func mapModelsToPerspectives(scores []db.LLMScore, cfg *CompositeScoreConfig) map[string][]db.LLMScore {
 	perspectiveModels := make(map[string][]db.LLMScore)
-	
+
 	for _, score := range scores {
 		mapScoreToPerspective(score, cfg, perspectiveModels)
 	}
@@ -341,7 +341,7 @@ func checkAllScoresZero(scoreMap map[string]float64, actualValidCount int) bool 
 	if actualValidCount == 0 {
 		return false
 	}
-	
+
 	for _, score := range scoreMap {
 		if score != 0 {
 			return false
@@ -355,7 +355,7 @@ func findSingleValidScore(scoreMap map[string]float64, validModels map[string]bo
 	if actualValidCount != 1 {
 		return 0, false
 	}
-	
+
 	for perspective, score := range scoreMap {
 		if _, isValid := validModels[perspective]; isValid {
 			// Apply bounds before returning
@@ -374,7 +374,7 @@ func findSingleValidScore(scoreMap map[string]float64, validModels map[string]bo
 // computeScoreByFormula calculates score based on the specified formula
 func computeScoreByFormula(cfg *CompositeScoreConfig, sum float64, weightedSum float64, weightTotal float64, actualValidCount int) float64 {
 	var composite float64
-	
+
 	switch cfg.Formula {
 	case "weighted":
 		if weightTotal > 0 {
@@ -388,7 +388,7 @@ func computeScoreByFormula(cfg *CompositeScoreConfig, sum float64, weightedSum f
 	default:
 		composite = sum / float64(actualValidCount)
 	}
-	
+
 	return composite
 }
 

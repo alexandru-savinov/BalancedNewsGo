@@ -9,14 +9,14 @@ class PerformanceDashboard {
         this.charts = {};
         this.updateInterval = null;
         this.isInitialized = false;
-        
+
         this.init();
     }
 
     async init() {
         try {
             console.log('🚀 Initializing Performance Dashboard...');
-            
+
             // Wait for NewsBalancer app to be ready
             if (window.NewsBalancerApp) {
                 this.performanceMonitor = window.NewsBalancerApp.performanceMonitor;
@@ -28,9 +28,9 @@ class PerformanceDashboard {
                 });
                 return;
             }
-            
+
             this.setupDashboard();
-            
+
         } catch (error) {
             console.error('❌ Failed to initialize Performance Dashboard:', error);
         }
@@ -46,7 +46,7 @@ class PerformanceDashboard {
         this.setupCharts();
         this.startRealTimeUpdates();
         this.isInitialized = true;
-        
+
         console.log('✅ Performance Dashboard Initialized');
     }
 
@@ -281,10 +281,10 @@ class PerformanceDashboard {
 
         // Update summary cards
         this.updateSummaryCards(metrics);
-        
+
         // Update charts
         this.updateCharts(metrics);
-        
+
         // Update performance log
         this.updatePerformanceLog(metrics);
     }
@@ -293,13 +293,13 @@ class PerformanceDashboard {
         // Page Load Time
         const loadTime = metrics.pageLoadTime || 0;
         document.getElementById('page-load-time').textContent = Math.round(loadTime);
-        document.getElementById('load-time-status').className = 
+        document.getElementById('load-time-status').className =
             `metric-status ${loadTime < 1000 ? 'status-good' : loadTime < 3000 ? 'status-warning' : 'status-critical'}`;
 
         // Memory Usage
         const memory = (metrics.memory?.usedJSHeapSize || 0) / (1024 * 1024);
         document.getElementById('memory-usage').textContent = Math.round(memory);
-        document.getElementById('memory-status').className = 
+        document.getElementById('memory-status').className =
             `metric-status ${memory < 50 ? 'status-good' : memory < 100 ? 'status-warning' : 'status-critical'}`;
 
         // Component Count
@@ -321,16 +321,16 @@ class PerformanceDashboard {
         if (this.charts.renderPerformance && metrics.renderTimes?.length > 0) {
             const chart = this.charts.renderPerformance;
             const avgRenderTime = metrics.renderTimes.reduce((a, b) => a + b, 0) / metrics.renderTimes.length;
-            
+
             chart.data.labels.push(now);
             chart.data.datasets[0].data.push(avgRenderTime);
-            
+
             // Keep only last 20 data points
             if (chart.data.labels.length > 20) {
                 chart.data.labels.shift();
                 chart.data.datasets[0].data.shift();
             }
-            
+
             chart.update('none');
         }
 
@@ -338,15 +338,15 @@ class PerformanceDashboard {
         if (this.charts.memoryUsage && metrics.memory) {
             const chart = this.charts.memoryUsage;
             const memoryMB = metrics.memory.usedJSHeapSize / (1024 * 1024);
-            
+
             chart.data.labels.push(now);
             chart.data.datasets[0].data.push(memoryMB);
-            
+
             if (chart.data.labels.length > 20) {
                 chart.data.labels.shift();
                 chart.data.datasets[0].data.shift();
             }
-            
+
             chart.update('none');
         }
 
@@ -376,7 +376,7 @@ class PerformanceDashboard {
                     <span class="log-message">${event.message || JSON.stringify(event.data)}</span>
                 </div>
             `).join('');
-            
+
             logContainer.innerHTML = logHTML;
         }
     }
@@ -397,7 +397,7 @@ class PerformanceDashboard {
         const metrics = this.performanceMonitor.getMetrics();
         const dataStr = JSON.stringify(metrics, null, 2);
         const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        
+
         const url = URL.createObjectURL(dataBlob);
         const link = document.createElement('a');
         link.href = url;
@@ -412,7 +412,7 @@ class PerformanceDashboard {
         if (this.updateInterval) {
             clearInterval(this.updateInterval);
         }
-        
+
         Object.values(this.charts).forEach(chart => {
             if (chart && typeof chart.destroy === 'function') {
                 chart.destroy();
