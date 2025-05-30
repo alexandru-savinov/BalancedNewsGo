@@ -177,7 +177,7 @@ async function main() {
     const which = process.platform === 'win32' ? 'where' : 'which';
     const resolved = spawnSync(which, ['go'], { encoding: 'utf-8' });
     if (resolved.status === 0 && resolved.stdout) {
-      goCmd = resolved.stdout.split(/\r?\n/)[0];
+      goCmd = resolved.stdout.split(/\r?\n/)[0].trim();
     } else {
       console.error('[E2E PREP][Ingestion] Go executable not found.');
       process.exit(3);
