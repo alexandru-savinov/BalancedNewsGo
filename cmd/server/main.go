@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 
@@ -20,7 +21,6 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
-	"github.com/gin-gonic/gin"
 
 	_ "github.com/alexandru-savinov/BalancedNewsGo/docs" // This will import the generated docs
 	swaggerFiles "github.com/swaggo/files"
@@ -121,11 +121,10 @@ func main() {
 	// Register UI routes - using Editorial template rendering
 	log.Println("Using Editorial template rendering with server-side data")
 
-	// Serve templated HTML for articles list
-	router.GET("/articles", templateIndexHandler(dbConn))
-
-	// Serve templated HTML for article detail
-	router.GET("/article/:id", templateArticleHandler(dbConn))
+	// Register routes
+	router.GET("/articles", TemplateIndexHandler(dbConn))
+	router.GET("/article/:id", TemplateArticleHandler(dbConn))
+	router.GET("/admin", TemplateAdminHandler(dbConn))
 
 	// Root welcome endpoint - redirect to articles
 	router.GET("/", func(c *gin.Context) {
@@ -176,9 +175,6 @@ func main() {
 		}
 		c.JSON(200, outliers)
 	})
-
-	// Admin dashboard route
-	router.GET("/admin", templateAdminHandler(dbConn))
 
 	// Add Swagger route
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

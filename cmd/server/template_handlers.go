@@ -461,3 +461,14 @@ func templateAdminHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		c.HTML(http.StatusOK, adminTemplate, data)
 	}
 }
+
+// Change these handler functions to exported (capitalized) so they can be used in main.go
+func TemplateIndexHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return templateIndexHandler(dbConn)
+}
+func TemplateArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return templateArticleHandler(dbConn)
+}
+func TemplateAdminHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return templateAdminHandler(dbConn)
+}
