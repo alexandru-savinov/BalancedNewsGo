@@ -186,7 +186,7 @@ async function main() {
   console.log('---');
   console.log('[E2E PREP][Ingestion] Starting article ingestion job via Go CLI...');
   // Limit ingestion to 3 articles for faster tests
-  const ingestion = spawnSync(goCmd, ['run', 'cmd/fetch_articles/main.go', '--count=3'], { encoding: 'utf-8', env: { PATH: path.dirname(goCmd) } });
+  const ingestion = spawnSync(goCmd, ['run', 'cmd/fetch_articles/main.go', '--count=3'], { encoding: 'utf-8', env: { ...process.env, PATH: path.dirname(goCmd) } });
   if (ingestion.stdout) {
     console.log('[E2E PREP][Ingestion][stdout]:\n' + ingestion.stdout);
   }
