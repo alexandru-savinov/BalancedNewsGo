@@ -1,6 +1,23 @@
 # NewsBalancer Go Backend
 ![Coverage](https://go-coverage-badge.appspot.com/badge/github.com/alexandru-savinov/BalancedNewsGo.svg)
 
+## Getting Started
+
+To set up the development environment and install hooks for both Python and JavaScript, follow these steps:
+```bash
+# Install Node.js dependencies
+npm install
+
+# Initialize Husky and install Git hooks
+npm run prepare
+
+# Install Python pre-commit hooks
+pre-commit install
+```
+Ensure you have Python and pip installed, then run:
+```bash
+pip install pre-commit
+```
 
 A Go-based backend service that provides politically balanced news aggregation using LLM-based analysis with a modern, responsive web interface.
 

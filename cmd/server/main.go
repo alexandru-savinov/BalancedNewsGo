@@ -182,6 +182,9 @@ func main() {
 		c.JSON(200, outliers)
 	})
 
+	// Admin dashboard route
+	router.GET("/admin", templateAdminHandler(dbConn))
+
 	// Add Swagger route
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	// Start server

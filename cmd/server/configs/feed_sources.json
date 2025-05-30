@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "category": "left",
+      "url": "https://www.huffpost.com/section/front-page/feed"
+    },
+    {
+      "category": "center",
+      "url": "https://www.theguardian.com/world/rss"
+    },
+    {
+      "category": "right",
+      "url": "http://www.msnbc.com/feeds/latest"
+    }
+  ]
+}

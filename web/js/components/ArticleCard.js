@@ -9,39 +9,57 @@
  * - Click navigation handling
  * - Accessibility support
  * - Responsive design
+ * - Lazy loading for images
+ * - Performance monitoring integration
  */
 
+// Import utilities for enhanced functionality
+import '../utils/LazyLoader.js';
+import '../utils/PerformanceMonitor.js';
+import '../utils/ComponentPerformanceMonitor.js';
+
 class ArticleCard extends HTMLElement {
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
-
-    // Component state
-    this.#article = null;
-    this.#biasSlider = null;
-    this.#showBiasSlider = true;
-    this.#compact = false;
-    this.#clickable = true;
-
-    // Bind event handlers
-    this.#handleCardClick = this.#handleCardClick.bind(this);
-    this.#handleActionClick = this.#handleActionClick.bind(this);
-    this.#handleBiasChange = this.#handleBiasChange.bind(this);
-
-    this.#render();
-    this.#attachEventListeners();
-  }
-
-  static get observedAttributes() {
-    return ['article-data', 'show-bias-slider', 'compact', 'clickable'];
-  }
-
   // Private properties
   #article = null;
   #biasSlider = null;
   #showBiasSlider = true;
   #compact = false;
   #clickable = true;
+  #renderStartTime = 0;
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });    // Initialize performance monitoring with debugging
+    try {
+      console.log('ArticleCard: Initializing performance monitoring...');
+      console.log('ComponentPerformanceMonitor available:', typeof window.ComponentPerformanceMonitor);
+      
+      this.performanceMonitor = new window.ComponentPerformanceMonitor('ArticleCard');
+      console.log('Created performance monitor:', this.performanceMonitor);
+      console.log('Performance monitor methods:', Object.getOwnPropertyNames(this.performanceMonitor));
+      
+      this.performanceMonitor.startRender();
+      
+      console.log('ArticleCard: Performance monitor created successfully');
+    } catch (error) {
+      console.error('ArticleCard: Failed to initialize performance monitoring:', error);
+      this.performanceMonitor = null;
+    }
+
+    // Set initial render time
+    this.#renderStartTime = performance.now();
+
+    this.#render();
+    this.#attachEventListeners();
+    this.#recordRenderTime();
+    
+    if (this.performanceMonitor) {
+      this.performanceMonitor.endRender();
+    }
+  }
+
+  static get observedAttributes() {
+    return ['article-data', 'show-bias-slider', 'compact', 'clickable'];
+  }
 
   // Getters and setters
   get article() {
@@ -108,8 +126,9 @@ class ArticleCard extends HTMLElement {
         break;
     }
   }
-
   connectedCallback() {
+    this.performanceMonitor?.mount();
+    
     // Set initial attributes from element attributes
     if (this.hasAttribute('article-data')) {
       this.article = this.getAttribute('article-data');
@@ -126,6 +145,7 @@ class ArticleCard extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.performanceMonitor?.unmount();
     this.#removeEventListeners();
   }
 
@@ -242,15 +262,55 @@ class ArticleCard extends HTMLElement {
 
         .article-card__date {
           color: var(--color-secondary);
-        }
-
-        .article-card__content {
+        }        .article-card__content {
           flex: 1;
           margin-bottom: 1.5rem;
         }
 
         :host([compact]) .article-card__content {
           margin-bottom: 1rem;
+        }
+
+        .article-card__image {
+          margin-bottom: 1rem;
+          border-radius: 0.375rem;
+          overflow: hidden;
+        }
+
+        :host([compact]) .article-card__image {
+          margin-bottom: 0.75rem;
+        }
+
+        .article-card__image[hidden] {
+          display: none;
+        }
+
+        .article-card__image picture {
+          display: block;
+          width: 100%;
+        }
+
+        .article-card__image img {
+          width: 100%;
+          height: auto;
+          display: block;
+          transition: transform var(--transition-base);
+        }
+
+        .article-card:hover .article-card__image img {
+          transform: scale(1.02);
+        }
+
+        .lazy-image {
+          background: var(--color-bg-secondary);
+        }
+
+        .lazy-image.loading {
+          opacity: 0.7;
+        }
+
+        .lazy-image.loaded {
+          opacity: 1;
         }
 
         .article-card__excerpt {
@@ -432,9 +492,20 @@ class ArticleCard extends HTMLElement {
             <span class="article-card__source">Source</span>
             <time class="article-card__date" datetime="">Date</time>
           </div>
-        </div>
-
-        <div class="article-card__content">
+        </div>        <div class="article-card__content">
+          <div class="article-card__image" hidden>
+            <picture>
+              <source type="image/avif" data-srcset="">
+              <source type="image/webp" data-srcset="">
+              <img class="lazy-image" 
+                   data-src=""
+                   alt=""
+                   width="300"
+                   height="200"
+                   loading="lazy"
+                   decoding="async">
+            </picture>
+          </div>
           <p class="article-card__excerpt">Article excerpt will appear here...</p>
         </div>
 
@@ -465,14 +536,15 @@ class ArticleCard extends HTMLElement {
       </article>
     `;
 
-    this.shadowRoot.appendChild(template.content.cloneNode(true));
-
-    // Cache DOM elements
+    this.shadowRoot.appendChild(template.content.cloneNode(true));    // Cache DOM elements
     this.card = this.shadowRoot.querySelector('.article-card');
     this.titleElement = this.shadowRoot.querySelector('.article-card__title');
     this.linkElement = this.shadowRoot.querySelector('.article-card__link');
     this.sourceElement = this.shadowRoot.querySelector('.article-card__source');
     this.dateElement = this.shadowRoot.querySelector('.article-card__date');
+    this.imageContainer = this.shadowRoot.querySelector('.article-card__image');
+    this.imageElement = this.shadowRoot.querySelector('.lazy-image');
+    this.pictureElement = this.shadowRoot.querySelector('picture');
     this.excerptElement = this.shadowRoot.querySelector('.article-card__excerpt');
     this.biasSliderContainer = this.shadowRoot.querySelector('.bias-slider-container');
     this.biasSliderElement = this.shadowRoot.querySelector('bias-slider');
@@ -506,9 +578,14 @@ class ArticleCard extends HTMLElement {
   #removeEventListeners() {
     // Event listeners are automatically removed when element is removed from DOM
   }
-
   #handleCardClick(event) {
     if (!this.#clickable || !this.#article) return;
+
+    // Track interaction
+    this.performanceMonitor?.trackInteraction('card-click', {
+      target: event.target.tagName,
+      articleId: this.#article.id
+    });
 
     // Don't navigate if clicking on action buttons or bias slider
     if (event.target.closest('.article-card__actions') ||
@@ -529,6 +606,12 @@ class ArticleCard extends HTMLElement {
 
     const action = event.target.dataset.action;
 
+    // Track interaction
+    this.performanceMonitor?.trackInteraction('action-click', {
+      action,
+      articleId: this.#article?.id
+    });
+
     this.#dispatchEvent('articleaction', {
       action,
       article: this.#article,
@@ -537,6 +620,12 @@ class ArticleCard extends HTMLElement {
   }
 
   #handleBiasChange(event) {
+    // Track interaction
+    this.performanceMonitor?.trackInteraction('bias-change', {
+      value: event.detail.value,
+      articleId: this.#article?.id
+    });
+
     // Forward bias change events
     this.#dispatchEvent('biaschange', {
       ...event.detail,
@@ -562,12 +651,13 @@ class ArticleCard extends HTMLElement {
 
     const date = new Date(this.#article.pub_date || this.#article.publishedAt);
     this.dateElement.textContent = date.toLocaleDateString();
-    this.dateElement.setAttribute('datetime', date.toISOString());
-
-    // Update excerpt
+    this.dateElement.setAttribute('datetime', date.toISOString());    // Update excerpt
     const content = this.#article.content || this.#article.summary || '';
     const excerpt = this.#truncateText(content, this.#compact ? 100 : 150);
     this.excerptElement.textContent = this.#escapeHtml(excerpt);
+
+    // Update image if available
+    this.#updateImage();
 
     // Update bias slider
     const biasScore = this.#article.composite_score || this.#article.bias?.score || 0;
@@ -591,9 +681,52 @@ class ArticleCard extends HTMLElement {
       this.biasSliderContainer.hidden = !this.#showBiasSlider;
     }
   }
-
   #updateLayout() {
     // Layout changes are handled via CSS :host([compact]) selectors
+  }
+
+  #updateImage() {
+    if (!this.#article || !this.imageContainer || !this.imageElement) return;
+
+    const imageUrl = this.#article.image_url || this.#article.thumbnail || this.#article.image;
+    
+    if (imageUrl) {
+      // Show image container
+      this.imageContainer.hidden = false;
+      
+      // Set up optimized image sources
+      const baseUrl = imageUrl.replace(/\.(jpg|jpeg|png)$/i, '');
+      const extension = imageUrl.match(/\.(jpg|jpeg|png)$/i)?.[1] || 'jpg';
+      
+      // Update picture sources for modern formats
+      const avifSource = this.pictureElement.querySelector('source[type="image/avif"]');
+      const webpSource = this.pictureElement.querySelector('source[type="image/webp"]');
+      
+      if (avifSource) {
+        avifSource.setAttribute('data-srcset', `${baseUrl}.avif`);
+      }
+      if (webpSource) {
+        webpSource.setAttribute('data-srcset', `${baseUrl}.webp`);
+      }
+      
+      // Set fallback image
+      this.imageElement.setAttribute('data-src', imageUrl);
+      this.imageElement.alt = this.#escapeHtml(this.#article.title || 'Article image');
+      
+      // Initialize lazy loading
+      if (window.LazyLoader) {
+        window.LazyLoader.observe(this.imageElement, {
+          placeholder: true,
+          blur: true
+        });
+      } else {
+        // Fallback: load image immediately
+        this.imageElement.src = imageUrl;
+      }
+    } else {
+      // Hide image container if no image
+      this.imageContainer.hidden = true;
+    }
   }
 
   #updateClickableState() {
@@ -631,6 +764,19 @@ class ArticleCard extends HTMLElement {
       bubbles: true,
       composed: true
     }));
+  }
+
+  #recordRenderTime() {
+    const endTime = performance.now();
+    const renderTime = endTime - this.#renderStartTime;
+
+    // Track render performance
+    this.performanceMonitor?.trackEvent('render-complete', {
+      duration: renderTime,
+      compact: this.#compact
+    });
+
+    console.log(`ArticleCard rendered in ${renderTime.toFixed(2)}ms`);
   }
 }
 

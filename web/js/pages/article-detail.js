@@ -35,6 +35,7 @@ class ArticleDetailPage {
     try {
       this.showLoadingState();
       await this.loadArticle();
+      await this.loadDOMPurify(); // Load DOMPurify dynamically
       this.setupComponents();
       this.bindEventListeners();
       this.checkUserPermissions();
@@ -43,6 +44,19 @@ class ArticleDetailPage {
     } catch (error) {
       console.error('Failed to initialize article detail page:', error);
       this.showErrorState(error);
+    }
+  }
+
+  async loadDOMPurify() {
+    // Dynamic import of DOMPurify for content sanitization
+    if (!window.DOMPurify) {
+      try {
+        const DOMPurifyModule = await import('https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.es.js');
+        window.DOMPurify = DOMPurifyModule.default || DOMPurifyModule;
+      } catch (error) {
+        console.warn('Failed to load DOMPurify, using fallback HTML escaping:', error);
+        // Continue without DOMPurify - will use escapeHtml fallback
+      }
     }
   }
 

@@ -13,22 +13,22 @@
             background: #f8fafc;
             color: #1f2937;
         }
-        
+
         .header {
             text-align: center;
             margin-bottom: 3rem;
         }
-        
+
         .header h1 {
             color: #1f2937;
             margin-bottom: 0.5rem;
         }
-        
+
         .header p {
             color: #6b7280;
             font-size: 1.1rem;
         }
-        
+
         .demo-section {
             background: white;
             border-radius: 12px;
@@ -36,46 +36,46 @@
             margin-bottom: 2rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         .demo-section h2 {
             color: #374151;
             margin-bottom: 1rem;
             border-bottom: 2px solid #e5e7eb;
             padding-bottom: 0.5rem;
         }
-        
+
         .demo-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
             gap: 2rem;
             margin-top: 1.5rem;
         }
-        
+
         .demo-item {
             border: 1px solid #e5e7eb;
             border-radius: 8px;
             padding: 1.5rem;
             background: #f9fafb;
         }
-        
+
         .demo-item h3 {
             margin-top: 0;
             color: #374151;
             font-size: 1.1rem;
         }
-        
+
         .demo-item p {
             color: #6b7280;
             margin-bottom: 1rem;
         }
-        
+
         .controls {
             display: flex;
             flex-wrap: wrap;
             gap: 0.75rem;
             margin: 1rem 0;
         }
-        
+
         .controls button {
             background: #3b82f6;
             color: white;
@@ -86,39 +86,39 @@
             font-size: 0.875rem;
             transition: background-color 0.2s;
         }
-        
+
         .controls button:hover {
             background: #2563eb;
         }
-        
+
         .controls button:disabled {
             background: #9ca3af;
             cursor: not-allowed;
         }
-        
+
         .controls button.secondary {
             background: #6b7280;
         }
-        
+
         .controls button.secondary:hover {
             background: #4b5563;
         }
-        
+
         .controls button.danger {
             background: #ef4444;
         }
-        
+
         .controls button.danger:hover {
             background: #dc2626;
         }
-        
+
         .controls input, .controls select {
             padding: 0.5rem;
             border: 1px solid #d1d5db;
             border-radius: 6px;
             font-size: 0.875rem;
         }
-        
+
         .controls label {
             display: flex;
             align-items: center;
@@ -126,7 +126,7 @@
             font-size: 0.875rem;
             color: #374151;
         }
-        
+
         .event-log {
             background: #111827;
             color: #f3f4f6;
@@ -138,24 +138,24 @@
             overflow-y: auto;
             margin-top: 1rem;
         }
-        
+
         .event-log .timestamp {
             color: #9ca3af;
         }
-        
+
         .event-log .event-type {
             color: #60a5fa;
             font-weight: bold;
         }
-        
+
         .event-log .progress {
             color: #34d399;
         }
-        
+
         .event-log .error {
             color: #f87171;
         }
-        
+
         .status-indicator {
             display: inline-flex;
             align-items: center;
@@ -166,37 +166,37 @@
             font-weight: 500;
             margin: 0.5rem 0;
         }
-        
+
         .status-indicator.idle {
             background: #f3f4f6;
             color: #374151;
         }
-        
+
         .status-indicator.connecting {
             background: #fef3c7;
             color: #92400e;
         }
-        
+
         .status-indicator.processing {
             background: #dbeafe;
             color: #1e40af;
         }
-        
+
         .status-indicator.completed {
             background: #d1fae5;
             color: #065f46;
         }
-        
+
         .status-indicator.error {
             background: #fee2e2;
             color: #991b1b;
         }
-        
+
         .test-runner {
             text-align: center;
             margin: 2rem 0;
         }
-        
+
         .test-runner button {
             background: #059669;
             color: white;
@@ -208,11 +208,11 @@
             font-weight: 600;
             transition: background-color 0.2s;
         }
-        
+
         .test-runner button:hover {
             background: #047857;
         }
-        
+
         progress-indicator {
             margin: 1rem 0;
         }
@@ -319,16 +319,16 @@
         function logEvent(type, data, source = 'demo') {
             const timestamp = new Date().toLocaleTimeString();
             const logEntry = document.createElement('div');
-            
+
             logEntry.innerHTML = `
-                <span class="timestamp">[${timestamp}]</span> 
-                <span class="event-type">${type}</span>: 
+                <span class="timestamp">[${timestamp}]</span>
+                <span class="event-type">${type}</span>:
                 <span class="${type.includes('error') ? 'error' : type.includes('progress') ? 'progress' : ''}">${JSON.stringify(data)}</span>
                 <span style="color: #9ca3af;"> (${source})</span>
             `;
-            
+
             eventLog.appendChild(logEntry);
-            
+
             if (autoScroll.checked) {
                 eventLog.scrollTop = eventLog.scrollHeight;
             }
@@ -352,20 +352,20 @@
         function setupEventListeners() {
             document.querySelectorAll('progress-indicator').forEach(indicator => {
                 const id = indicator.id;
-                
+
                 indicator.addEventListener('progressupdate', (e) => {
                     logEvent('progressupdate', e.detail, id);
                 });
-                
+
                 indicator.addEventListener('statuschange', (e) => {
                     logEvent('statuschange', e.detail, id);
                     updateStatusIndicator(id, e.detail.status);
                 });
-                
+
                 indicator.addEventListener('connectionerror', (e) => {
                     logEvent('connectionerror', e.detail, id);
                 });
-                
+
                 indicator.addEventListener('completed', (e) => {
                     logEvent('completed', e.detail, id);
                 });
@@ -377,7 +377,7 @@
             const indicator = document.getElementById(indicatorId);
             const stages = ['Initializing', 'Processing', 'Analyzing', 'Finalizing'];
             const stage = stages[Math.floor(progress / 25)] || 'Completed';
-            
+
             indicator.updateProgress({
                 progress,
                 status: progress === 100 ? 'completed' : 'processing',
@@ -389,14 +389,14 @@
         function updateProgressWithDetails(indicatorId) {
             const indicator = document.getElementById(indicatorId);
             let progress = 0;
-            
+
             const interval = setInterval(() => {
                 progress += Math.random() * 15;
                 if (progress > 100) progress = 100;
-                
+
                 const models = ['sentiment', 'bias', 'quality', 'relevance'];
                 const modelProgress = {};
-                
+
                 models.forEach((model, i) => {
                     const modelProg = Math.min(100, progress + (i * 10));
                     modelProgress[model] = {
@@ -404,17 +404,17 @@
                         status: modelProg === 100 ? 'completed' : 'processing'
                     };
                 });
-                
+
                 indicator.updateProgress({
                     progress: Math.round(progress),
                     status: progress === 100 ? 'completed' : 'processing',
-                    stage: progress < 30 ? 'Initializing models' : 
-                           progress < 70 ? 'Running analysis' : 
+                    stage: progress < 30 ? 'Initializing models' :
+                           progress < 70 ? 'Running analysis' :
                            progress < 95 ? 'Aggregating results' : 'Finalizing',
                     eta: progress < 100 ? Math.round((100 - progress) / 8) : null,
                     modelProgress
                 });
-                
+
                 if (progress >= 100) {
                     clearInterval(interval);
                 }
@@ -429,12 +429,12 @@
         function connectSSE() {
             const indicator = document.getElementById('sse-indicator');
             const articleId = document.getElementById('article-id-input').value;
-            
+
             if (!articleId.trim()) {
                 alert('Please enter an article ID');
                 return;
             }
-            
+
             indicator.connect(articleId);
         }
 
@@ -446,12 +446,12 @@
         function setAutoArticleId() {
             const indicator = document.getElementById('auto-indicator');
             const articleId = document.getElementById('auto-article-id').value;
-            
+
             if (!articleId.trim()) {
                 alert('Please enter an article ID');
                 return;
             }
-            
+
             indicator.setAttribute('article-id', articleId);
         }
 

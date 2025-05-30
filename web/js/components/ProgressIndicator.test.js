@@ -9,7 +9,7 @@ class MockEventSource {
     this.url = url;
     this.readyState = EventSource.CONNECTING;
     this.listeners = new Map();
-    
+
     // Simulate connection opening after a short delay
     setTimeout(() => {
       this.readyState = EventSource.OPEN;
@@ -147,13 +147,13 @@ class ProgressIndicatorTests {
 
     const shadowRoot = indicator.shadowRoot;
     assert(shadowRoot, 'Shadow root should exist');
-    
+
     const progressContainer = shadowRoot.querySelector('.progress-container');
     assert(progressContainer, 'Progress container should be rendered');
-    
+
     const progressTrack = shadowRoot.querySelector('.progress-track');
     assert(progressTrack, 'Progress track should be rendered');
-    
+
     const progressBar = shadowRoot.querySelector('.progress-bar');
     assert(progressBar, 'Progress bar should be rendered');
 
@@ -169,7 +169,7 @@ class ProgressIndicatorTests {
     indicator.setAttribute('article-id', 'test-123');
     indicator.setAttribute('auto-connect', 'true');
     indicator.setAttribute('show-details', 'true');
-    
+
     this.testContainer.appendChild(indicator);
     await this.waitForComponent(indicator);
 
@@ -210,7 +210,7 @@ class ProgressIndicatorTests {
     await this.wait(50); // Wait for mock connection
 
     assert(connectionOpened, 'Should emit connecting status');
-    assert(indicator.status === 'connecting' || indicator.status === 'processing', 
+    assert(indicator.status === 'connecting' || indicator.status === 'processing',
            'Status should be connecting or processing');
 
     this.passedTests++;
@@ -350,20 +350,20 @@ class ProgressIndicatorTests {
     const shadowRoot = indicator.shadowRoot;
     const progressBar = shadowRoot.querySelector('.progress-bar');
 
-    assert(progressBar.getAttribute('role') === 'progressbar', 
+    assert(progressBar.getAttribute('role') === 'progressbar',
            'Progress bar should have progressbar role');
-    assert(progressBar.hasAttribute('aria-valuemin'), 
+    assert(progressBar.hasAttribute('aria-valuemin'),
            'Progress bar should have aria-valuemin');
-    assert(progressBar.hasAttribute('aria-valuemax'), 
+    assert(progressBar.hasAttribute('aria-valuemax'),
            'Progress bar should have aria-valuemax');
-    assert(progressBar.hasAttribute('aria-valuenow'), 
+    assert(progressBar.hasAttribute('aria-valuenow'),
            'Progress bar should have aria-valuenow');
 
     // Test aria updates with progress change
     indicator.updateProgress({ progress: 60 });
     await this.wait(50);
 
-    assert(progressBar.getAttribute('aria-valuenow') === '60', 
+    assert(progressBar.getAttribute('aria-valuenow') === '60',
            'aria-valuenow should update with progress');
 
     this.passedTests++;
@@ -460,7 +460,7 @@ class ProgressIndicatorTests {
     // Test reset
     indicator.updateProgress({ progress: 75, status: 'processing' });
     indicator.reset();
-    
+
     assert(indicator.progress === 0, 'Progress should reset to 0');
     assert(indicator.status === 'idle', 'Status should reset to idle');
 
@@ -481,7 +481,7 @@ class ProgressIndicatorTests {
           }
         });
         observer.observe(element, { childList: true, subtree: true });
-        
+
         // Fallback timeout
         setTimeout(resolve, 100);
       }
@@ -496,7 +496,7 @@ class ProgressIndicatorTests {
     if (this.testContainer) {
       document.body.removeChild(this.testContainer);
     }
-    
+
     // Restore original EventSource
     window.EventSource = OriginalEventSource;
   }
@@ -505,7 +505,7 @@ class ProgressIndicatorTests {
     const successRate = ((this.passedTests / this.totalTests) * 100).toFixed(1);
     console.log(`\n📊 ProgressIndicator Test Results:`);
     console.log(`✅ Passed: ${this.passedTests}/${this.totalTests} (${successRate}%)`);
-    
+
     if (this.passedTests === this.totalTests) {
       console.log('🎉 All tests passed!');
     } else {
@@ -539,7 +539,7 @@ window.ProgressIndicatorTests = ProgressIndicatorTests;
 // Auto-run tests if this script is loaded directly
 if (typeof document !== 'undefined' && document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', async () => {
-    if (window.location.pathname.includes('progress-indicator-test') || 
+    if (window.location.pathname.includes('progress-indicator-test') ||
         window.location.search.includes('test=progress-indicator')) {
       const tests = new ProgressIndicatorTests();
       await tests.runAllTests();
@@ -547,7 +547,7 @@ if (typeof document !== 'undefined' && document.readyState === 'loading') {
   });
 } else if (typeof document !== 'undefined') {
   // Run immediately if DOM is ready
-  if (window.location.pathname.includes('progress-indicator-test') || 
+  if (window.location.pathname.includes('progress-indicator-test') ||
       window.location.search.includes('test=progress-indicator')) {
     const tests = new ProgressIndicatorTests();
     setTimeout(() => tests.runAllTests(), 100);

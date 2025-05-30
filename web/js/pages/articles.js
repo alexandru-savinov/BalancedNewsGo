@@ -8,38 +8,59 @@ class ArticlesPage {
     this.currentView = 'grid';
     this.currentFilters = {
       search: '',
-      bias: 'all',
-      date: 'all',
-      sort: 'date-desc'
+      source: 'all',
+      leaning: 'all',
+      dateFrom: '',
+      dateTo: '',
+      sortBy: 'date',
+      sortOrder: 'desc'
     };
     this.currentPage = 1;
-    this.articlesPerPage = 12;
+    this.articlesPerPage = 20;
     this.isLoading = false;
+    this.totalArticles = 0;
+    this.availableSources = [];
+
+    // Initialize API client
+    this.apiClient = new ApiClient();
 
     this.init();
   }
+
   async init() {
+    this.loadStateFromURL();
     this.bindEventListeners();
     await this.loadArticles();
     this.setupBiasSliderEvents();
+    this.updatePageTitle();
     // setupArticleCardEvents is called after renderArticles
   }
-
   bindEventListeners() {
     // Search input
     const searchInput = document.getElementById('search-input');
     if (searchInput) {
       searchInput.addEventListener('input', this.debounce(() => {
         this.currentFilters.search = searchInput.value;
+        this.currentPage = 1;
         this.refreshArticles();
       }, 300));
     }
 
     // Filter selects
-    const biasFilter = document.getElementById('bias-filter');
-    if (biasFilter) {
-      biasFilter.addEventListener('change', (e) => {
-        this.currentFilters.bias = e.target.value;
+    const sourceFilter = document.getElementById('source-filter');
+    if (sourceFilter) {
+      sourceFilter.addEventListener('change', (e) => {
+        this.currentFilters.source = e.target.value;
+        this.currentPage = 1;
+        this.refreshArticles();
+      });
+    }
+
+    const leaningFilter = document.getElementById('bias-filter');
+    if (leaningFilter) {
+      leaningFilter.addEventListener('change', (e) => {
+        this.currentFilters.leaning = e.target.value;
+        this.currentPage = 1;
         this.refreshArticles();
       });
     }
@@ -47,16 +68,14 @@ class ArticlesPage {
     const dateFilter = document.getElementById('date-filter');
     if (dateFilter) {
       dateFilter.addEventListener('change', (e) => {
-        this.currentFilters.date = e.target.value;
-        this.refreshArticles();
+        this.handleDateFilterChange(e.target.value);
       });
     }
 
     const sortSelect = document.getElementById('sort-select');
     if (sortSelect) {
       sortSelect.addEventListener('change', (e) => {
-        this.currentFilters.sort = e.target.value;
-        this.refreshArticles();
+        this.handleSortChange(e.target.value);
       });
     }
 
@@ -76,8 +95,17 @@ class ArticlesPage {
         this.refreshArticles();
       });
     }
-  }
 
+    // Pagination event listeners will be added after pagination controls are created
+
+    // Browser back/forward navigation
+    window.addEventListener('popstate', (e) => {
+      if (e.state) {
+        this.loadStateFromURL();
+        this.loadArticles();
+      }
+    });
+  }
   setupBiasSliderEvents() {
     // Listen for bias slider changes globally
     document.addEventListener('biaschange', (event) => {
@@ -94,13 +122,125 @@ class ArticlesPage {
   async handleBiasChange(detail) {
     const { value, articleId } = detail;
 
-    // Update the visual feedback immediately
-    this.showSuccessToast(`Bias updated to ${value.toFixed(1)}`);
+    try {
+      // Update bias score via API
+      await this.apiClient.put(`/articles/${articleId}/bias`, {
+        score: value,
+        source: 'manual',
+        confidence: 0.9
+      });
 
-    // Optionally refresh the article data to get updated server state
-    // await this.refreshSingleArticle(articleId);
+      this.showSuccessToast(`Bias updated to ${value.toFixed(1)}`);
+    } catch (error) {
+      console.error('Failed to update bias:', error);
+      this.showErrorToast(`Failed to update bias: ${error.message}`);
+    }
   }
 
+  // URL State Management
+  loadStateFromURL() {
+    const params = new URLSearchParams(window.location.search);
+
+    this.currentFilters.search = params.get('search') || '';
+    this.currentFilters.source = params.get('source') || 'all';
+    this.currentFilters.leaning = params.get('leaning') || 'all';
+    this.currentFilters.dateFrom = params.get('dateFrom') || '';
+    this.currentFilters.dateTo = params.get('dateTo') || '';
+    this.currentFilters.sortBy = params.get('sortBy') || 'date';
+    this.currentFilters.sortOrder = params.get('sortOrder') || 'desc';
+    this.currentPage = parseInt(params.get('page')) || 1;
+    this.currentView = params.get('view') || 'grid';
+
+    this.updateFormControls();
+  }
+
+  updateURL() {
+    const params = new URLSearchParams();
+
+    if (this.currentFilters.search) params.set('search', this.currentFilters.search);
+    if (this.currentFilters.source !== 'all') params.set('source', this.currentFilters.source);
+    if (this.currentFilters.leaning !== 'all') params.set('leaning', this.currentFilters.leaning);
+    if (this.currentFilters.dateFrom) params.set('dateFrom', this.currentFilters.dateFrom);
+    if (this.currentFilters.dateTo) params.set('dateTo', this.currentFilters.dateTo);
+    if (this.currentFilters.sortBy !== 'date') params.set('sortBy', this.currentFilters.sortBy);
+    if (this.currentFilters.sortOrder !== 'desc') params.set('sortOrder', this.currentFilters.sortOrder);
+    if (this.currentPage > 1) params.set('page', this.currentPage.toString());
+    if (this.currentView !== 'grid') params.set('view', this.currentView);
+
+    const newURL = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+    window.history.replaceState(
+      {
+        filters: this.currentFilters,
+        page: this.currentPage,
+        view: this.currentView
+      },
+      '',
+      newURL
+    );
+  }
+
+  updateFormControls() {
+    // Update form inputs to match current state
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.value = this.currentFilters.search;
+
+    const sourceFilter = document.getElementById('source-filter');
+    if (sourceFilter) sourceFilter.value = this.currentFilters.source;
+
+    const leaningFilter = document.getElementById('bias-filter');
+    if (leaningFilter) leaningFilter.value = this.currentFilters.leaning;
+
+    const sortSelect = document.getElementById('sort-select');
+    if (sortSelect) {
+      const sortValue = `${this.currentFilters.sortBy}-${this.currentFilters.sortOrder}`;
+      sortSelect.value = sortValue;
+    }
+
+    // Update view toggle
+    const viewButtons = document.querySelectorAll('.view-toggle-btn');
+    viewButtons.forEach(btn => {
+      const isActive = btn.dataset.view === this.currentView;
+      btn.classList.toggle('view-toggle-btn--active', isActive);
+      btn.setAttribute('aria-pressed', isActive);
+    });
+  }
+
+  // Filter and sort handlers
+  handleDateFilterChange(value) {
+    const now = new Date();
+    let dateFrom = '';
+
+    switch (value) {
+      case 'today':
+        dateFrom = now.toISOString().split('T')[0];
+        break;
+      case 'week':
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        dateFrom = weekAgo.toISOString().split('T')[0];
+        break;
+      case 'month':
+        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        dateFrom = monthAgo.toISOString().split('T')[0];
+        break;
+      case 'all':
+      default:
+        dateFrom = '';
+        break;
+    }
+
+    this.currentFilters.dateFrom = dateFrom;
+    this.currentFilters.dateTo = value === 'all' ? '' : now.toISOString().split('T')[0];
+    this.currentPage = 1;
+    this.refreshArticles();
+  }
+
+  handleSortChange(value) {
+    const [sortBy, sortOrder] = value.split('-');
+    this.currentFilters.sortBy = sortBy;
+    this.currentFilters.sortOrder = sortOrder;
+    this.currentPage = 1;
+    this.refreshArticles();
+  }
   async loadArticles() {
     if (this.isLoading) return;
 
@@ -108,24 +248,47 @@ class ArticlesPage {
     this.showLoadingState();
 
     try {
-      const params = new URLSearchParams({
-        page: this.currentPage,
+      // Build API query parameters
+      const queryParams = {
         limit: this.articlesPerPage,
-        search: this.currentFilters.search,
-        bias: this.currentFilters.bias,
-        date: this.currentFilters.date,
-        sort: this.currentFilters.sort
-      });
+        offset: (this.currentPage - 1) * this.articlesPerPage,
+        sortBy: this.currentFilters.sortBy,
+        sortOrder: this.currentFilters.sortOrder
+      };
 
-      const response = await fetch(`/api/articles?${params}`);
-
-      if (!response.ok) {
-        throw new Error(`Failed to load articles: ${response.statusText}`);
+      // Add optional filters
+      if (this.currentFilters.search) {
+        queryParams.search = this.currentFilters.search;
+      }
+      if (this.currentFilters.source && this.currentFilters.source !== 'all') {
+        queryParams.source = [this.currentFilters.source];
+      }
+      if (this.currentFilters.leaning && this.currentFilters.leaning !== 'all') {
+        queryParams.leaning = this.currentFilters.leaning;
+      }
+      if (this.currentFilters.dateFrom) {
+        queryParams.dateFrom = this.currentFilters.dateFrom;
+      }
+      if (this.currentFilters.dateTo) {
+        queryParams.dateTo = this.currentFilters.dateTo;
       }
 
-      const data = await response.json();
-      this.renderArticles(data.articles || []);
-      this.updatePagination(data.pagination || {});
+      // Make API request using ApiClient
+      const response = await this.apiClient.get('/articles', { params: queryParams });
+
+      if (response.success) {
+        const data = response.data;
+        this.renderArticles(data.articles || []);
+        this.updatePagination(data.pagination || {});
+        this.updateAvailableFilters(data.filters || {});
+        this.totalArticles = data.pagination?.total || 0;
+
+        // Update URL to reflect current state
+        this.updateURL();
+        this.updatePageTitle();
+      } else {
+        throw new Error(response.error?.message || 'Failed to load articles');
+      }
 
     } catch (error) {
       console.error('Error loading articles:', error);
@@ -226,7 +389,6 @@ class ArticlesPage {
     this.currentPage = 1;
     await this.loadArticles();
   }
-
   showLoadingState() {
     const container = document.getElementById('articles-container');
     if (container) {
@@ -237,6 +399,12 @@ class ArticlesPage {
         </div>
       `;
     }
+
+    // Also update the pagination to show loading state
+    const paginationContainer = document.getElementById('pagination-container');
+    if (paginationContainer) {
+      paginationContainer.innerHTML = '';
+    }
   }
 
   showErrorState(message) {
@@ -244,21 +412,204 @@ class ArticlesPage {
     if (container) {
       container.innerHTML = `
         <div class="error-state col-span-full">
-          <p class="text-center text-error">
-            Error loading articles: ${this.escapeHtml(message)}
+          <div class="error-icon">⚠️</div>
+          <h3 class="error-title">Unable to Load Articles</h3>
+          <p class="error-message">
+            ${this.escapeHtml(message)}
           </p>
           <button onclick="window.articlesPage.refreshArticles()"
-                  class="btn btn--primary mx-auto mt-4">
-            Retry
+                  class="btn btn--primary retry-btn">
+            <span class="btn-icon">🔄</span>
+            Try Again
           </button>
         </div>
       `;
     }
+
+    // Clear pagination on error
+    const paginationContainer = document.getElementById('pagination-container');
+    if (paginationContainer) {
+      paginationContainer.innerHTML = '';
+    }
+  }
+  updatePagination(pagination) {
+    const paginationContainer = document.getElementById('pagination-container') || this.createPaginationContainer();
+
+    if (!pagination || !pagination.total) {
+      paginationContainer.innerHTML = '';
+      return;
+    }
+
+    const totalPages = Math.ceil(pagination.total / this.articlesPerPage);
+    const currentPage = this.currentPage;
+
+    if (totalPages <= 1) {
+      paginationContainer.innerHTML = '';
+      return;
+    }
+
+    let paginationHTML = '<nav class="pagination" aria-label="Article pagination">';
+    paginationHTML += '<ul class="pagination-list">';
+
+    // Previous page
+    if (pagination.hasPrev) {
+      paginationHTML += `
+        <li>
+          <button type="button" class="pagination-btn pagination-btn--prev" data-page="${currentPage - 1}">
+            <span aria-hidden="true">&laquo;</span>
+            <span class="sr-only">Previous page</span>
+          </button>
+        </li>
+      `;
+    }
+
+    // Page numbers
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+
+    if (startPage > 1) {
+      paginationHTML += `<li><button type="button" class="pagination-btn" data-page="1">1</button></li>`;
+      if (startPage > 2) {
+        paginationHTML += '<li><span class="pagination-ellipsis">...</span></li>';
+      }
+    }
+
+    for (let page = startPage; page <= endPage; page++) {
+      const isActive = page === currentPage;
+      paginationHTML += `
+        <li>
+          <button type="button"
+                  class="pagination-btn ${isActive ? 'pagination-btn--active' : ''}"
+                  data-page="${page}"
+                  ${isActive ? 'aria-current="page"' : ''}>
+            ${page}
+          </button>
+        </li>
+      `;
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        paginationHTML += '<li><span class="pagination-ellipsis">...</span></li>';
+      }
+      paginationHTML += `<li><button type="button" class="pagination-btn" data-page="${totalPages}">${totalPages}</button></li>`;
+    }
+
+    // Next page
+    if (pagination.hasNext) {
+      paginationHTML += `
+        <li>
+          <button type="button" class="pagination-btn pagination-btn--next" data-page="${currentPage + 1}">
+            <span aria-hidden="true">&raquo;</span>
+            <span class="sr-only">Next page</span>
+          </button>
+        </li>
+      `;
+    }
+
+    paginationHTML += '</ul>';
+
+    // Page info
+    const startItem = (currentPage - 1) * this.articlesPerPage + 1;
+    const endItem = Math.min(currentPage * this.articlesPerPage, pagination.total);
+    paginationHTML += `
+      <div class="pagination-info">
+        Showing ${startItem}-${endItem} of ${pagination.total} articles
+      </div>
+    `;
+
+    paginationHTML += '</nav>';
+
+    paginationContainer.innerHTML = paginationHTML;
+    this.bindPaginationEvents();
   }
 
-  updatePagination(pagination) {
-    // TODO: Implement pagination controls if needed
-    console.log('Pagination:', pagination);
+  createPaginationContainer() {
+    const container = document.createElement('div');
+    container.id = 'pagination-container';
+    container.className = 'pagination-wrapper mt-8';
+
+    const articlesSection = document.querySelector('.articles-section');
+    if (articlesSection) {
+      articlesSection.appendChild(container);
+    }
+
+    return container;
+  }
+
+  bindPaginationEvents() {
+    const paginationContainer = document.getElementById('pagination-container');
+    if (!paginationContainer) return;
+
+    paginationContainer.addEventListener('click', (e) => {
+      if (e.target.classList.contains('pagination-btn') && e.target.dataset.page) {
+        e.preventDefault();
+        const page = parseInt(e.target.dataset.page);
+        if (page !== this.currentPage) {
+          this.currentPage = page;
+          this.loadArticles();
+          this.scrollToTop();
+        }
+      }
+    });
+  }
+
+  updateAvailableFilters(filters) {
+    if (filters.availableSources) {
+      this.availableSources = filters.availableSources;
+      this.updateSourceFilterOptions();
+    }
+  }
+
+  updateSourceFilterOptions() {
+    const sourceFilter = document.getElementById('source-filter');
+    if (!sourceFilter || !this.availableSources.length) return;
+
+    // Preserve current selection
+    const currentValue = sourceFilter.value;
+
+    // Clear existing options except "All Sources"
+    sourceFilter.innerHTML = '<option value="all">All Sources</option>';
+
+    // Add available sources
+    this.availableSources.forEach(source => {
+      const option = document.createElement('option');
+      option.value = source;
+      option.textContent = source;
+      sourceFilter.appendChild(option);
+    });
+
+    // Restore selection if still valid
+    if (currentValue && (currentValue === 'all' || this.availableSources.includes(currentValue))) {
+      sourceFilter.value = currentValue;
+    }
+  }
+
+  updatePageTitle() {
+    let title = 'Articles - NewsBalancer';
+
+    if (this.currentFilters.search) {
+      title = `"${this.currentFilters.search}" - Articles - NewsBalancer`;
+    } else if (this.currentFilters.source !== 'all') {
+      title = `${this.currentFilters.source} - Articles - NewsBalancer`;
+    } else if (this.currentFilters.leaning !== 'all') {
+      const leaningNames = {
+        'left': 'Left-leaning',
+        'center': 'Center',
+        'right': 'Right-leaning'
+      };
+      title = `${leaningNames[this.currentFilters.leaning]} Articles - NewsBalancer`;
+    }
+
+    if (this.currentPage > 1) {
+      title = `Page ${this.currentPage} - ${title}`;
+    }
+
+    document.title = title;
+  }
+
+  scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   showSuccessToast(message) {
