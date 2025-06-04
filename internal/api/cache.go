@@ -24,19 +24,26 @@ func NewSimpleCache() *SimpleCache {
 
 func (c *SimpleCache) Get(key string) (interface{}, bool) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	entry, exists := c.cache[key]
 	if !exists {
+		c.mu.RUnlock()
 		return nil, false
 	}
 
 	if time.Now().After(entry.expiration) {
-		delete(c.cache, key)
+		c.mu.RUnlock()
+		c.mu.Lock()
+		// Re-check the entry under write lock in case it was updated
+		if e, ok := c.cache[key]; ok && time.Now().After(e.expiration) {
+			delete(c.cache, key)
+		}
+		c.mu.Unlock()
 		return nil, false
 	}
 
-	return entry.value, true
+	value := entry.value
+	c.mu.RUnlock()
+	return value, true
 }
 
 func (c *SimpleCache) Set(key string, value interface{}, ttl time.Duration) {
