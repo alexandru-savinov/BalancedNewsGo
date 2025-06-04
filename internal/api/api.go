@@ -403,9 +403,6 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
-// Utility function for handling article array results
-// ... remove handleArticleBatch function ...
-
 // Handler for GET /api/articles
 // @Summary Get articles
 // @Description Fetches a list of articles with optional filtering by source, leaning, and pagination
