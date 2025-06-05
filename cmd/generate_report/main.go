@@ -9,7 +9,14 @@ import (
 	"time"
 )
 
-var baseURL = "http://localhost:8080"
+var baseURL = getBaseURL()
+
+func getBaseURL() string {
+	if env := os.Getenv("REPORT_BASE_URL"); env != "" {
+		return env
+	}
+	return "http://localhost:8080"
+}
 
 func fetchAndSave(endpoint, filename string) error {
 	resp, err := http.Get(baseURL + endpoint)

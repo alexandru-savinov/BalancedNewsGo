@@ -10,6 +10,7 @@ This document provides a comprehensive reference for all configuration options i
 | `LLM_API_KEY_SECONDARY` | No | - | Backup API key for fallback during rate limiting |
 | `LLM_BASE_URL` | No | OpenRouter URL | Base URL for the LLM service |
 | `LLM_HTTP_TIMEOUT` | No | 60s | Timeout for HTTP requests to LLM service |
+| `REPORT_BASE_URL` | No | http://localhost:8080 | Base URL for generate_report metrics fetcher |
 | `NO_AUTO_ANALYZE` | No | false | When set to "true", disables automatic background LLM analysis |
 | `DATABASE_URL` | No | news.db | While supported in code, most components default to `news.db` in the execution directory |
 | `GIN_MODE` | No | debug | Set to "release" for production environment |
