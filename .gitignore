@@ -77,3 +77,4 @@ coverage*
 # Test output text files
 *test_output*.txt
 test_results.txt
+!web/templates/*.html

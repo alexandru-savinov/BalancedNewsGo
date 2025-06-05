@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script type="module" src="/static/js/pages/admin.js"></script>
+</head>
+<body>
+<header>
+    <nav>
+        <a href="/articles">Home</a> |
+        <a href="/admin">Admin</a>
+    </nav>
+    <h1>Admin Dashboard</h1>
+</header>
+<main>
+    <section class="system-stats">
+        <h2>System Stats</h2>
+        <ul>
+            <li>Total Articles: {{ .SystemStats.TotalArticles }}</li>
+            <li>Total Sources: {{ .SystemStats.TotalSources }}</li>
+            <li>Last Update: {{ .SystemStats.LastUpdate }}</li>
+        </ul>
+    </section>
+    <section class="metrics">
+        <h2>Metrics</h2>
+        <ul>
+            <li>Article Processing Rate: {{ .Metrics.ArticleProcessingRate }}</li>
+            <li>Average Response Time: {{ .Metrics.AvgResponseTime }}</li>
+            <li>Error Rate: {{ .Metrics.ErrorRate }}</li>
+            <li>Cache Hit Rate: {{ .Metrics.CacheHitRate }}</li>
+        </ul>
+    </section>
+</main>
+<footer>
+    <p>&copy; 2025 NewsBalancer</p>
+</footer>
+</body>
+</html>

@@ -460,6 +460,13 @@ make run
 This will start the server on port 8080 by default. You can then access the web interface at http://localhost:8080.
 *Note: If you encounter a "port already in use" error (e.g., `listen tcp :8080: bind: Only one usage of each socket address...`), ensure no other processes are using port 8080. See "Port Conflicts" under "Common Test Issues and Solutions" above.*
 
+### Maintaining HTML Templates
+
+The application renders its frontend using Go templates stored in `web/templates/`. These follow the layout described in [FRONTEND_PROPOSAL.md](web/FRONTEND_PROPOSAL.md) and are loaded with `router.LoadHTMLGlob("web/templates/*.html")`. Edit `articles.html`, `article.html`, or `admin.html` and restart the server to see changes. Assets referenced from these files are served under `/static/`.
+
+When adding new template files, ensure the glob in `cmd/server/main.go` still matches their location.
+
+
 ## License
 
 Licensed under the [MIT License](LICENSE).
