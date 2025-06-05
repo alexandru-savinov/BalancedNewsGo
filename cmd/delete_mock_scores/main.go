@@ -11,9 +11,6 @@ import (
 )
 
 func run(articleID int64) error {
-	if articleID == 0 {
-		return fmt.Errorf("article ID is required")
-	}
 
 	db, err := sqlx.Open("sqlite", "news.db")
 	if err != nil {
