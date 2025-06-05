@@ -59,6 +59,9 @@ news.db
 news.db-shm
 news.db-wal
 
+# Internal test database files
+internal/db/*.db*
+
 # Coverage & Test Reports (extending existing)
 # *.out is already covered above
 *.html
