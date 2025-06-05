@@ -33,5 +33,10 @@ func main() {
 		}
 	}
 
+	// Remove llm_coverage file if present
+	if err := os.Remove("llm_coverage"); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("Warning: Could not remove llm_coverage: %v\n", err)
+	}
+
 	fmt.Println("Clean operation complete")
 }
