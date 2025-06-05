@@ -342,7 +342,16 @@ func TestGetArticlesHandlerErrors(t *testing.T) {
 		successVal, okSuccess := response["success"].(bool)
 		assert.True(t, okSuccess, "\"success\" field should be a boolean")
 		assert.False(t, successVal, "\"success\" field should be false")
-		// TODO: Add check for error message content if needed
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map")
+		if okErrorField {
+			messageVal, okMsg := errorField["message"].(string)
+			assert.True(t, okMsg, "\"message\" field in error should be a string")
+			assert.Equal(t, "Invalid 'limit' parameter", messageVal)
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 
 	// Test invalid offset
@@ -371,7 +380,16 @@ func TestGetArticlesHandlerErrors(t *testing.T) {
 		successVal, okSuccess := response["success"].(bool)
 		assert.True(t, okSuccess, "\"success\" field should be a boolean")
 		assert.False(t, successVal, "\"success\" field should be false")
-		// TODO: Add check for error message content if needed
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map")
+		if okErrorField {
+			messageVal, okMsg := errorField["message"].(string)
+			assert.True(t, okMsg, "\"message\" field in error should be a string")
+			assert.Equal(t, "Invalid 'offset' parameter", messageVal)
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 
 	// Test negative offset
@@ -400,7 +418,16 @@ func TestGetArticlesHandlerErrors(t *testing.T) {
 		successVal, okSuccess := response["success"].(bool)
 		assert.True(t, okSuccess, "\"success\" field should be a boolean")
 		assert.False(t, successVal, "\"success\" field should be false")
-		// TODO: Add check for error message content if needed
+
+		errorField, okErrorField := response["error"].(map[string]interface{})
+		assert.True(t, okErrorField, "\"error\" field should be a map")
+		if okErrorField {
+			messageVal, okMsg := errorField["message"].(string)
+			assert.True(t, okMsg, "\"message\" field in error should be a string")
+			assert.Equal(t, "Offset cannot be negative", messageVal)
+		} else {
+			t.Log("Skipping message check as error field was not a map")
+		}
 	})
 
 	// Test database error
