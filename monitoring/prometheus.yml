@@ -6,4 +6,4 @@ global:
 scrape_configs:
   - job_name: 'balancednewsgo'
     static_configs:
-      - targets: ['localhost:9090'] # Update with your application's metrics endpoint
+      - targets: ['${METRICS_TARGET}'] # Set your metrics endpoint via METRICS_TARGET env var
