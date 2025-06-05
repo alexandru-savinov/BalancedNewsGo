@@ -7,9 +7,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 
@@ -18,7 +21,6 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
-	"github.com/gin-gonic/gin"
 
 	_ "github.com/alexandru-savinov/BalancedNewsGo/docs" // This will import the generated docs
 	swaggerFiles "github.com/swaggo/files"
@@ -58,13 +60,8 @@ import (
 // @tag.name Analysis
 // @tag.description Operations related to article analysis and summaries
 
-var legacyHTML bool
-
 func main() {
 	flag.Parse()
-
-	// Override the legacy HTML flag to always be false
-	legacyHTML = false
 
 	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
 
@@ -90,12 +87,23 @@ func main() {
 			return strings.Split(s, sep)
 		},
 	})
+	// Get the directory of the currently running file (main.go)
+	_, mainGoFilePath, _, ok := runtime.Caller(0)
+	if !ok {
+		log.Fatal("Could not get current file path")
+	}
+	cmdServerDir := filepath.Dir(mainGoFilePath) // Directory of main.go (e.g., d:/Dev/newbalancer_go/cmd/server)
+	cmdDir := filepath.Dir(cmdServerDir)         // cmd directory (e.g., d:/Dev/newbalancer_go/cmd)
+	projectRoot := filepath.Dir(cmdDir)          // Project root (e.g., d:/Dev/newbalancer_go)
 
-	// Load Editorial HTML templates
-	router.LoadHTMLGlob("web/templates/*.html")
+	templatesPath := filepath.Join(projectRoot, "web", "templates", "*.html")
+	staticDir := filepath.Join(projectRoot, "web", "static") // The directory to serve static files from
 
-	// Serve static assets (CSS, JS, images, fonts)
-	router.Static("/static", "./web")
+	log.Printf("Loading templates from: %s", templatesPath)
+	router.LoadHTMLGlob(templatesPath)
+
+	log.Printf("Serving static files from /static mapped to directory: %s", staticDir)
+	router.Static("/static", staticDir)
 
 	// @Summary Health Check
 	// @Description Returns the health status of the server.
@@ -113,11 +121,10 @@ func main() {
 	// Register UI routes - using Editorial template rendering
 	log.Println("Using Editorial template rendering with server-side data")
 
-	// Serve templated HTML for articles list
-	router.GET("/articles", templateIndexHandler(dbConn))
-
-	// Serve templated HTML for article detail
-	router.GET("/article/:id", templateArticleHandler(dbConn))
+	// Register routes
+	router.GET("/articles", TemplateIndexHandler(dbConn))
+	router.GET("/article/:id", TemplateArticleHandler(dbConn))
+	router.GET("/admin", TemplateAdminHandler(dbConn))
 
 	// Root welcome endpoint - redirect to articles
 	router.GET("/", func(c *gin.Context) {

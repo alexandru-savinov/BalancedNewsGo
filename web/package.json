@@ -1,0 +1,54 @@
+{
+  "name": "newsbalancer-frontend",
+  "version": "1.0.0",
+  "description": "NewsBalancer Frontend - Vanilla JavaScript with Web Components",
+  "main": "src/js/main.js",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "node build.js --dev",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "serve": "npx http-server src -p 3000 -c-1",
+    "lint": "eslint src/js/**/*.js",
+    "format": "prettier --write src/**/*.{js,css,html}"
+  },
+  "keywords": [
+    "news",
+    "bias-detection",
+    "web-components",
+    "vanilla-js"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "dompurify": "^3.0.5",
+    "normalize.css": "^8.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "puppeteer": "^21.0.0",
+    "@testing-library/dom": "^9.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "http-server": "^14.0.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "collectCoverageFrom": [
+      "src/js/**/*.js",
+      "!src/js/**/*.test.js",
+      "!src/js/vendor/*.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 90,
+        "functions": 90,
+        "lines": 90,
+        "statements": 90
+      }
+    }
+  }
+}

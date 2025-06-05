@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "▶ Lint + unit"
+if command -v make >/dev/null 2>&1; then
+  make tidy lint unit
+else
+  echo "make not found; running npm test"
+  npm test
+fi
+
+echo "▶ Essential integration"
+NO_AUTO_ANALYZE=true bash scripts/test.sh essential

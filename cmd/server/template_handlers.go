@@ -15,8 +15,9 @@ import (
 
 // Template file constants
 const (
-	indexTemplate   = "index.html"
+	indexTemplate   = "articles.html"
 	articleTemplate = "article.html"
+	adminTemplate   = "admin.html"
 )
 
 // TemplateData represents the data structure for templates
@@ -63,6 +64,32 @@ type FilterData struct {
 	Source  string
 	Leaning string
 	Query   string
+}
+
+// AdminData represents data structure for admin dashboard
+type AdminData struct {
+	Title       string
+	SystemStats SystemStatsData
+	FeedHealth  map[string]bool
+	Metrics     MetricsData
+}
+
+// SystemStatsData represents system statistics for admin dashboard
+type SystemStatsData struct {
+	TotalArticles     int
+	TotalSources      int
+	LastUpdate        string
+	DatabaseSize      string
+	ServerUptime      string
+	ActiveConnections int
+}
+
+// MetricsData represents system metrics for admin dashboard
+type MetricsData struct {
+	ArticleProcessingRate float64
+	AvgResponseTime       float64
+	ErrorRate             float64
+	CacheHitRate          float64
 }
 
 // FilterParams holds filter and pagination parameters
@@ -363,25 +390,85 @@ func getBiasLabel(score float64) string {
 	return "Center"
 }
 
-// getStats fetches statistics for the sidebar
+// getStats fetches system statistics for templates
 func getStats(dbConn *sqlx.DB) StatsData {
-	stats := StatsData{
-		LastUpdate: time.Now().Format("January 2, 2006"),
-	}
+	var totalArticles int
+	var sourceCount int
 
-	// Get total article count
-	var count int
-	err := dbConn.Get(&count, "SELECT COUNT(*) FROM articles")
-	if err == nil {
-		stats.TotalArticles = count
+	// Get total articles count
+	err := dbConn.Get(&totalArticles, "SELECT COUNT(*) FROM articles")
+	if err != nil {
+		log.Printf("Error fetching total articles count: %v", err)
+		totalArticles = 0
 	}
 
 	// Get unique source count
-	var sourceCount int
 	err = dbConn.Get(&sourceCount, "SELECT COUNT(DISTINCT source) FROM articles")
-	if err == nil {
-		stats.SourceCount = sourceCount
+	if err != nil {
+		log.Printf("Error fetching source count: %v", err)
+		sourceCount = 0
 	}
 
-	return stats
+	// Get current timestamp for last update
+	lastUpdate := time.Now().Format("January 2, 2006 at 3:04 PM")
+
+	return StatsData{
+		TotalArticles: totalArticles,
+		SourceCount:   sourceCount,
+		LastUpdate:    lastUpdate,
+	}
+}
+
+// templateAdminHandler serves the admin dashboard page
+func templateAdminHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Fetch system statistics
+		stats := getStats(dbConn)
+
+		// Get detailed system stats for admin
+		systemStats := SystemStatsData{
+			TotalArticles:     stats.TotalArticles,
+			TotalSources:      stats.SourceCount,
+			LastUpdate:        stats.LastUpdate,
+			DatabaseSize:      "Unknown", // Could implement db size calculation
+			ServerUptime:      "Unknown", // Could implement uptime tracking
+			ActiveConnections: 1,         // Placeholder
+		}
+
+		// Mock feed health data (would integrate with actual feed health check)
+		feedHealth := map[string]bool{
+			"Reuters":  true,
+			"BBC News": true,
+			"CNN":      false, // Example unhealthy feed
+		}
+
+		// Mock metrics data (would integrate with actual metrics)
+		metrics := MetricsData{
+			ArticleProcessingRate: 15.2,
+			AvgResponseTime:       8.5,
+			ErrorRate:             2.1,
+			CacheHitRate:          85.3,
+		}
+
+		// Prepare admin template data
+		data := AdminData{
+			Title:       "Admin Dashboard - NewsBalancer",
+			SystemStats: systemStats,
+			FeedHealth:  feedHealth,
+			Metrics:     metrics,
+		}
+
+		c.HTML(http.StatusOK, adminTemplate, data)
+	}
+}
+
+// Change these handler functions to exported (capitalized) so they can be used in main.go
+func TemplateIndexHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return templateIndexHandler(dbConn)
+}
+func TemplateArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return templateArticleHandler(dbConn)
+}
+func TemplateAdminHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return templateAdminHandler(dbConn)
 }
