@@ -40,7 +40,9 @@ endif
 
 # Go / tools
 GO              := go
-GOLANGCI        := C:\Users\Alexander.Savinov\go\bin\golangci-lint.exe
+# Allow overriding the golangci-lint binary via environment variable.
+# Defaults to simply invoking `golangci-lint` from the PATH.
+GOLANGCI        ?= golangci-lint
 SWAG            := swag
 
 # Paths
