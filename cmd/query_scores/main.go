@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -18,6 +19,9 @@ type LLMScore struct {
 }
 
 func main() {
+	articleIDFlag := flag.Int64("article_id", 0, "ID of the article to query")
+	flag.Parse()
+
 	db, err := sqlx.Open("sqlite", "news.db")
 	if err != nil {
 		log.Printf("ERROR: Failed to open DB: %v", err)
@@ -30,8 +34,8 @@ func main() {
 	}()
 
 	var scores []LLMScore
-	articleID := int64(681)
-	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata FROM llm_scores WHERE article_id = ?", articleID)
+	articleID := *articleIDFlag
+	err = db.Select(&scores, "SELECT id, article_id, model, score, metadata\nFROM llm_scores WHERE article_id = ?", articleID)
 	if err != nil {
 		log.Printf("Error fetching scores for article ID %d: %v", articleID, err)
 		if db != nil {
