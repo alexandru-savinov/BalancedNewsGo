@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-var baseURL = getBaseURL()
+var baseURL = getReportBaseURL()
 
-func getBaseURL() string {
+func getReportBaseURL() string {
 	if env := os.Getenv("REPORT_BASE_URL"); env != "" {
 		return env
 	}
