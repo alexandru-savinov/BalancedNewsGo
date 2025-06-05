@@ -22,6 +22,12 @@ func main() {
 	articleIDFlag := flag.Int64("article_id", 0, "ID of the article to query")
 	flag.Parse()
 
+	if *articleIDFlag <= 0 {
+		fmt.Fprintln(os.Stderr, "article_id is required and must be > 0")
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	db, err := sqlx.Open("sqlite", "news.db")
 	if err != nil {
 		log.Printf("ERROR: Failed to open DB: %v", err)
