@@ -3,6 +3,9 @@
  * Basic functionality and accessibility tests
  */
 
+// Import the BiasSlider component to register it
+require('./BiasSlider.js');
+
 // Mock API Client for testing
 window.ApiClient = {
   updateBias: async (articleId, value) => {

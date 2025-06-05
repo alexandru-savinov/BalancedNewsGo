@@ -9,6 +9,9 @@
  * - Event handling and dispatching
  * - Focus management and accessibility
  * - Keyboard navigation (ESC, Tab)
+
+// Import the Modal component to register it
+require('./Modal.js');
  * - Modal sizing and theming
  * - Error handling and edge cases
  */

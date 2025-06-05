@@ -9,6 +9,9 @@
  * - Keyboard navigation
  * - Accessibility features
  * - Event handling
+
+// Import the Navigation component to register it
+require('./Navigation.js');
  * - Responsive behavior
  */
 

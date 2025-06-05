@@ -27,20 +27,38 @@
     "normalize.css": "^8.0.1"
   },
   "devDependencies": {
-    "jest": "^29.0.0",
-    "puppeteer": "^21.0.0",
+    "@babel/core": "^7.27.4",
+    "@babel/preset-env": "^7.27.2",
     "@testing-library/dom": "^9.0.0",
+    "@webcomponents/webcomponentsjs": "^2.8.0",
+    "babel-jest": "^30.0.0-beta.3",
     "eslint": "^8.0.0",
+    "http-server": "^14.0.0",
+    "jest": "^29.0.0",
+    "jest-environment-jsdom": "^30.0.0-beta.3",
     "prettier": "^3.0.0",
-    "http-server": "^14.0.0"
-  },
-  "jest": {
+    "puppeteer": "^21.0.0"
+  },  "jest": {
     "testEnvironment": "jsdom",
-    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
+    "transform": {
+      "^.+\\.js$": "babel-jest"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@webcomponents)/)"
+    ],
+    "globals": {
+      "__DEV__": true
+    },
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
     "collectCoverageFrom": [
-      "src/js/**/*.js",
-      "!src/js/**/*.test.js",
-      "!src/js/vendor/*.js"
+      "js/**/*.js",
+      "!js/**/*.test.js",
+      "!js/vendor/*.js"
     ],
     "coverageThreshold": {
       "global": {

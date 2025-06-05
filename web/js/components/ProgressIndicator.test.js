@@ -3,6 +3,9 @@
  * Comprehensive testing for SSE-powered progress tracking component
  */
 
+// Import the ProgressIndicator component to register it
+require('./ProgressIndicator.js');
+
 // Mock EventSource for testing SSE functionality
 class MockEventSource {
   constructor(url) {

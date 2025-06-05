@@ -3,6 +3,9 @@
  * Tests for the ArticleCard web component functionality
  */
 
+// Import the ArticleCard component to register it
+require('./ArticleCard.js');
+
 // Mock data for testing
 const mockArticle = {
   id: 'test-article-123',
