@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script type="module" src="/static/js/pages/article-detail.js"></script>
+</head>
+<body>
+<header>
+    <nav>
+        <a href="/articles">Home</a> |
+        <a href="/admin">Admin</a>
+    </nav>
+    <h1>NewsBalancer</h1>
+</header>
+<main>
+    {{ if .Article }}
+    <article>
+        <h2>{{ .Article.Title }}</h2>
+        <div>{{ .Article.Source }} | {{ .Article.FormattedDate }} | {{ .Article.BiasLabel }}</div>
+        <div class="article-content">{{ .Article.Content }}</div>
+    </article>
+    {{ else }}
+    <p>Article not found.</p>
+    {{ end }}
+</main>
+<aside>
+    <h2>Recent Articles</h2>
+    <ul>
+        {{ range .RecentArticles }}
+        <li><a href="/article/{{ .ID }}">{{ .Title }}</a></li>
+        {{ end }}
+    </ul>
+</aside>
+<footer>
+    <p>&copy; 2025 NewsBalancer</p>
+</footer>
+</body>
+</html>

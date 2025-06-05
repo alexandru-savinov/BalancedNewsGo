@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ .Title }}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script type="module" src="/static/js/pages/articles.js"></script>
+</head>
+<body>
+<header>
+    <nav>
+        <a href="/articles">Home</a> |
+        <a href="/admin">Admin</a>
+    </nav>
+    <h1>NewsBalancer</h1>
+</header>
+<section class="search-bar">
+    <form method="get" action="/articles">
+        <input type="text" name="query" placeholder="Search" value="{{ .Filters.Query }}" id="search-input">
+        <button type="submit">Search</button>
+    </form>
+</section>
+<main>
+    {{ if .Articles }}
+    <ul class="article-list" id="articles-container">
+        {{ range .Articles }}
+        <li>
+            <a href="/article/{{ .ID }}">{{ .Title }}</a>
+            <div>{{ .FormattedDate }} | {{ .Source }} | {{ .BiasLabel }}</div>
+            <p>{{ .Excerpt }}</p>
+        </li>
+        {{ end }}
+    </ul>
+    {{ else }}
+    <p>No articles found.</p>
+    {{ end }}
+</main>
+<aside>
+    <h2>Recent Articles</h2>
+    <ul>
+        {{ range .RecentArticles }}
+        <li><a href="/article/{{ .ID }}">{{ .Title }}</a></li>
+        {{ end }}
+    </ul>
+</aside>
+<footer>
+    <p>&copy; 2025 NewsBalancer</p>
+</footer>
+</body>
+</html>
