@@ -595,6 +595,7 @@ func TestTemplateIndexHandler(t *testing.T) {
 		"sub":   func(a, b int) int { return a - b },
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
+		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
 	})
 	router.LoadHTMLGlob(templateGlob)
 	router.GET("/", templateIndexHandler(dbConn))
@@ -649,6 +650,7 @@ func TestTemplateIndexHandlerWithFilters(t *testing.T) {
 		"sub":   func(a, b int) int { return a - b },
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
+		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
 	})
 	router.LoadHTMLGlob(templateGlob)
 	router.GET("/", templateIndexHandler(dbConn))
@@ -719,6 +721,7 @@ func TestTemplateArticleHandler(t *testing.T) {
 		"sub":   func(a, b int) int { return a - b },
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
+		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
 	})
 	router.LoadHTMLGlob(templateGlob)
 	router.GET(articleIDRoute, templateArticleHandler(dbConn))
@@ -751,7 +754,9 @@ func TestTemplateArticleHandlerInvalidID(t *testing.T) {
 		"add":   func(a, b int) int { return a + b },
 		"sub":   func(a, b int) int { return a - b },
 		"mul":   func(a, b float64) float64 { return a * b },
-		"split": func(s, sep string) []string { return strings.Split(s, sep) }})
+		"split": func(s, sep string) []string { return strings.Split(s, sep) },
+		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
+	})
 	router.LoadHTMLGlob(templateGlob)
 	router.GET(articleIDRoute, templateArticleHandler(dbConn))
 
@@ -788,7 +793,9 @@ func TestTemplateArticleHandlerNotFound(t *testing.T) {
 		"add":   func(a, b int) int { return a + b },
 		"sub":   func(a, b int) int { return a - b },
 		"mul":   func(a, b float64) float64 { return a * b },
-		"split": func(s, sep string) []string { return strings.Split(s, sep) }})
+		"split": func(s, sep string) []string { return strings.Split(s, sep) },
+		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
+	})
 	router.LoadHTMLGlob(templateGlob)
 	router.GET(articleIDRoute, templateArticleHandler(dbConn))
 

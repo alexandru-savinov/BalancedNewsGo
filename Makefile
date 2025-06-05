@@ -1,5 +1,5 @@
 # Attempt to use bash/sh for shell-specific syntax
-SHELL = sh
+# SHELL = sh
 
 # Configurable race detection flag: enabled by default on non-Windows, disabled on Windows
 ifeq ($(OS),Windows_NT)
@@ -40,7 +40,7 @@ endif
 
 # Go / tools
 GO              := go
-GOLANGCI        := golangci-lint
+GOLANGCI        := C:\Users\Alexander.Savinov\go\bin\golangci-lint.exe
 SWAG            := swag
 
 # Paths

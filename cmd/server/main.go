@@ -86,6 +86,9 @@ func main() {
 		}, "split": func(s, sep string) []string {
 			return strings.Split(s, sep)
 		},
+		"date": func(t time.Time, layout string) string {
+			return t.Format(layout)
+		},
 	})
 	// Get the directory of the currently running file (main.go)
 	_, mainGoFilePath, _, ok := runtime.Caller(0)
