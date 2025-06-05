@@ -69,3 +69,7 @@ news.db-wal
 # /junk/ is already covered above
 .DS_Store
 *.log
+
+# Test output text files
+*test_output*.txt
+test_results.txt
