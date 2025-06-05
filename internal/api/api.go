@@ -1136,11 +1136,6 @@ func biasHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		articlesCache.Set(cacheKey, resp, 30*time.Second)
 		articlesCacheLock.Unlock()
 
-		// DEBUG: Log the response being sent, especially for article 1646
-		if id == 1646 {
-			log.Printf("[biasHandler DEBUG 1646] Sending response: %+v", resp)
-		}
-
 		RespondSuccess(c, resp)
 		LogPerformance("biasHandler", start)
 	}
