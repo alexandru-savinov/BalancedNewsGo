@@ -23,6 +23,11 @@ func main() {
 	flag.Parse()
 
 	if *articleIDFlag <= 0 {
+		fmt.Println("ERROR: The 'article_id' flag must be provided and greater than 0.")
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *articleIDFlag <= 0 {
 		fmt.Fprintln(os.Stderr, "article_id is required and must be > 0")
 		flag.Usage()
 		os.Exit(1)
