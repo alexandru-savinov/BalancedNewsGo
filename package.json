@@ -1,7 +1,8 @@
 {
   "name": "newbalancer_go",
   "version": "1.0.0",
-  "main": "index.js",  "scripts": {
+  "main": "index.js",
+  "scripts": {
     "prepare": "husky install",
     "precommit": "echo 'Pre-commit checks disabled - Python pre-commit not installed'",
     "commitmsg": "commitlint --edit $1",
@@ -31,12 +32,12 @@
     "@commitlint/config-conventional": "^19.8.1",
     "@stoplight/spectral-cli": "^6.11.0",
     "@types/eventsource": "^1.1.15",
-    "@types/node": "^22.14.1",
-    "eventsource": "^3.0.6",
+    "@types/node": "^22.15.30",
+    "eventsource": "^4.0.0",
+    "husky": "^9.1.7",
     "newman": "^6.2.1",
-    "puppeteer": "^24.9.0",
-    "typescript": "^5.8.3",
-    "husky": "^8.0.0"
+    "puppeteer": "^24.10.0",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
