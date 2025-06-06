@@ -85,6 +85,16 @@ jest.mock('../js/utils/ComponentPerformanceMonitor.js', () => ({
   measureInteraction: jest.fn()
 }), { virtual: true });
 
+// Provide a global stub for components that access it directly
+global.ComponentPerformanceMonitor = class {
+  startRender() {}
+  endRender() {}
+  trackInteraction() {}
+  trackEvent() {}
+  mount() {}
+  unmount() {}
+};
+
 // Global API mocks
 global.ApiClient = {
   updateBias: jest.fn().mockResolvedValue({ success: true }),

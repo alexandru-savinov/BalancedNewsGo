@@ -520,3 +520,13 @@ if (typeof window === 'undefined' && typeof require !== 'undefined') {
   const tester = new NavigationComponentTests();
   tester.runAllTests();
 }
+
+// Jest wrapper so that this file is recognized as containing tests
+if (typeof test === 'function') {
+  test('Navigation component custom tests pass', () => {
+    const tester = new NavigationComponentTests();
+    tester.runAllTests();
+    const failed = tester.testResults.some(r => r.status === 'FAIL');
+    expect(failed).toBe(false);
+  });
+}

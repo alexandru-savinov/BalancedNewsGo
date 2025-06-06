@@ -557,14 +557,14 @@ class ArticleCard extends HTMLElement {
 
   #attachEventListeners() {
     // Card click for navigation
-    this.card.addEventListener('click', this.#handleCardClick);
+    this.card.addEventListener('click', (e) => this.#handleCardClick(e));
 
     // Action button clicks
-    this.readMoreButton.addEventListener('click', this.#handleActionClick);
-    this.originalSourceButton.addEventListener('click', this.#handleActionClick);
+    this.readMoreButton.addEventListener('click', (e) => this.#handleActionClick(e));
+    this.originalSourceButton.addEventListener('click', (e) => this.#handleActionClick(e));
 
     // Bias slider events
-    this.biasSliderElement.addEventListener('biaschange', this.#handleBiasChange);
+    this.biasSliderElement.addEventListener('biaschange', (e) => this.#handleBiasChange(e));
 
     // Keyboard navigation for card
     this.card.addEventListener('keydown', (event) => {
