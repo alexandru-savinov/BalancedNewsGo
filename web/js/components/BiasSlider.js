@@ -23,13 +23,10 @@ class BiasSlider extends HTMLElement {
     this.#isDragging = false; // Drag state
     this.#startValue = 0;     // Value at start of drag
 
-    // Bind event handlers
-    this.#handleMouseDown = this.#handleMouseDown.bind(this);
-    this.#handleMouseMove = this.#handleMouseMove.bind(this);
-    this.#handleMouseUp = this.#handleMouseUp.bind(this);
-    this.#handleKeyDown = this.#handleKeyDown.bind(this);
-    this.#handleFocus = this.#handleFocus.bind(this);
-    this.#handleBlur = this.#handleBlur.bind(this);
+    // References for bound event handlers
+    this._mouseMoveListener = (e) => this.#handleMouseMove(e);
+    this._mouseUpListener = (e) => this.#handleMouseUp(e);
+    // Event handler bindings are done inline when attaching listeners
 
     this.#render();
     this.#attachEventListeners();
@@ -316,20 +313,20 @@ class BiasSlider extends HTMLElement {
   }
 
   #attachEventListeners() {
-    this.slider.addEventListener('mousedown', this.#handleMouseDown);
-    this.slider.addEventListener('keydown', this.#handleKeyDown);
-    this.slider.addEventListener('focus', this.#handleFocus);
-    this.slider.addEventListener('blur', this.#handleBlur);
+    this.slider.addEventListener('mousedown', (e) => this.#handleMouseDown(e));
+    this.slider.addEventListener('keydown', (e) => this.#handleKeyDown(e));
+    this.slider.addEventListener('focus', (e) => this.#handleFocus(e));
+    this.slider.addEventListener('blur', (e) => this.#handleBlur(e));
 
     // Touch events for mobile
-    this.slider.addEventListener('touchstart', this.#handleTouchStart.bind(this));
-    this.slider.addEventListener('touchmove', this.#handleTouchMove.bind(this));
-    this.slider.addEventListener('touchend', this.#handleTouchEnd.bind(this));
+    this.slider.addEventListener('touchstart', (e) => this.#handleTouchStart(e));
+    this.slider.addEventListener('touchmove', (e) => this.#handleTouchMove(e));
+    this.slider.addEventListener('touchend', (e) => this.#handleTouchEnd(e));
   }
 
   #removeEventListeners() {
-    document.removeEventListener('mousemove', this.#handleMouseMove);
-    document.removeEventListener('mouseup', this.#handleMouseUp);
+    document.removeEventListener('mousemove', this._mouseMoveListener);
+    document.removeEventListener('mouseup', this._mouseUpListener);
   }
 
   #handleMouseDown(event) {
@@ -339,8 +336,8 @@ class BiasSlider extends HTMLElement {
     this.#isDragging = true;
     this.#startValue = this.#value;
 
-    document.addEventListener('mousemove', this.#handleMouseMove);
-    document.addEventListener('mouseup', this.#handleMouseUp);
+    document.addEventListener('mousemove', this._mouseMoveListener);
+    document.addEventListener('mouseup', this._mouseUpListener);
 
     this.thumb.classList.add('dragging');
 

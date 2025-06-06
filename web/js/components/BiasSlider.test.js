@@ -385,3 +385,13 @@ if (typeof window !== 'undefined' && customElements.get('bias-slider')) {
     tests.runAllTests();
   }, 100);
 }
+
+// Jest wrapper
+if (typeof test === 'function') {
+  test('BiasSlider component custom tests pass', async () => {
+    const tests = new BiasSliderTests();
+    await tests.runAllTests();
+    const failed = tests.passedTests !== tests.totalTests;
+    expect(failed).toBe(false);
+  });
+}
