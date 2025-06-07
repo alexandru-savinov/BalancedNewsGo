@@ -1,0 +1,118 @@
+/* NewsBalancer Frontend - Main CSS Entry Point */
+
+/* Core CSS Foundation */
+@import './core/reset.css';
+@import './core/variables.css';
+@import './core/typography.css';
+@import './core/layout.css';
+
+/* Component-specific CSS (will be added in Phase 2) */
+/* @import './components/buttons.css'; */
+/* @import './components/cards.css'; */
+/* @import './components/forms.css'; */
+/* @import './components/modals.css'; */
+/* @import './components/navigation.css'; */
+/* @import './components/progress.css'; */
+/* @import './components/bias-slider.css'; */
+
+/* Page-specific CSS (will be added in Phase 3) */
+/* @import './pages/articles.css'; */
+/* @import './pages/article-detail.css'; */
+/* @import './pages/admin.css'; */
+
+/* Utility CSS */
+/* @import './utils/animations.css'; */
+/* @import './utils/accessibility.css'; */
+
+/* Global styles */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Skip link for accessibility */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  background: var(--color-primary-600);
+  color: white;
+  padding: 8px 16px;
+  text-decoration: none;
+  border-radius: var(--radius-base);
+  z-index: var(--z-modal);
+  transition: top var(--transition-base);
+}
+
+.skip-link:focus {
+  top: 6px;
+}
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Focus styles for better accessibility */
+.focus\:outline-none:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.focus\:ring-2:focus {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* Selection styles */
+::selection {
+  background-color: var(--color-primary-200);
+  color: var(--color-primary-900);
+}
+
+/* Dark mode selection */
+@media (prefers-color-scheme: dark) {
+  ::selection {
+    background-color: var(--color-primary-800);
+    color: var(--color-primary-100);
+  }
+}
+
+/* Print styles */
+@media print {
+  * {
+    background: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  a,
+  a:visited {
+    text-decoration: underline;
+  }
+
+  a[href]:after {
+    content: " (" attr(href) ")";
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

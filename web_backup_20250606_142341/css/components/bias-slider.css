@@ -1,0 +1,160 @@
+/**
+ * BiasSlider Component Styles
+ * Provides styling for the bias slider web component
+ *
+ * Features:
+ * - Responsive sizing variants
+ * - Color gradient track
+ * - Smooth animations
+ * - Focus and hover states
+ * - Dark mode support
+ */
+
+/* Component Host Styles */
+bias-slider {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  margin: var(--space-2, 0.5rem) 0;
+}
+
+/* Size Variants */
+bias-slider[size="small"] {
+  max-width: 200px;
+}
+
+bias-slider[size="large"] {
+  max-width: 400px;
+}
+
+/* Utility Classes for Global Use */
+.bias-slider-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+}
+
+.bias-slider-label {
+  font-size: var(--font-size-sm, 0.875rem);
+  font-weight: 500;
+  color: var(--color-text-secondary, #6b7280);
+  margin-bottom: var(--space-1, 0.25rem);
+}
+
+.bias-slider-description {
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-tertiary, #9ca3af);
+  line-height: 1.4;
+}
+
+/* Responsive Grid Integration */
+.article-grid .bias-slider {
+  margin: var(--space-1, 0.25rem) 0;
+}
+
+.article-card bias-slider {
+  width: 100%;
+  max-width: none;
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .bias-slider-label {
+    color: var(--color-text-secondary-dark, #d1d5db);
+  }
+
+  .bias-slider-description {
+    color: var(--color-text-tertiary-dark, #9ca3af);
+  }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  bias-slider {
+    --color-bias-left: #cc0000;
+    --color-bias-center: #000000;
+    --color-bias-right: #0000cc;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  bias-slider {
+    --transition-base: 0ms;
+  }
+}
+
+/* Focus Management */
+bias-slider:focus-within {
+  outline: 2px solid var(--color-focus, #3b82f6);
+  outline-offset: 2px;
+  border-radius: var(--radius-base, 0.25rem);
+}
+
+/* Loading State */
+bias-slider[loading] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+bias-slider[loading]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--color-primary-200, #dbeafe);
+  border-top-color: var(--color-primary-500, #3b82f6);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Error State */
+bias-slider[error] {
+  --color-bias-left: #ef4444;
+  --color-bias-center: #ef4444;
+  --color-bias-right: #ef4444;
+}
+
+/* Read-only State */
+bias-slider[readonly] {
+  opacity: 0.8;
+}
+
+/* Compact Layout for Mobile */
+@media (max-width: 640px) {
+  bias-slider {
+    max-width: none;
+  }
+
+  .bias-slider-container {
+    gap: var(--space-1, 0.25rem);
+  }
+
+  .bias-slider-label,
+  .bias-slider-description {
+    font-size: var(--font-size-xs, 0.75rem);
+  }
+}
+
+/* Print Styles */
+@media print {
+  bias-slider {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  bias-slider::after {
+    content: "Bias Score: " attr(value);
+    display: block;
+    font-size: 12pt;
+    margin-top: 4pt;
+  }
+}
