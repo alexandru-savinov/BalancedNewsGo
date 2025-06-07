@@ -54,6 +54,9 @@ junk/
 /bin/
 /build/
 
+# Windows reserved device name
+nul
+
 # Runtime Database Files
 news.db
 news.db-shm
