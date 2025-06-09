@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -383,28 +384,16 @@ func ArticleExistsBySimilarTitle(db *sqlx.DB, title string) (bool, error) {
 	return exists, nil
 }
 
-// InsertArticle creates a new article record within a transaction to ensure atomicity of the duplicate check and insert.
+// InsertArticle creates a new article record with retry logic for SQLITE_BUSY errors
 func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
-	tx, err := db.Beginx()
-	if err != nil {
-		return 0, handleError(err, "failed to begin transaction for article insert")
-	}
-	// Ensure transaction is rolled back in case of error
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback() // Rollback on panic
-			panic(p)          // Re-panic
-		} else if err != nil {
-			_ = tx.Rollback() // Rollback on error
-		}
-	}()
+	var resultID int64
 
-	// 1. Prepare article fields with defaults if not set
+	// Prepare article fields with defaults if not set (outside transaction)
 	if article.CreatedAt.IsZero() {
 		article.CreatedAt = time.Now()
 	}
 	if article.Status == nil {
-		defaultStatus := "pending" // Ideally, use a defined constant here later
+		defaultStatus := "pending"
 		article.Status = &defaultStatus
 	}
 	if article.FailCount == nil {
@@ -416,18 +405,48 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
 		article.Escalated = &defaultEscalated
 	}
 
-	// 2. Check if URL exists within the transaction
-	var exists bool
-	err = tx.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", article.URL)
-	if err != nil && err != sql.ErrNoRows { // Allow ErrNoRows here, should return exists=false
-		return 0, handleError(err, "failed to check article URL existence in transaction")
-	}
-	if exists {
-		err = ErrDuplicateURL // Explicitly set the error to be returned
+	// Execute the transaction with retry logic
+	config := DefaultRetryConfig()
+	err := WithRetry(config, func() error {
+		return insertArticleTransaction(db, article, &resultID)
+	})
+
+	if err != nil {
 		return 0, err
 	}
 
-	// 3. Insert the article if it doesn't exist
+	log.Printf("[INFO] Article inserted successfully with ID: %d", resultID)
+	return resultID, nil
+}
+
+// insertArticleTransaction performs the actual database transaction for article insertion
+func insertArticleTransaction(db *sqlx.DB, article *Article, resultID *int64) error {
+	tx, err := db.Beginx()
+	if err != nil {
+		return handleError(err, "failed to begin transaction for article insert")
+	}
+
+	// Ensure transaction is properly closed
+	defer func() {
+		if p := recover(); p != nil {
+			_ = tx.Rollback()
+			panic(p)
+		}
+	}()
+
+	// Check if URL exists within the transaction
+	var exists bool
+	err = tx.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", article.URL)
+	if err != nil && err != sql.ErrNoRows {
+		_ = tx.Rollback()
+		return handleError(err, "failed to check article URL existence in transaction")
+	}
+	if exists {
+		_ = tx.Rollback()
+		return ErrDuplicateURL
+	}
+
+	// Insert the article if it doesn't exist
 	result, err := tx.NamedExec(`
         INSERT INTO articles (source, pub_date, url, title, content, created_at, composite_score, confidence, score_source,
                               status, fail_count, last_attempt, escalated)
@@ -435,43 +454,58 @@ func InsertArticle(db *sqlx.DB, article *Article) (int64, error) {
                 :status, :fail_count, :last_attempt, :escalated)`,
 		article)
 	if err != nil {
+		_ = tx.Rollback()
 		log.Printf("[ERROR] Failed to insert article in transaction: %v", err)
-		// handleError will check for UNIQUE constraint error here again just in case of race conditions outside the explicit check
-		return 0, handleError(err, "failed to insert article")
+		return handleError(err, "failed to insert article")
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
+		_ = tx.Rollback()
 		log.Printf("[ERROR] Failed to retrieve last insert ID: %v", err)
-		return 0, handleError(err, "failed to get inserted article ID")
+		return handleError(err, "failed to get inserted article ID")
 	}
 
-	// 4. Commit the transaction
+	// Commit the transaction
 	err = tx.Commit()
 	if err != nil {
-		return 0, handleError(err, "failed to commit transaction for article insert")
+		return handleError(err, "failed to commit transaction for article insert")
 	}
 
-	log.Printf("[INFO] Article inserted successfully with ID: %d", id)
-	return id, nil
+	*resultID = id
+	return nil
 }
 
-// InsertLLMScore creates a new LLM score record
+// InsertLLMScore creates a new LLM score record with retry logic for SQLite concurrency
 func InsertLLMScore(exec sqlx.ExtContext, score *LLMScore) (int64, error) {
 	if err := validateLLMMetadata(score.Metadata); err != nil {
 		log.Printf("[ERROR] Invalid metadata for article %d model %s: %v", score.ArticleID, score.Model, err)
 		return 0, handleError(err, "invalid metadata for llm score")
 	}
 
-	result, err := sqlx.NamedExecContext(context.Background(), exec, `
-        INSERT INTO llm_scores (article_id, model, score, metadata, version, created_at)
-        VALUES (:article_id, :model, :score, :metadata, :version, :created_at)`,
-		score)
+	var id int64
+	err := WithRetry(DefaultRetryConfig(), func() error {
+		result, err := sqlx.NamedExecContext(context.Background(), exec, `
+			INSERT INTO llm_scores (article_id, model, score, metadata, version, created_at)
+			VALUES (:article_id, :model, :score, :metadata, :version, :created_at)`,
+			score)
+		if err != nil {
+			if IsSQLiteBusyError(err) {
+				log.Printf("[RETRY] InsertLLMScore for article %d model %s: %v", score.ArticleID, score.Model, err)
+				return err // Will trigger retry
+			}
+			log.Printf("[ERROR] InsertLLMScore failed for article %d model %s score %.3f: %v", score.ArticleID, score.Model, score.Score, err)
+			return err // Non-retryable error
+		}
+		var insertErr error
+		id, insertErr = result.LastInsertId()
+		return insertErr
+	})
+
 	if err != nil {
-		log.Printf("[ERROR] InsertLLMScore failed for article %d model %s score %.3f: %v", score.ArticleID, score.Model, score.Score, err)
 		return 0, handleError(err, "failed to insert LLM score")
 	}
-	return result.LastInsertId()
+	return id, nil
 }
 
 // FetchArticles retrieves articles with optional filters
@@ -571,47 +605,69 @@ func FetchLLMScores(db *sqlx.DB, articleID int64) ([]LLMScore, error) {
 	return scores, nil
 }
 
-// UpdateArticleScore updates the composite score for an article
+// UpdateArticleScore updates the composite score for an article with retry logic
 func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence float64) error {
-	_, err := db.Exec(`
-        UPDATE articles
-        SET composite_score = ?, confidence = ?, score_source = 'llm'
-        WHERE id = ?`,
-		score, confidence, articleID)
+	err := WithRetry(DefaultRetryConfig(), func() error {
+		_, err := db.Exec(`
+			UPDATE articles
+			SET composite_score = ?, confidence = ?, score_source = 'llm'
+			WHERE id = ?`,
+			score, confidence, articleID)
+		if err != nil {
+			if IsSQLiteBusyError(err) {
+				log.Printf("[RETRY] UpdateArticleScore for article %d: %v", articleID, err)
+				return err // Will trigger retry
+			}
+			return err // Non-retryable error
+		}
+		return nil
+	})
+
 	if err != nil {
 		return handleError(err, "failed to update article score")
 	}
 	return nil
 }
 
-// UpdateArticleScoreLLM updates the composite score for an article, specifically from LLM rescoring
+// UpdateArticleScoreLLM updates the composite score for an article, specifically from LLM rescoring with retry logic
 func UpdateArticleScoreLLM(exec sqlx.ExtContext, articleID int64, score float64, confidence float64) error {
 	log.Printf("[DEBUG][CONFIDENCE] UpdateArticleScoreLLM called with articleID=%d, score=%.4f, confidence=%.4f",
 		articleID, score, confidence)
 
-	result, err := exec.ExecContext(context.Background(), `
-        UPDATE articles
-        SET composite_score = ?, confidence = ?, score_source = 'llm'
-        WHERE id = ?`,
-		score, confidence, articleID)
+	err := WithRetry(DefaultRetryConfig(), func() error {
+		result, err := exec.ExecContext(context.Background(), `
+			UPDATE articles
+			SET composite_score = ?, confidence = ?, score_source = 'llm'
+			WHERE id = ?`,
+			score, confidence, articleID)
+
+		if err != nil {
+			if IsSQLiteBusyError(err) {
+				log.Printf("[RETRY] UpdateArticleScoreLLM for article %d: %v", articleID, err)
+				return err // Will trigger retry
+			}
+			log.Printf("[ERROR][CONFIDENCE] Failed to update article score in database: %v", err)
+			return err // Non-retryable error
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			log.Printf("[ERROR][CONFIDENCE] Error getting rows affected: %v", err)
+		} else {
+			log.Printf("[DEBUG][CONFIDENCE] UpdateArticleScoreLLM affected %d rows for articleID=%d",
+				rowsAffected, articleID)
+
+			if rowsAffected == 0 {
+				log.Printf("[WARN][CONFIDENCE] No rows updated for articleID=%d - article may not exist", articleID)
+			}
+		}
+
+		return nil
+	})
 
 	if err != nil {
-		log.Printf("[ERROR][CONFIDENCE] Failed to update article score in database: %v", err)
 		return handleError(err, "failed to update article score (LLM)")
 	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Printf("[ERROR][CONFIDENCE] Error getting rows affected: %v", err)
-	} else {
-		log.Printf("[DEBUG][CONFIDENCE] UpdateArticleScoreLLM affected %d rows for articleID=%d",
-			rowsAffected, articleID)
-
-		if rowsAffected == 0 {
-			log.Printf("[WARN][CONFIDENCE] No rows updated for articleID=%d - article may not exist", articleID)
-		}
-	}
-
 	return nil
 }
 
@@ -645,6 +701,14 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Hour)
+	// Enable WAL mode for improved concurrency
+	_, err = db.Exec("PRAGMA journal_mode=WAL")
+	if err != nil {
+		log.Printf("Failed to enable WAL mode: %v", err)
+		// Not fatal, but log it
+	} else {
+		log.Printf("WAL mode enabled successfully")
+	}
 
 	// Set busy_timeout to help with concurrent access
 	_, err = db.Exec("PRAGMA busy_timeout = 5000") // 5 seconds
@@ -775,4 +839,83 @@ func UpdateArticleStatus(exec sqlx.ExtContext, articleID int64, status string) e
 
 	log.Printf("[INFO] Updated status for article ID %d to '%s'", articleID, status)
 	return nil
+}
+
+// RetryConfig holds configuration for database retry operations
+type RetryConfig struct {
+	MaxAttempts   int
+	BaseDelay     time.Duration
+	MaxDelay      time.Duration
+	BackoffFactor float64
+	JitterPercent float64
+}
+
+// DefaultRetryConfig returns a sensible default retry configuration for SQLite operations
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxAttempts:   8,                     // More attempts for high concurrency
+		BaseDelay:     50 * time.Millisecond, // Start with shorter delay
+		MaxDelay:      2 * time.Second,       // Cap at 2 seconds
+		BackoffFactor: 2.0,                   // Exponential backoff
+		JitterPercent: 0.1,                   // 10% jitter to prevent thundering herd
+	}
+}
+
+// IsSQLiteBusyError checks if an error is a SQLite busy/locked error
+func IsSQLiteBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := strings.ToLower(err.Error())
+	return strings.Contains(errStr, "database is locked") ||
+		strings.Contains(errStr, "sqlite_busy") ||
+		strings.Contains(errStr, "busy")
+}
+
+// WithRetry executes a function with retry logic for SQLite busy errors
+func WithRetry(config RetryConfig, operation func() error) error {
+	var lastErr error
+
+	for attempt := 1; attempt <= config.MaxAttempts; attempt++ {
+		lastErr = operation()
+
+		if lastErr == nil {
+			if attempt > 1 {
+				log.Printf("[INFO] Database operation succeeded on attempt %d", attempt)
+			}
+			return nil
+		}
+
+		// If it's not a busy error, don't retry
+		if !IsSQLiteBusyError(lastErr) {
+			return lastErr
+		}
+
+		// Don't sleep on the last attempt
+		if attempt == config.MaxAttempts {
+			break
+		}
+
+		// Calculate delay with exponential backoff and jitter
+		delay := time.Duration(float64(config.BaseDelay) *
+			(1.0 + config.JitterPercent*(2.0*rand.Float64()-1.0)))
+
+		for i := 1; i < attempt; i++ {
+			delay = time.Duration(float64(delay) * config.BackoffFactor)
+		}
+
+		if delay > config.MaxDelay {
+			delay = config.MaxDelay
+		}
+
+		log.Printf("[WARN] Database busy (attempt %d/%d), retrying in %v: %v",
+			attempt, config.MaxAttempts, delay, lastErr)
+
+		time.Sleep(delay)
+	}
+
+	log.Printf("[ERROR] Database operation failed after %d attempts: %v",
+		config.MaxAttempts, lastErr)
+	return fmt.Errorf("database operation failed after %d attempts: %w",
+		config.MaxAttempts, lastErr)
 }

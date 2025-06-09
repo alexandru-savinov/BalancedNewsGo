@@ -343,7 +343,6 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			RespondError(c, NewAppError(ErrValidation, "Invalid pub_date format (expected RFC3339)"))
 			return
 		}
-
 		zero := 0.0
 		llmSource := "llm"
 		article := &db.Article{
@@ -358,18 +357,9 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			ScoreSource:    &llmSource,
 		}
 
-		// Retry logic for SQLITE_BUSY
-		var id int64
-		maxAttempts := 5
-		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			id, err = db.InsertArticle(dbConn, article)
-			if err == nil {
-				break
-			}
-			if strings.Contains(err.Error(), "database is locked") {
-				time.Sleep(time.Duration(attempt*100) * time.Millisecond)
-				continue
-			}
+		// Insert article (retry logic is handled at the database layer)
+		id, err := db.InsertArticle(dbConn, article)
+		if err != nil {
 			if errors.Is(err, db.ErrDuplicateURL) {
 				c.JSON(http.StatusConflict, gin.H{
 					"success": false,
@@ -381,10 +371,6 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 				return
 			}
 			RespondError(c, WrapError(err, ErrInternal, "Failed to create article"))
-			return
-		}
-		if err != nil {
-			RespondError(c, WrapError(err, ErrInternal, "Failed to create article after retries"))
 			return
 		}
 
