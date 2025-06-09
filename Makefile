@@ -62,7 +62,7 @@ SHORT           := -short
 
 .PHONY: help build run clean \
         tidy lint unit integ e2e test coverage-core \
-        mock-llm-go mock-llm-py docker-up docker-down
+        mock-llm-go mock-llm-py docker-up docker-down integration
 
 .DEFAULT_GOAL := help
 
@@ -115,7 +115,9 @@ endif
 	@echo "Unit tests complete."
 
 integ: ## Go integration tests (requires DB etc.)
-	$(GO) test -tags=integration ./cmd/... ./internal/...
+	$(GO) test -tags=integration ./cmd/... ./internal...
+
+integration: integ ## Alias for the 'integ' target to allow 'make integration'
 
 e2e: docker-up ## Docker stack + Playwright e2e
 	pnpm --filter=web test:e2e

@@ -1,25 +1,22 @@
 package main
 
 import (
-	"encoding/json"
-	"html/template"
+	"encoding/json" // Added for json marshalling
 	"log"
-	"net/http"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/jmoiron/sqlx" // Added for sqlx
 	"github.com/joho/godotenv"
 
+	_ "github.com/alexandru-savinov/BalancedNewsGo/docs" // This will import the generated docs
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/api"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics" // Added metrics import
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
-	"github.com/gin-gonic/gin"
-
-	_ "github.com/alexandru-savinov/BalancedNewsGo/docs" // This will import the generated docs
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -68,26 +65,15 @@ func main() {
 	dbConn, llmClient, rssCollector, scoreManager, progressManager, simpleCache := initServices()
 	defer func() { _ = dbConn.Close() }() // Initialize Gin
 	router := gin.Default()
-	// Set up template functions
-	router.SetFuncMap(template.FuncMap{
-		"mul": func(a, b float64) float64 {
-			return a * b
-		},
-		"add": func(a, b int) int {
-			return a + b
-		},
-		"sub": func(a, b int) int {
-			return a - b
-		}, "split": func(s, sep string) []string {
-			return strings.Split(s, sep)
-		},
-	})
-
-	// Load Editorial HTML templates
-	router.LoadHTMLGlob("web/templates/*.html")
-
-	// Serve static assets (CSS, JS, images, fonts)
-	router.Static("/static", "./web")
+	// CORS configuration
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	// @Summary Health Check
 	// @Description Returns the health status of the server.
@@ -102,19 +88,6 @@ func main() {
 	// The ProgressManager handles progress tracking for LLM scoring jobs.
 	// The SimpleCache provides in-memory caching for API responses.
 	api.RegisterRoutes(router, dbConn, rssCollector, llmClient, scoreManager, progressManager, simpleCache)
-	// Register UI routes - using Editorial template rendering
-	log.Println("Using Editorial template rendering with server-side data")
-
-	// Serve templated HTML for articles list
-	router.GET("/articles", templateIndexHandler(dbConn))
-
-	// Serve templated HTML for article detail
-	router.GET("/article/:id", templateArticleHandler(dbConn))
-
-	// Root welcome endpoint - redirect to articles
-	router.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusFound, "/articles")
-	})
 
 	// Metrics endpoints
 	router.GET("/metrics/validation", func(c *gin.Context) {

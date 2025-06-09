@@ -1,7 +1,0 @@
-/* 
- * styles.css - Redirects to main.css
- * This file exists to maintain backward compatibility
- * with templates that reference /static/css/styles.css
- */
-
-@import './main.css';
