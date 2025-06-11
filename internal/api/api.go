@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,27 +39,7 @@ var (
 )
 
 // Progress tracking vars
-var (
-	progressMap     = make(map[int64]*models.ProgressState)
-	progressMapLock sync.RWMutex
-)
-
-func setProgress(articleID int64, state *models.ProgressState) {
-	progressMapLock.Lock()
-	defer progressMapLock.Unlock()
-	progressMap[articleID] = state
-	log.Printf("[SetProgress] ArticleID=%d Status=%s Step=%s Message=%s",
-		articleID, state.Status, state.Step, state.Message)
-}
-
-func getProgress(articleID int64) *models.ProgressState {
-	progressMapLock.RLock()
-	defer progressMapLock.RUnlock()
-	if p, ok := progressMap[articleID]; ok {
-		return p
-	}
-	return nil
-}
+// Removed local progress tracking functions - now using ScoreManager's ProgressManager
 
 // RegisterRoutes registers all API routes on the provided router
 func RegisterRoutes(
@@ -220,11 +201,10 @@ func RegisterRoutes(
 	// @Tags LLM
 	// @Accept json
 	// @Produce text/event-stream
-	// @Param id path integer true "Article ID"
-	// @Success 200 {object} models.ProgressResponse
+	// @Param id path integer true "Article ID"	// @Success 200 {object} models.ProgressResponse
 	// @Router /api/llm/score-progress/{id} [get]
 	// @ID getScoreProgress
-	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler()))
+	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler(scoreManager)))
 }
 
 // SafeHandler wraps a handler function with panic recovery to prevent server crashes
@@ -755,40 +735,78 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 
 		// Start the reanalysis process
 		if scoreManager != nil {
-			scoreManager.SetProgress(articleID, &models.ProgressState{
-				Status:  "InProgress",
-				Step:    "Starting",
-				Message: fmt.Sprintf("Starting analysis with model %s", workingModel),
-			})
+			// Set initial progress BEFORE responding to the client
+			initialProgress := &models.ProgressState{
+				Status:  "Queued",
+				Step:    "Pending",
+				Message: fmt.Sprintf("Reanalysis queued for model %s", workingModel),
+			}
+			log.Printf("[reanalyzeHandler %d] Setting initial progress: %+v", articleID, initialProgress)
+			scoreManager.SetProgress(articleID, initialProgress)
 
 			// Check for an environment variable to skip auto-analysis during tests
 			if os.Getenv("NO_AUTO_ANALYZE") != "true" {
 				go func() {
-					err := llmClient.ReanalyzeArticle(articleID)
+					// Pass scoreManager to ReanalyzeArticle
+					err := llmClient.ReanalyzeArticle(context.Background(), articleID, scoreManager)
 					if err != nil {
 						log.Printf("[reanalyzeHandler %d] Error during reanalysis: %v", articleID, err)
-						scoreManager.SetProgress(articleID, &models.ProgressState{
-							Status:  "Error",
-							Step:    "Error",
-							Message: fmt.Sprintf("Error during analysis: %v", err),
-						})
+						// Ensure scoreManager is not nil before using
+						if scoreManager != nil {
+							scoreManager.SetProgress(articleID, &models.ProgressState{
+								Status:  "Error",
+								Step:    "Reanalysis Failed", // More specific step
+								Message: fmt.Sprintf("Error during analysis: %v", err),
+								Error:   err.Error(), // Populate Error field
+							})
+						}
 						return
 					}
-					scoreManager.SetProgress(articleID, &models.ProgressState{
-						Status:  "Complete",
-						Step:    "Done",
-						Message: "Analysis complete",
-					})
+					// Ensure scoreManager is not nil before using
+					if scoreManager != nil {
+						// Fetch the final score to include in the progress update
+						finalProgressState := scoreManager.GetProgress(articleID)
+						var finalScore *float64
+						article, fetchErr := db.FetchArticleByID(dbConn, articleID)
+						if fetchErr == nil && article.CompositeScore != nil {
+							finalScore = article.CompositeScore
+						} else if fetchErr != nil {
+							log.Printf("[reanalyzeHandler %d] Could not fetch article to get final score for progress: %v", articleID, fetchErr)
+						} else {
+							log.Printf("[reanalyzeHandler %d] Article fetched but composite score is nil for progress update.", articleID)
+						}
+
+						// If the ReanalyzeArticle function set a near-complete state, update it to full "Complete"
+						// Otherwise, create a new one.
+						if finalProgressState != nil && finalProgressState.Status == "InProgress" && finalProgressState.Percent == 99 {
+							finalProgressState.Status = "Complete"
+							finalProgressState.Step = "Done"
+							finalProgressState.Message = "Analysis complete"
+							finalProgressState.Percent = 100
+							finalProgressState.FinalScore = finalScore
+							scoreManager.SetProgress(articleID, finalProgressState)
+						} else {
+							scoreManager.SetProgress(articleID, &models.ProgressState{
+								Status:     "Complete",
+								Step:       "Done",
+								Message:    "Analysis complete",
+								Percent:    100,
+								FinalScore: finalScore, // Include final score if available
+							})
+						}
+					}
 				}()
 			} else {
 				log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping background reanalysis.", articleID)
 				// Optionally, set progress to complete or a specific "skipped" state
 				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Status:  "Skipped",
+					Status:  "Skipped", // Ensure this status is handled by SSE or test
 					Step:    "Skipped",
 					Message: "Automatic reanalysis skipped by test configuration.",
 				})
 			}
+		} else {
+			log.Printf("[reanalyzeHandler %d] ScoreManager is nil, cannot set progress.", articleID)
 		}
 
 		RespondSuccess(c, map[string]interface{}{
@@ -808,48 +826,119 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 // @Failure 400 {object} ErrorResponse "Invalid article ID"
 // @Router /api/llm/score-progress/{id} [get]
 // @ID getScoreProgress
-func scoreProgressSSEHandler() gin.HandlerFunc {
+func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := getValidArticleID(c)
 		if !ok {
-			if _, err := c.Writer.Write([]byte("event: error\ndata: {\"error\":\"Invalid article ID\"}\n\n\n")); err != nil {
-				log.Printf("Error writing SSE error for invalid article ID: %v", err)
+			// It's important to set headers before writing the body for SSE
+			c.Writer.Header().Set("Content-Type", "text/event-stream")
+			c.Writer.Header().Set("Cache-Control", "no-cache")
+			c.Writer.Header().Set("Connection", "keep-alive")
+			if _, err := c.Writer.Write([]byte("event: error\ndata: {\"error\":\"Invalid article ID\"}\n\n")); err != nil {
+				log.Printf("[SSE HANDLER] Error writing SSE error for invalid article ID: %v", err)
 			}
+			c.Writer.Flush() // Ensure data is sent
 			return
 		}
 		articleID := id
-		log.Printf("[SSE GET /api/llm/score-progress] ArticleID=%d", articleID)
+		log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Connection established.", articleID)
+
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
+		// Explicitly flush headers to ensure client connection is established before first tick
 		c.Writer.Flush()
-		lastProgress := ""
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
+
+		lastProgressJSON := ""
+		ticker := time.NewTicker(250 * time.Millisecond) // Reduced ticker for faster updates during debugging
+		defer func() {
+			ticker.Stop()
+			log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Connection closed.", articleID)
+		}()
+
+		// Send an initial "connected" or "pending" event immediately
+		// This helps confirm the connection is working before the first tick
+		initialState := &models.ProgressState{
+			Status:  "Connected",
+			Step:    "Initializing",
+			Message: "SSE connection established, awaiting progress.",
+			Percent: 0,
+		}
+		if scoreManager != nil {
+			// Check if there's already an initial state (e.g. "Queued" from reanalyzeHandler)
+			// If so, send that instead of a generic "Connected"
+			existingState := scoreManager.GetProgress(articleID)
+			if existingState != nil {
+				initialState = existingState
+				log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Found existing initial state: %+v", articleID, initialState)
+			} else {
+				log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: No existing state, sending generic 'Connected' state.", articleID)
+			}
+		} else {
+			log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: ScoreManager is nil, cannot fetch initial state.", articleID)
+		}
+
+		initialData, err := json.Marshal(initialState)
+		if err == nil {
+			log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Sending initial event: event: progress, data: %s", articleID, string(initialData))
+			if _, writeErr := fmt.Fprintf(c.Writer, "event: progress\ndata: %s\n\n", initialData); writeErr != nil {
+				log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Error writing initial SSE event: %v", articleID, writeErr)
+				// Don't return here, try to continue with the ticker
+			}
+			c.Writer.Flush() // Ensure the initial event is sent immediately
+		} else {
+			log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Error marshalling initial state: %v", articleID, err)
+		}
+
 		for {
 			select {
 			case <-c.Request.Context().Done():
-				log.Printf("[SSE] Client disconnected for article %d", articleID)
+				log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Client disconnected.", articleID)
 				return
 			case <-ticker.C:
-				progress := getProgress(articleID)
-				if progress == nil {
+				var progress *models.ProgressState
+				if scoreManager != nil {
+					progress = scoreManager.GetProgress(articleID)
+				} else {
+					log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: ScoreManager is nil in ticker loop.", articleID)
+					// Optionally send an error event or just continue
 					continue
 				}
-				if data, err := json.Marshal(progress); err == nil {
-					currentProgress := string(data)
-					if currentProgress != lastProgress {
-						if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", data); err != nil {
-							log.Printf("[SSE] Error writing to client for article %d: %v", articleID, err)
-							return
-						}
-						c.Writer.Flush()
-						lastProgress = currentProgress
-						if progress.Status == "Success" || progress.Status == "Error" || progress.Status == "Complete" {
-							log.Printf("[SSE] Progress complete for article %d: %s", articleID, progress.Status)
-							return
-						}
+
+				if progress == nil {
+					// log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: No progress update found.", articleID)
+					continue // No progress update yet
+				}
+
+				// Log the raw progress object fetched
+				// log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Fetched progress: %+v", articleID, progress)
+
+				data, err := json.Marshal(progress)
+				if err != nil {
+					log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Error marshalling progress: %v", articleID, err)
+					continue
+				}
+
+				currentProgressJSON := string(data)
+				if currentProgressJSON != lastProgressJSON {
+					log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Sending progress update: %s", articleID, currentProgressJSON)
+					if _, err := fmt.Fprintf(c.Writer, "event: progress\\ndata: %s\\n\\n", data); err != nil {
+						log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Error writing to client: %v", articleID, err)
+						return // Stop if we can't write to client
 					}
+					c.Writer.Flush() // Ensure data is sent immediately
+					lastProgressJSON = currentProgressJSON
+
+					// Check for terminal states
+					if progress.Status == "Complete" || progress.Status == "Error" || progress.Status == "Success" { // Added "Success"
+						log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Terminal progress status '%s' received. Closing SSE stream.", articleID, progress.Status)
+						// Send one last time to be sure, then close.
+						// It's possible the client might miss this if we return immediately.
+						// However, the test client should see the event and then the connection close.
+						return
+					}
+				} else {
+					// log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Progress unchanged: %s", articleID, currentProgressJSON)
 				}
 			}
 		}
@@ -1512,9 +1601,4 @@ func articleToPostmanSchema(a *db.Article) map[string]interface{} {
 		"confidence":      a.Confidence,
 		"score_source":    a.ScoreSource,
 	}
-}
-
-// Helper function to convert string to *string
-func strPtr(s string) *string {
-	return &s
 }

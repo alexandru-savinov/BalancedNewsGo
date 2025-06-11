@@ -39,6 +39,9 @@ type Article struct {
 	CompositeScore *float64   `db:"composite_score" json:"composite_score,omitempty"`
 	Confidence     *float64   `db:"confidence" json:"confidence,omitempty"`
 	ScoreSource    *string    `db:"score_source" json:"score_source,omitempty"`
+	BiasLabel      *string    `db:"bias_label" json:"bias_label,omitempty"`
+	AnalysisNotes  *string    `db:"analysis_notes" json:"analysis_notes,omitempty"`
+	Bias           string     `db:"-" json:"bias,omitempty"` // Calculated field, not stored in DB
 }
 
 // LLMScore represents a political bias score from an LLM model
@@ -485,26 +488,55 @@ func InsertLLMScore(exec sqlx.ExtContext, score *LLMScore) (int64, error) {
 
 	var id int64
 	err := WithRetry(DefaultRetryConfig(), func() error {
-		result, err := sqlx.NamedExecContext(context.Background(), exec, `
+		// Upsert logic: Insert or update if conflict on (article_id, model)
+		query := `
 			INSERT INTO llm_scores (article_id, model, score, metadata, version, created_at)
-			VALUES (:article_id, :model, :score, :metadata, :version, :created_at)`,
-			score)
+			VALUES (:article_id, :model, :score, :metadata, :version, :created_at)
+			ON CONFLICT (article_id, model) DO UPDATE SET
+				score = excluded.score,
+				metadata = excluded.metadata,
+				version = excluded.version,
+				created_at = excluded.created_at;`
+
+		result, err := sqlx.NamedExecContext(context.Background(), exec, query, score)
 		if err != nil {
 			if IsSQLiteBusyError(err) {
-				log.Printf("[RETRY] InsertLLMScore for article %d model %s: %v", score.ArticleID, score.Model, err)
+				log.Printf("[RETRY] InsertLLMScore (upsert) for article %d model %s: %v", score.ArticleID, score.Model, err)
 				return err // Will trigger retry
 			}
-			log.Printf("[ERROR] InsertLLMScore failed for article %d model %s score %.3f: %v", score.ArticleID, score.Model, score.Score, err)
+			log.Printf("[ERROR] InsertLLMScore (upsert) failed for article %d model %s score %.3f: %v", score.ArticleID, score.Model, score.Score, err)
 			return err // Non-retryable error
 		}
 		var insertErr error
+		// For ON CONFLICT DO UPDATE, LastInsertId might not be reliable or might be 0 if it was an update.
+		// If an ID is strictly needed even for updates, a SELECT might be required post-operation,
+		// or the logic might need to rely on the fact that the record now exists/is updated.
+		// For now, we'll attempt to get it, but be aware of its behavior with upserts.
 		id, insertErr = result.LastInsertId()
-		return insertErr
+		if insertErr != nil {
+			// If it's an update, LastInsertId might return an error or 0.
+			// We can check RowsAffected to see if an operation occurred.
+			rowsAffected, _ := result.RowsAffected()
+			if rowsAffected > 0 {
+				// An insert or update happened. If LastInsertId failed, it might have been an update.
+				// We might not have a new ID, but the operation was successful.
+				// To get the ID in case of an update, we would need to query it.
+				// For simplicity, if LastInsertId fails but rows were affected, we assume success without a new ID.
+				log.Printf("[INFO] InsertLLMScore (upsert) affected %d rows for article %d model %s. LastInsertId error: %v (may be an update)", rowsAffected, score.ArticleID, score.Model, insertErr)
+				return nil // No new ID, but operation was successful
+			}
+			// If LastInsertId failed and no rows were affected, then it's a genuine error.
+			log.Printf("[ERROR] InsertLLMScore (upsert) failed to get LastInsertId and no rows affected for article %d model %s: %v", score.ArticleID, score.Model, insertErr)
+			return insertErr
+		}
+		return nil // LastInsertId was successful (likely an insert)
 	})
 
 	if err != nil {
-		return 0, handleError(err, "failed to insert LLM score")
+		return 0, handleError(err, "failed to insert/update LLM score")
 	}
+	// If id is 0 after a successful operation (e.g. an update), this is expected.
+	// The caller should be aware that id might be 0 if an update occurred.
 	return id, nil
 }
 
@@ -543,8 +575,31 @@ func FetchArticles(db *sqlx.DB, source string, leaning string, limit int, offset
 		return nil, handleError(err, "failed to fetch articles")
 	}
 
+	// Calculate bias for each article
+	for i := range articles {
+		articles[i].CalculateBias()
+	}
+
 	log.Printf("[INFO] FetchArticles found %d articles", len(articles))
 	return articles, nil
+}
+
+// CalculateBias determines the bias label based on CompositeScore
+func (a *Article) CalculateBias() {
+	if a.CompositeScore == nil {
+		a.Bias = "unknown"
+		return
+	}
+
+	score := *a.CompositeScore
+	switch {
+	case score < -0.1:
+		a.Bias = "left"
+	case score > 0.1:
+		a.Bias = "right"
+	default:
+		a.Bias = "center"
+	}
 }
 
 // FetchArticleByID retrieves a single article by ID

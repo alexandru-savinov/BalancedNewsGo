@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json" // Added for json marshalling
+	"html/template"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -65,6 +67,19 @@ func main() {
 	dbConn, llmClient, rssCollector, scoreManager, progressManager, simpleCache := initServices()
 	defer func() { _ = dbConn.Close() }() // Initialize Gin
 	router := gin.Default()
+
+	// Configure template function map
+	router.SetFuncMap(template.FuncMap{
+		"add":   func(a, b int) int { return a + b },
+		"sub":   func(a, b int) int { return a - b },
+		"mul":   func(a, b float64) float64 { return a * b },
+		"split": func(s, sep string) []string { return strings.Split(s, sep) },
+		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
+	})
+
+	// Load HTML templates
+	router.LoadHTMLGlob("templates/*")
+
 	// CORS configuration
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
@@ -74,7 +89,6 @@ func main() {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
-
 	// @Summary Health Check
 	// @Description Returns the health status of the server.
 	// @Tags Health
@@ -83,6 +97,14 @@ func main() {
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+
+	// Template routes for web pages
+	router.GET("/", func(c *gin.Context) {
+		c.Redirect(302, "/articles")
+	})
+	router.GET("/articles", TemplateIndexHandler(dbConn))
+	router.GET("/article/:id", TemplateArticleHandler(dbConn))
+	router.GET("/admin", TemplateAdminHandler(dbConn))
 
 	// Register API routes on the router instance
 	// The ProgressManager handles progress tracking for LLM scoring jobs.
@@ -136,6 +158,9 @@ func main() {
 
 	// Add Swagger route
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// Register admin routes
+	RegisterAdminRoutes(router, dbConn)
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {

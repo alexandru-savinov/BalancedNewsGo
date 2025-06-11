@@ -86,6 +86,9 @@ build: $(BIN_DIR) ## Compile backend server into ./bin
 run: build ## Build and run server
 	$(SERVER_BIN)
 
+stop: ## Stop the running server
+	taskkill /IM newbalancer_server /F
+
 clean:
 	@echo "Cleaning build artifacts..."
 	@go run ./tools/clean/main.go

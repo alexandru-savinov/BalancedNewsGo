@@ -16,6 +16,7 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/models" // Added import
 	"github.com/go-resty/resty/v2"
 	"github.com/jmoiron/sqlx"
 )
@@ -323,201 +324,315 @@ func (c *LLMClient) AnalyzeAndStore(article *db.Article) error {
 }
 
 // ReanalyzeArticle performs a complete reanalysis of an article using all configured models
-func (c *LLMClient) ReanalyzeArticle(articleID int64) error {
+func (c *LLMClient) ReanalyzeArticle(ctx context.Context, articleID int64, scoreManager *ScoreManager) error {
 	log.Printf("[ReanalyzeArticle %d] Starting reanalysis", articleID)
+	if scoreManager != nil {
+		scoreManager.SetProgress(articleID, &models.ProgressState{
+			Status:  "InProgress",
+			Step:    "Starting reanalysis",
+			Message: "Initiating reanalysis process.",
+			Percent: 5,
+		})
+	}
 	tx, err := c.db.Beginx()
 	if err != nil {
-		return err
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Begin Transaction", Message: "Failed to begin database transaction", Error: err.Error()})
+		}
+		return fmt.Errorf("failed to begin transaction for reanalysis of article %d: %w", articleID, err)
 	}
 
-	log.Printf("[ReanalyzeArticle %d] Deleting existing scores", articleID)
-	_, err = tx.Exec("DELETE FROM llm_scores WHERE article_id = ?", articleID)
-	if err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			log.Printf("tx.Rollback() failed: %v", rbErr)
+	// Defer a function to handle commit or rollback
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("[ReanalyzeArticle %d] Recovered from panic: %v. Rolling back transaction.", articleID, p)
+			if rbErr := tx.Rollback(); rbErr != nil {
+				log.Printf("[ReanalyzeArticle %d] Error rolling back transaction after panic: %v", articleID, rbErr)
+			}
+			panic(p) // Re-throw panic after Rollback
+		} else if err != nil {
+			log.Printf("[ReanalyzeArticle %d] Error occurred: %v. Rolling back transaction.", articleID, err)
+			if rbErr := tx.Rollback(); rbErr != nil {
+				log.Printf("[ReanalyzeArticle %d] Error rolling back transaction: %v (original error: %v)", articleID, rbErr, err)
+			}
+		} else {
+			log.Printf("[ReanalyzeArticle %d] Committing transaction.", articleID)
+			commitErr := tx.Commit()
+			if commitErr != nil {
+				log.Printf("[ReanalyzeArticle %d] Error committing transaction: %v", articleID, commitErr)
+				err = fmt.Errorf("failed to commit transaction for reanalysis of article %d: %w", articleID, commitErr) // Assign commitErr to err
+				if scoreManager != nil {
+					scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Commit Transaction", Message: "Failed to commit transaction", Error: err.Error()})
+				}
+			} else {
+				log.Printf("[ReanalyzeArticle %d] Transaction committed successfully.", articleID)
+			}
 		}
-		return err
+	}()
+
+	log.Printf("[ReanalyzeArticle %d] Deleting existing non-ensemble scores", articleID)
+	if scoreManager != nil {
+		scoreManager.SetProgress(articleID, &models.ProgressState{
+			Status:  "InProgress",
+			Step:    "Deleting old scores",
+			Message: "Removing previous non-ensemble analysis data.",
+			Percent: 10,
+		})
+	}
+	_, delErr := tx.ExecContext(ctx, "DELETE FROM llm_scores WHERE article_id = ? AND model != 'ensemble'", articleID)
+	if delErr != nil {
+		err = fmt.Errorf("failed to delete existing non-ensemble scores for article %d: %w", articleID, delErr)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Delete Scores", Message: "Failed to delete existing non-ensemble scores", Error: err.Error()})
+		}
+		return err // Defer will handle rollback
 	}
 
 	var article db.Article
 	log.Printf("[ReanalyzeArticle %d] Fetching article data", articleID)
-	err = tx.Get(&article, "SELECT * FROM articles WHERE id = ?", articleID)
-	if err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			log.Printf("tx.Rollback() failed: %v", rbErr)
+	if scoreManager != nil {
+		scoreManager.SetProgress(articleID, &models.ProgressState{
+			Status:  "InProgress",
+			Step:    "Fetching article data",
+			Message: "Loading article content.",
+			Percent: 15,
+		})
+	}
+	fetchArticleErr := tx.GetContext(ctx, &article, "SELECT * FROM articles WHERE id = ?", articleID)
+	if fetchArticleErr != nil {
+		err = fmt.Errorf("failed to fetch article %d for reanalysis: %w", articleID, fetchArticleErr)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Fetch Article", Message: "Failed to fetch article data", Error: err.Error()})
 		}
-		return err
+		return err // Defer will handle rollback
 	}
 
 	log.Printf("[ReanalyzeArticle %d] Fetched article: Title='%.50s'", articleID, article.Title)
-	log.Printf("[ReanalyzeArticle %d] Starting analysis loop for models", articleID)
-
-	// Use the client's already loaded config
 	if c.config == nil {
 		log.Printf("[ReanalyzeArticle %d] Error: LLMClient config is not loaded.", articleID)
-		// Try loading it again as a fallback?
 		var loadErr error
 		c.config, loadErr = LoadCompositeScoreConfig()
 		if loadErr != nil {
-			log.Printf("[ReanalyzeArticle %d] Error loading config fallback: %v", articleID, loadErr)
-			_ = tx.Rollback() // Attempt rollback before returning
-			return fmt.Errorf("LLMClient config is not loaded and fallback failed: %w", loadErr)
+			err = fmt.Errorf("LLMClient config is not loaded and fallback failed for article %d: %w", articleID, loadErr)
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Load Config", Message: "Failed to load LLM configuration", Error: loadErr.Error()})
+			}
+			return err // Defer will handle rollback
 		}
 		log.Printf("[ReanalyzeArticle %d] Loaded config via fallback.", articleID)
 	}
-	cfg := c.config // Use the client's config
+	cfg := c.config
+	totalModels := len(cfg.Models)
+	currentModelNum := 0
 
-	// Try each model in sequence
 	for _, modelConfig := range cfg.Models {
+		currentModelNum++
+		modelProgressPercent := 15 + int(float64(currentModelNum)/float64(totalModels)*50.0)
 		log.Printf("[ReanalyzeArticle %d] Calling analyzeContent for model: %s", articleID, modelConfig.ModelName)
-		score, analyzeErr := c.analyzeContent(article.ID, article.Content, modelConfig.ModelName)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{
+				Status:  "InProgress",
+				Step:    fmt.Sprintf("Analyzing with %s", modelConfig.ModelName),
+				Message: fmt.Sprintf("Processing with model %d of %d.", currentModelNum, totalModels),
+				Percent: modelProgressPercent,
+			})
+		}
+
+		scoreDataStruct, analyzeErr := c.analyzeContent(article.ID, article.Content, modelConfig.ModelName)
 		if analyzeErr != nil {
 			log.Printf("[ReanalyzeArticle %d] Error from analyzeContent for %s: %v", articleID, modelConfig.ModelName, analyzeErr)
-			continue
-		}
-		log.Printf("[ReanalyzeArticle %d] analyzeContent successful for: %s. Score: %.2f", articleID, modelConfig.ModelName, score.Score)
-
-		// Make sure the version is set to a proper integer value
-		if score.Version == 0 {
-			score.Version = 1 // Default version to 1 if not set
-		}
-
-		_, insertErr := tx.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, version)
-			VALUES (:article_id, :model, :score, :metadata, :version)`, score)
-		if insertErr != nil {
-			log.Printf("[ReanalyzeArticle %d] Error inserting score for %s: %v", articleID, modelConfig.ModelName, insertErr)
-			// Decide whether to continue or rollback/fail
-			// continue // Option 1: Log and continue with other models
-			if rbErr := tx.Rollback(); rbErr != nil { // Option 2: Rollback and fail
-				log.Printf("[ReanalyzeArticle %d] tx.Rollback() failed after insert error: %v", articleID, rbErr)
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &models.ProgressState{
+					Status:  "InProgress", // Still in progress, but this model failed
+					Step:    fmt.Sprintf("Error with %s", modelConfig.ModelName),
+					Message: fmt.Sprintf("Failed to analyze with %s: %v", modelConfig.ModelName, analyzeErr),
+					Percent: modelProgressPercent,
+					Error:   analyzeErr.Error(),
+				})
 			}
-			return fmt.Errorf("inserting score for %s: %w", modelConfig.ModelName, insertErr)
-		} else {
-			log.Printf("[ReanalyzeArticle %d] Successfully inserted score for: %s", articleID, modelConfig.ModelName)
+			// Decide if we should continue with other models or return.
+			// For now, let's continue, and the error will be part of the final aggregation if needed.
+			// If a specific model error should halt the whole process, 'return analyzeErr' here.
+			continue // Continue to the next model
 		}
+		log.Printf("[ReanalyzeArticle %d] analyzeContent successful for: %s. Score: %.2f", articleID, modelConfig.ModelName, scoreDataStruct.Score)
+
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{
+				Status:  "InProgress",
+				Step:    fmt.Sprintf("Storing score for %s", modelConfig.ModelName),
+				Message: fmt.Sprintf("Saving result from model %s.", modelConfig.ModelName),
+				Percent: modelProgressPercent + 2, // Arbitrary small increment
+			})
+		}
+
+		// Ensure Version and CreatedAt are set. analyzeContent should handle this.
+		if scoreDataStruct.Version == 0 {
+			scoreDataStruct.Version = 1 // Default version if not set
+		}
+		if scoreDataStruct.CreatedAt.IsZero() {
+			scoreDataStruct.CreatedAt = time.Now().UTC()
+		}
+
+		log.Printf("[ReanalyzeArticle %d] Attempting to insert/update score for model %s using db.InsertLLMScore (transactional)", articleID, modelConfig.ModelName)
+		_, insertErr := db.InsertLLMScore(tx, scoreDataStruct) // Use tx and *db.LLMScore
+		if insertErr != nil {
+			err = apperrors.Wrap(insertErr, fmt.Sprintf("failed to insert/update score for model %s for article %d", modelConfig.ModelName, articleID), "db_insert_error")
+			log.Printf("[ReanalyzeArticle %d] %v", articleID, err)
+			if scoreManager != nil {
+				scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Insert Score", Message: fmt.Sprintf("Failed to insert score for %s", modelConfig.ModelName), Error: err.Error()})
+			}
+			return err // Defer will handle rollback
+		}
+		log.Printf("[ReanalyzeArticle %d] Successfully inserted/updated score for article %d, model %s", articleID, articleID, modelConfig.ModelName)
 	}
 
-	// Commit the transaction
-	if err := tx.Commit(); err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error committing transaction: %v", articleID, err)
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	// Calculate composite score AFTER successful commit
-	scores, err := c.FetchScores(article.ID)
+	// If loop completed, err might still be set by a previous non-fatal error or a commit failure in defer.
+	// If a fatal error occurred in the loop and returned, this part is skipped.
 	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error fetching scores post-commit: %v", articleID, err)
-		return fmt.Errorf("failed to fetch scores for ensemble calculation post-commit: %w", err)
+		return err
 	}
 
-	// Debug logging to identify which scores are retrieved and their properties
-	log.Printf("[ReanalyzeArticle %d] Found %d scores for composite calculation:", articleID, len(scores))
-	for i, s := range scores {
-		log.Printf("[ReanalyzeArticle %d] Score[%d]: Model=%s, Score=%.4f, Metadata=%s, Version=%d",
-			articleID, i, s.Model, s.Score, s.Metadata, s.Version)
+	log.Printf("[ReanalyzeArticle %d] Calculating composite score after individual model scoring.", articleID) // Corrected log
+	if scoreManager != nil {
+		scoreManager.SetProgress(articleID, &models.ProgressState{
+			Status:  "InProgress",
+			Step:    "Calculating composite score",
+			Message: "Aggregating results for final score.",
+			Percent: 80,
+		})
 	}
 
-	finalScore, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, cfg)
-	if err != nil {
-		// Don't return error, just log. Store 0 if calculation fails.
-		log.Printf("[ReanalyzeArticle %d] Error calculating composite score post-commit: %v. Storing 0.", articleID, err)
+	var currentScores []db.LLMScore
+	fetchScoresErr := tx.SelectContext(ctx, &currentScores, "SELECT * FROM llm_scores WHERE article_id = ? AND model != 'ensemble'", articleID)
+	if fetchScoresErr != nil {
+		err = fmt.Errorf("failed to fetch scores from transaction for composite calculation for article %d: %w", articleID, fetchScoresErr)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Fetch Scores for Composite", Message: "Failed to fetch scores for composite calculation", Error: err.Error()})
+		}
+		return err // Defer will rollback
+	}
+	log.Printf("[ReanalyzeArticle %d] Found %d non-ensemble scores in transaction for composite calculation.", articleID, len(currentScores)) // Corrected log
+
+	finalScore, confidence, calcErr := ComputeCompositeScoreWithConfidenceFixed(currentScores, cfg)
+	if calcErr != nil {
+		log.Printf("[ReanalyzeArticle %d] Error calculating composite score: %v. Proceeding with zero values.", articleID, calcErr)
 		finalScore = 0
 		confidence = 0
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{
+				Status:  "InProgress", // Or "Warning" if such a state exists
+				Step:    "Composite Score Calculation Error",
+				Message: fmt.Sprintf("Error calculating composite score: %v. Proceeding with zero values.", calcErr),
+				Percent: 85,
+				Error:   calcErr.Error(), // Log the error but don't make the whole reanalysis fail
+			})
+		}
 	}
 
-	// Store ensemble score in llm_scores table
-	subResults := make([]map[string]interface{}, 0, len(scores))
-	for _, s := range scores {
-		// Skip ensemble model itself
-		if strings.ToLower(s.Model) == "ensemble" {
-			continue
-		}
-
-		// Extract confidence and explanation from metadata
-		var confidence float64 = 0.0
+	subResults := make([]map[string]interface{}, 0, len(currentScores))
+	for _, s := range currentScores {
+		var currentSubConfidence float64 = 0.0
 		var explanation string = ""
-		var meta map[string]interface{}
-
+		var metaOut map[string]interface{}
 		if s.Metadata != "" {
-			if err := json.Unmarshal([]byte(s.Metadata), &meta); err == nil {
-				if confVal, ok := meta["confidence"].(float64); ok {
-					confidence = confVal
+			if unmarshalErr := json.Unmarshal([]byte(s.Metadata), &metaOut); unmarshalErr == nil {
+				if confVal, ok := metaOut["confidence"].(float64); ok {
+					currentSubConfidence = confVal
 				}
-				if explVal, ok := meta["explanation"].(string); ok {
+				if explVal, ok := metaOut["explanation"].(string); ok {
 					explanation = explVal
 				}
+			} else {
+				log.Printf("[ReanalyzeArticle %d] Error unmarshalling metadata for model %s score ID %d: %v", articleID, s.Model, s.ID, unmarshalErr)
 			}
 		}
-
-		// Map model to perspective
 		perspective := MapModelToPerspective(s.Model, cfg)
 		if perspective == "" {
 			perspective = "unknown"
 		}
-
 		subResults = append(subResults, map[string]interface{}{
 			"model":       s.Model,
 			"score":       s.Score,
-			"confidence":  confidence,
+			"confidence":  currentSubConfidence,
 			"explanation": explanation,
 			"perspective": perspective,
 		})
 	}
 
-	meta := map[string]interface{}{
-		"timestamp":   time.Now().Format(time.RFC3339),
+	ensembleMetaMap := map[string]any{
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
 		"sub_results": subResults,
-		"final_aggregation": map[string]interface{}{
+		"final_aggregation": map[string]any{
 			"weighted_mean": finalScore,
 			"variance":      1.0 - confidence,
 			"confidence":    confidence,
 		},
 	}
-	metaBytes, _ := json.Marshal(meta)
-	ensembleScore := &db.LLMScore{
+	metaBytes, marshalErr := json.Marshal(ensembleMetaMap)
+	if marshalErr != nil {
+		err = fmt.Errorf("failed to marshal ensemble metadata for article %d: %w", articleID, marshalErr)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Marshal Ensemble Metadata", Message: "Failed to marshal ensemble metadata", Error: err.Error()})
+		}
+		return err // Defer will rollback
+	}
+
+	ensembleLLMScore := &db.LLMScore{
 		ArticleID: articleID,
 		Model:     "ensemble",
 		Score:     finalScore,
 		Metadata:  string(metaBytes),
-		CreatedAt: time.Now(),
-		Version:   1, // Set version explicitly to match schema expectation (as an integer)
+		Version:   1,
+		CreatedAt: time.Now().UTC(),
 	}
 
-	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at, version)
-		VALUES (:article_id, :model, :score, :metadata, :created_at, :version)`, ensembleScore)
-	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error inserting/updating ensemble score post-commit: %v", articleID, err)
-	}
-
-	// Update the main article score
-	err = db.UpdateArticleScore(c.db, articleID, finalScore, confidence)
-	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error updating article score post-commit: %v", articleID, err)
-		// Decide if this is fatal or just a warning
-		// return fmt.Errorf("failed to update article score: %w", err)
-	} else {
-		// Log success of article score update to help with debugging
-		log.Printf("[ReanalyzeArticle %d] Successfully updated article score in articles table: score=%.2f, confidence=%.2f",
-			articleID, finalScore, confidence)
-	}
-
-	// Verify that the score was updated
-	updatedArticle, err := db.FetchArticleByID(c.db, articleID)
-	if err != nil {
-		log.Printf("[ReanalyzeArticle %d] Error fetching article after update: %v", articleID, err)
-	} else {
-		if updatedArticle.CompositeScore != nil {
-			log.Printf("[ReanalyzeArticle %d] Verified article score: %.2f", articleID, *updatedArticle.CompositeScore)
-		} else {
-			log.Printf("[ReanalyzeArticle %d] Warning: article composite_score is still nil after update", articleID)
+	log.Printf("[ReanalyzeArticle %d] Attempting to insert/update ensemble score using db.InsertLLMScore (transactional)", articleID)
+	_, ensembleInsertErr := db.InsertLLMScore(tx, ensembleLLMScore)
+	if ensembleInsertErr != nil {
+		err = fmt.Errorf("failed to insert/update ensemble score for article %d: %w", articleID, ensembleInsertErr)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Store Ensemble Score", Message: "Failed to store ensemble score", Error: err.Error()})
 		}
+		return err // Defer will rollback
+	}
+	log.Printf("[ReanalyzeArticle %d] Successfully inserted/updated ensemble score for article %d.", articleID, articleID)
+
+	log.Printf("[ReanalyzeArticle %d] Updating article table with composite score and status in transaction.", articleID)
+	if scoreManager != nil {
+		scoreManager.SetProgress(articleID, &models.ProgressState{
+			Status:  "InProgress",
+			Step:    "Updating article table",
+			Message: "Updating the main article with the new score.",
+			Percent: 95,
+		})
+	}
+	_, updateErr := tx.ExecContext(ctx,
+		"UPDATE articles SET composite_score = ?, confidence = ?, score_source = 'llm', status = 'processed', last_analyzed_at = ? WHERE id = ?",
+		finalScore, confidence, time.Now().UTC(), articleID)
+	if updateErr != nil {
+		err = fmt.Errorf("failed to update article score and status for article %d: %w", articleID, updateErr)
+		if scoreManager != nil {
+			scoreManager.SetProgress(articleID, &models.ProgressState{Status: "Error", Step: "Update Article Score", Message: "Failed to update article score in main table", Error: err.Error(), Percent: 98})
+		}
+		return err // Defer will rollback
+	}
+	log.Printf("[ReanalyzeArticle %d] Successfully updated article table in transaction for article %d.", articleID, articleID)
+
+	log.Printf("[ReanalyzeArticle %d] Reanalysis operations within transaction complete. Preparing to commit.", articleID)
+	if scoreManager != nil {
+		scoreManager.SetProgress(articleID, &models.ProgressState{
+			Status:  "InProgress", // Will change to "Completed" after successful commit
+			Step:    "Finalizing",
+			Message: "Reanalysis process near completion.",
+			Percent: 99,
+		})
 	}
 
-	log.Printf("[ReanalyzeArticle %d] Completed successfully. Score: %.2f, Confidence: %.2f", articleID, finalScore, confidence)
-	return nil
+	return err // err will be nil if all ops succeeded, or will contain commitErr if commit failed in defer
 }
 
-func (c *LLMClient) AnalyzeContent(articleID int64, content string, model string, url string) (*db.LLMScore, error) {
+func (c *LLMClient) AnalyzeContent(articleID int64, content string, model string, url string, scoreManager *ScoreManager) (*db.LLMScore, error) { // Add scoreManager
 	return c.analyzeContent(articleID, content, model)
 }
 
@@ -623,10 +738,12 @@ func (c *LLMClient) StoreEnsembleScore(article *db.Article) (float64, error) {
 	score, confidence, err := ComputeCompositeScoreWithConfidenceFixed(scores, c.config)
 	if err != nil {
 		log.Printf("Error calculating composite score for article %d: %v", article.ID, err)
-		return 0, fmt.Errorf("calculating composite score for article %d: %w", article.ID, err)
+		// Proceed with zero score in case of error
+		score = 0
+		confidence = 0
 	}
 
-	// Store ensemble score in llm_scores table
+	// Prepare metadata for ensemble score
 	subResults := make([]map[string]interface{}, 0, len(scores))
 	for _, s := range scores {
 		// Skip ensemble model itself
@@ -685,7 +802,11 @@ func (c *LLMClient) StoreEnsembleScore(article *db.Article) (float64, error) {
 	}
 
 	_, err = c.db.NamedExec(`INSERT INTO llm_scores (article_id, model, score, metadata, created_at, version)
-		VALUES (:article_id, :model, :score, :metadata, :created_at, :version)`, ensembleScore)
+		VALUES (:article_id, :model, :score, :metadata, :created_at, :version) ON CONFLICT(article_id, model) DO UPDATE SET
+		score = EXCLUDED.score,
+		metadata = EXCLUDED.metadata,
+		created_at = EXCLUDED.created_at,
+		version = EXCLUDED.version`, ensembleScore)
 	if err != nil {
 		return score, fmt.Errorf("inserting/updating ensemble score for article %d: %w", article.ID, err)
 	}

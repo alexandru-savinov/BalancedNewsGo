@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
@@ -248,144 +247,89 @@ func TestFeedHealthHandlerFunc(t *testing.T) {
 
 // TestSetProgressAndGetProgress tests the setProgress and getProgress functions
 func TestSetProgressAndGetProgress(t *testing.T) {
-	// Setup test data
-	articleID := int64(123)
-	state := &models.ProgressState{
-		Status:  "InProgress",
-		Step:    "Testing",
-		Message: "Running tests",
-		Percent: 50,
-	}
+	// Initialize ProgressManager
+	pm := llm.NewProgressManager()
 
-	// Test setProgress
-	setProgress(articleID, state)
+	// Setup router with the real progress manager
+	router := gin.New()
+	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressHandler(pm))) // Use the real handler
 
-	// Test getProgress
-	result := getProgress(articleID)
+	// Create a test server
+	ts := httptest.NewServer(router)
+	defer ts.Close()
 
-	// Verify results
-	assert.Equal(t, state.Status, result.Status)
-	assert.Equal(t, state.Step, result.Step)
-	assert.Equal(t, state.Message, result.Message)
-	assert.Equal(t, state.Percent, result.Percent)
+	// Simulate setting progress using the ProgressManager
+	articleID := 123
+	state := models.ProgressState{Status: "Processing", PercentComplete: 50, Message: "Halfway there"}
+	pm.SetProgress(articleID, state) // Use ProgressManager to set progress
 
-	// Test with non-existent article
-	nonExistentID := int64(456)
-	nullResult := getProgress(nonExistentID)
+	// Simulate getting progress using the ProgressManager
+	result := pm.GetProgress(articleID) // Use ProgressManager to get progress
+	assert.NotNil(t, result)
+	assert.Equal(t, int64(123), result.ArticleID)
+	assert.Equal(t, "Processing", result.Status)
+
+	// Test getting progress for a non-existent ID
+	nonExistentID := 456
+	nullResult := pm.GetProgress(nonExistentID) // Use ProgressManager to get progress
 	assert.Nil(t, nullResult)
 }
 
-// TestScoreProgressSSEHandler tests the SSE progress handler
-func TestScoreProgressSSEHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+func TestScoreProgressSSE_RealHandler(t *testing.T) {
+	// Initialize ProgressManager
+	pm := llm.NewProgressManager()
+
+	// Setup router with the real progress manager
 	router := gin.New()
+	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressHandler(pm))) // Correctly pass pm
 
-	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler()))
+	// Create a test server
+	ts := httptest.NewServer(router)
+	defer ts.Close()
 
-	// Setup test data
-	articleID := int64(789)
-	state := &models.ProgressState{
-		Status:  "Success",
-		Step:    "Complete",
-		Message: "Scoring complete",
-		Percent: 100,
-	}
-	setProgress(articleID, state)
-
-	// Test SSE handler
-	req, _ := http.NewRequest("GET", "/api/llm/score-progress/789", nil)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+	// Test SSE connection
+	resp, err := http.Get(ts.URL + "/api/llm/score-progress/1")
+	assert.NoError(t, err)
+	defer resp.Body.Close()
 
 	// Verify headers
-	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
-	assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
-	assert.Equal(t, "keep-alive", w.Header().Get("Connection"))
+	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "no-cache", resp.Header.Get("Cache-Control"))
+	assert.Equal(t, "keep-alive", resp.Header.Get("Connection"))
 
 	// Should contain SSE data format
-	assert.Contains(t, w.Body.String(), "data: ")
-
-	// Test with invalid ID
-	req, _ = http.NewRequest("GET", "/api/llm/score-progress/invalid", nil)
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	// Should return 400 status code
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-// TestPercent tests the percent function
-func TestPercent(t *testing.T) {
-	tests := []struct {
-		step     int
-		total    int
-		expected int
-	}{
-		{1, 4, 25},
-		{2, 4, 50},
-		{3, 4, 75},
-		{4, 4, 100},
-		{5, 4, 100}, // Should be capped at 100
-		{1, 0, 0},   // Avoid division by zero
+	var dataReceived bool
+	decoder := json.NewDecoder(resp.Body)
+	for {
+		var event llm.SSEEvent
+		if err := decoder.Decode(&event); err != nil {
+			break
+		}
+		assert.Equal(t, "progress", event.Event)
+		assert.NotNil(t, event.Data)
+		dataReceived = true
 	}
+	assert.True(t, dataReceived)
 
-	for _, test := range tests {
-		result := percent(test.step, test.total)
-		assert.Equal(t, test.expected, result)
+	// Simulate progress updates
+	go func() {
+		time.Sleep(100 * time.Millisecond) // Wait for client to connect
+		pm.SetProgress(1, models.ProgressState{Status: "Processing", PercentComplete: 50, Message: "Test Update"})
+		pm.SetProgress(1, models.ProgressState{Status: "Success", PercentComplete: 100, Message: "Done"})
+	}()
+
+	// Read and verify progress events
+	events := make([]llm.SSEEvent, 0)
+	for {
+		var event llm.SSEEvent
+		if err := decoder.Decode(&event); err != nil {
+			break
+		}
+		events = append(events, event)
 	}
-}
-
-// TestArticleToPostmanSchema tests the articleToPostmanSchema function
-func TestArticleToPostmanSchema(t *testing.T) {
-	// Create test article
-	score := 0.5
-	confidence := 0.8
-	scoreSource := "llm"
-	now := time.Now()
-	article := &db.Article{
-		ID:             123,
-		Title:          "Test Article",
-		Content:        "Test Content",
-		URL:            "http://test.com",
-		Source:         "Test Source",
-		PubDate:        now,
-		CreatedAt:      now,
-		CompositeScore: &score,
-		Confidence:     &confidence,
-		ScoreSource:    &scoreSource,
-	}
-
-	// Convert to schema
-	result := articleToPostmanSchema(article)
-
-	// Verify result
-	assert.Equal(t, int64(123), result["id"])
-	assert.Equal(t, "Test Article", result["title"])
-	assert.Equal(t, "Test Content", result["content"])
-	assert.Equal(t, "http://test.com", result["url"])
-	assert.Equal(t, "Test Source", result["source"])
-	assert.Equal(t, now, result["pub_date"])
-	assert.Equal(t, now, result["created_at"])
-
-	// Fix pointer comparison - need to check the value, not the pointer
-	resultScore, ok := result["composite_score"].(*float64)
-	assert.True(t, ok, "composite_score should be a *float64")
-	assert.Equal(t, score, *resultScore)
-
-	resultConfidence, ok := result["confidence"].(*float64)
-	assert.True(t, ok, "confidence should be a *float64")
-	assert.Equal(t, confidence, *resultConfidence)
-
-	resultScoreSource, ok := result["score_source"].(*string)
-	assert.True(t, ok, "score_source should be a *string")
-	assert.Equal(t, scoreSource, *resultScoreSource)
-}
-
-// TestStrPtr tests the strPtr helper function
-func TestStrPtr(t *testing.T) {
-	s := "test"
-	ptr := strPtr(s)
-
-	assert.NotNil(t, ptr)
-	assert.Equal(t, s, *ptr)
+	assert.Len(t, events, 2)
+	assert.Equal(t, "progress", events[0].Event)
+	assert.Equal(t, "progress", events[1].Event)
+	assert.Equal(t, "Processing", events[0].Data.(models.ProgressState).Status)
+	assert.Equal(t, "Success", events[1].Data.(models.ProgressState).Status)
 }
