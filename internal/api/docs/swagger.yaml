@@ -209,7 +209,8 @@ paths:
       - description: Filter by source (e.g., CNN, Fox)
         in: query
         name: source
-        type: string
+        schema:
+          type: string
       - description: Filter by political leaning
         in: query
         name: leaning

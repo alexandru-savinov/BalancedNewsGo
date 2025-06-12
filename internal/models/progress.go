@@ -2,6 +2,7 @@ package models
 
 // ProgressState represents the progress of a scoring operation
 // @Description Progress state for long-running operations
+// swagger:model ProgressState
 type ProgressState struct {
 	Step         string   `json:"step" example:"Scoring"`               // Current detailed step
 	Message      string   `json:"message" example:"Processing article"` // User-friendly message

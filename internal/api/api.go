@@ -100,21 +100,16 @@ func RegisterRoutes(
 	router.POST("/api/refresh", SafeHandler(refreshHandler(rssCollector)))
 
 	// LLM Analysis
-	// @Summary Reanalyze article
-	// @Description Trigger a new LLM analysis for a specific article and update its scores.
-	// @Tags LLM
-	// @Accept json
-	// @Produce json
-	// @Param id path integer true "Article ID"
-	// @Success 202 {object} StandardResponse "Reanalysis started"
-	// @Failure 400 {object} ErrorResponse "Invalid article ID"
-	// @Failure 401 {object} ErrorResponse "LLM authentication failed"
-	// @Failure 402 {object} ErrorResponse "LLM payment required or credits exhausted"
-	// @Failure 404 {object} ErrorResponse "Article not found"
-	// @Failure 429 {object} ErrorResponse "LLM rate limit exceeded"
-	// @Failure 500 {object} ErrorResponse "Server error"
-	// @Failure 503 {object} ErrorResponse "LLM service unavailable or streaming error"
-	// @Router /api/llm/reanalyze/{id} [post]
+	// @Summary      Re-analyze article via LLM
+	// @Param        id    path     int                   true  "Article ID"
+	// @Param        score body    ManualScoreRequest    false "Optional manual score override"
+	// @Success      202   {object} StandardResponse{data=string}  "Reanalysis queued"
+	// @Failure      400   {object} StandardResponse
+	// @Failure      401   {object} StandardResponse
+	// @Failure      402   {object} StandardResponse
+	// @Failure      429   {object} StandardResponse
+	// @Failure      503   {object} StandardResponse
+	// @Router       /api/llm/reanalyze/{id} [post]
 	// @ID reanalyzeArticle
 	router.POST("/api/llm/reanalyze/:id", SafeHandler(reanalyzeHandler(llmClient, dbConn, scoreManager)))
 
@@ -133,15 +128,13 @@ func RegisterRoutes(
 	router.POST("/api/manual-score/:id", SafeHandler(manualScoreHandler(dbConn)))
 
 	// Article analysis
-	// @Summary Get article summary
-	// @Description Get the summary analysis for an article
-	// @Tags Analysis
-	// @Accept json
-	// @Produce json
-	// @Param id path integer true "Article ID"
-	// @Success 200 {object} api.StandardResponse
-	// @Failure 404 {object} ErrorResponse
-	// @Router /api/articles/{id}/summary [get]
+	// @Summary      Get article summary
+	// @Description  Returns the generated text summary for an article
+	// @Tags         articles
+	// @Param        id   path     int  true  "Article ID"
+	// @Success      200  {object} StandardResponse{data=string}
+	// @Failure      404  {object} StandardResponse
+	// @Router       /api/articles/{id}/summary [get]
 	// @ID getArticleSummary
 	handler := NewSummaryHandler(&db.DBInstance{DB: dbConn})
 	router.GET("/api/articles/:id/summary", SafeHandler(handler.Handle))
@@ -224,16 +217,31 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 
 // Helper: Convert db.Article to API ArticleResponse
 func toArticleResponse(a *db.Article) ArticleResponse {
+	// Handle nil pointers for scores
+	composite := 0.0
+	if a.CompositeScore != nil {
+		composite = *a.CompositeScore
+	}
+
+	confidence := 0.0
+	if a.Confidence != nil {
+		confidence = *a.Confidence
+	}
+
+	scoreSource := ""
+	if a.ScoreSource != nil {
+		scoreSource = *a.ScoreSource
+	}
+
 	return ArticleResponse{
-		ArticleID:      a.ID,
-		Title:          a.Title,
-		Content:        a.Content,
-		URL:            a.URL,
-		Source:         a.Source,
-		CompositeScore: a.CompositeScore,
-		Confidence:     a.Confidence,
-		PubDate:        a.PubDate.Format(time.RFC3339),
-		CreatedAt:      a.CreatedAt.Format(time.RFC3339),
+		ArticleID:   a.ID,
+		Source:      a.Source,
+		Title:       a.Title,
+		Content:     a.Content,
+		PublishedAt: a.PubDate.Format(time.RFC3339),
+		Composite:   composite,
+		Confidence:  confidence,
+		ScoreSource: scoreSource,
 	}
 }
 
@@ -380,9 +388,9 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @Produce json
 // @Param source query string false "Filter by news source"
 // @Param leaning query string false "Filter by political leaning (left/center/right)"
-// @Param offset query integer false "Pagination offset (default: 0)"
-// @Param limit query integer false "Number of items per page (default: 20)"
-// @Success 200 {array} api.Article "List of articles"
+// @Param offset query integer false "Pagination offset" default(0) minimum(0)
+// @Param limit query integer false "Number of items per page" default(20) minimum(1) maximum(100)
+// @Success 200 {object} StandardResponse{data=[]ArticleResponse} "List of articles"
 // @Failure 500 {object} ErrorResponse "Server error"
 // @Router /api/articles [get]
 // @ID getArticlesList
@@ -816,15 +824,12 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 	}
 }
 
-// @Summary Score progress SSE stream
-// @Description Server-Sent Events endpoint streaming real-time scoring progress for an article
-// @Tags LLM
-// @Accept json
-// @Produce text/event-stream
-// @Param id path int true "Article ID" minimum(1)
-// @Success 200 {object} models.ProgressState "event-stream containing progress updates"
-// @Failure 400 {object} ErrorResponse "Invalid article ID"
-// @Router /api/llm/score-progress/{id} [get]
+// @Summary   Stream LLM scoring progress
+// @Produce   text/event-stream
+// @Param     id  path  int  true  "Article ID"
+// @Success   200  {object} models.ProgressState  "SSE stream of progress updates"
+// @Failure   400  {object} StandardResponse
+// @Router    /api/llm/score-progress/{id} [get]
 // @ID getScoreProgress
 func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	return func(c *gin.Context) {

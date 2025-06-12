@@ -1,4 +1,3 @@
-basePath: /api
 definitions:
   github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState:
     description: Progress state for long-running operations
@@ -34,48 +33,23 @@ definitions:
         example: Scoring
         type: string
     type: object
-  internal_api.Article:
-    description: A news article with bias analysis information
+  internal_api.ArticleResponse:
     properties:
+      article_id:
+        type: integer
       composite_score:
-        description: Political bias score (-1 to 1)
-        example: 0.25
         type: number
       confidence:
-        description: Confidence in the score (0 to 1)
-        example: 0.85
         type: number
       content:
-        description: Article content
-        example: Article content...
         type: string
-      created_at:
-        description: When added to the system
-        example: "2023-01-02T00:00:00Z"
-        type: string
-      id:
-        description: Unique identifier
-        example: 42
-        type: integer
-      pub_date:
-        description: Article publication date
-        example: "2023-01-01T12:00:00Z"
+      published_at:
         type: string
       score_source:
-        description: Source of the score
-        example: llm
         type: string
       source:
-        description: News source name
-        example: CNN
         type: string
       title:
-        description: Article title
-        example: Breaking News
-        type: string
-      url:
-        description: URL to the original article
-        example: https://example.com/article
         type: string
     type: object
   internal_api.CreateArticleRequest:
@@ -232,20 +206,8 @@ definitions:
         example: true
         type: boolean
     type: object
-host: localhost:8080
 info:
-  contact:
-    email: support@newsbalancer.example
-    name: NewsBalancer Support
-    url: https://github.com/alexandru-savinov/BalancedNewsGo
-  description: API for the NewsBalancer application which analyzes political bias
-    in news articles using LLM models
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
-  termsOfService: http://swagger.io/terms/
-  title: NewsBalancer API
-  version: "1.0"
+  contact: {}
 paths:
   /api/articles:
     get:
@@ -263,12 +225,17 @@ paths:
         in: query
         name: leaning
         type: string
-      - description: 'Pagination offset (default: 0)'
+      - default: 0
+        description: Pagination offset
         in: query
+        minimum: 0
         name: offset
         type: integer
-      - description: 'Number of items per page (default: 20)'
+      - default: 20
+        description: Number of items per page
         in: query
+        maximum: 100
+        minimum: 1
         name: limit
         type: integer
       produces:
@@ -277,9 +244,14 @@ paths:
         "200":
           description: List of articles
           schema:
-            items:
-              $ref: '#/definitions/internal_api.Article'
-            type: array
+            allOf:
+            - $ref: '#/definitions/internal_api.StandardResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/internal_api.ArticleResponse'
+                  type: array
+              type: object
         "500":
           description: Server error
           schema:
@@ -554,15 +526,10 @@ paths:
       - LLM
   /api/llm/score-progress/{id}:
     get:
-      consumes:
-      - application/json
-      description: Server-Sent Events endpoint streaming real-time scoring progress
-        for an article
       operationId: getScoreProgress
       parameters:
       - description: Article ID
         in: path
-        minimum: 1
         name: id
         required: true
         type: integer
@@ -570,16 +537,14 @@ paths:
       - text/event-stream
       responses:
         "200":
-          description: event-stream containing progress updates
+          description: SSE stream of progress updates
           schema:
             $ref: '#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState'
         "400":
-          description: Invalid article ID
+          description: Bad Request
           schema:
-            $ref: '#/definitions/internal_api.ErrorResponse'
-      summary: Score progress SSE stream
-      tags:
-      - LLM
+            $ref: '#/definitions/internal_api.StandardResponse'
+      summary: Stream LLM scoring progress
   /api/manual-score/{id}:
     post:
       description: Updates an article's bias score manually
@@ -637,24 +602,4 @@ paths:
       summary: Trigger RSS feed refresh
       tags:
       - Feeds
-schemes:
-- http
-- https
 swagger: "2.0"
-tags:
-- description: Operations related to news articles
-  name: Articles
-- description: Operations related to user feedback
-  name: Feedback
-- description: Operations related to LLM processing and scoring
-  name: LLM
-- description: Operations related to RSS feeds
-  name: Feeds
-- description: Administrative operations
-  name: Admin
-- description: Health check operations
-  name: Health
-- description: Operations related to article scoring and manual scoring
-  name: Scoring
-- description: Operations related to article analysis and summaries
-  name: Analysis
