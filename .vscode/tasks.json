@@ -1,0 +1,12 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "start-server",
+			"type": "shell",
+			"command": "go run ./cmd/server",
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}

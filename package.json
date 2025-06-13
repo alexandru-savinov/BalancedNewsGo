@@ -1,8 +1,7 @@
 {
   "name": "newbalancer_go",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
+  "main": "index.js",  "scripts": {
     "test": "scripts/test.cmd",
     "test:backend": "scripts/test.cmd backend",
     "test:all": "scripts/test.cmd all",
@@ -10,7 +9,12 @@
     "test:report": "scripts/test.cmd report",
     "test:clean": "scripts/test.cmd clean",
     "test:analyze": "scripts/test.cmd analyze",
-    "test:list": "scripts/test.cmd list"
+    "test:list": "scripts/test.cmd list",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
   },
   "repository": {
     "type": "git",
@@ -25,6 +29,7 @@
   "homepage": "https://github.com/alexandru-savinov/BalancedNewsGo#readme",
   "description": "",
   "devDependencies": {
+    "@playwright/test": "^1.53.0",
     "@stoplight/spectral-cli": "^6.11.0",
     "@types/eventsource": "^1.1.15",
     "@types/node": "^22.14.1",

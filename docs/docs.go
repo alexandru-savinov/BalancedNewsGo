@@ -52,14 +52,19 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "minimum": 0,
                         "type": "integer",
-                        "description": "Pagination offset (default: 0)",
+                        "default": 0,
+                        "description": "Pagination offset",
                         "name": "offset",
                         "in": "query"
                     },
                     {
+                        "maximum": 100,
+                        "minimum": 1,
                         "type": "integer",
-                        "description": "Number of items per page (default: 20)",
+                        "default": 20,
+                        "description": "Number of items per page",
                         "name": "limit",
                         "in": "query"
                     }
@@ -68,16 +73,28 @@ const docTemplate = `{
                     "200": {
                         "description": "List of articles",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/internal_api.Article"
-                            }
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/api.StandardResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/api.ArticleResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -102,7 +119,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.CreateArticleRequest"
+                            "$ref": "#/definitions/api.CreateArticleRequest"
                         }
                     }
                 ],
@@ -112,13 +129,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.StandardResponse"
+                                    "$ref": "#/definitions/api.StandardResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.CreateArticleResponse"
+                                            "$ref": "#/definitions/api.CreateArticleResponse"
                                         }
                                     }
                                 }
@@ -128,19 +145,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid request data",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Article URL already exists",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -174,25 +191,25 @@ const docTemplate = `{
                     "200": {
                         "description": "Success with article details",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.StandardResponse"
+                            "$ref": "#/definitions/api.StandardResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid article ID",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Article not found",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -257,13 +274,13 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.StandardResponse"
+                                    "$ref": "#/definitions/api.StandardResponse"
                                 },
                                 {
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/internal_api.ScoreResponse"
+                                            "$ref": "#/definitions/api.ScoreResponse"
                                         }
                                     }
                                 }
@@ -273,19 +290,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid parameters",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Article not found",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -313,13 +330,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.StandardResponse"
+                            "$ref": "#/definitions/api.StandardResponse"
                         }
                     },
                     "404": {
                         "description": "Ensemble data not found",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -346,7 +363,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.FeedbackRequest"
+                            "$ref": "#/definitions/api.FeedbackRequest"
                         }
                     }
                 ],
@@ -354,19 +371,19 @@ const docTemplate = `{
                     "200": {
                         "description": "Feedback received",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.StandardResponse"
+                            "$ref": "#/definitions/api.StandardResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid request data",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -399,7 +416,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -432,49 +449,49 @@ const docTemplate = `{
                     "202": {
                         "description": "Reanalysis started",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.StandardResponse"
+                            "$ref": "#/definitions/api.StandardResponse"
                         }
                     },
                     "400": {
                         "description": "Invalid article ID",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "LLM authentication failed",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "402": {
                         "description": "LLM payment required or credits exhausted",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Article not found",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "429": {
                         "description": "LLM rate limit exceeded",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     },
                     "503": {
                         "description": "LLM service unavailable or streaming error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -482,21 +499,13 @@ const docTemplate = `{
         },
         "/api/llm/score-progress/{id}": {
             "get": {
-                "description": "Server-Sent Events endpoint streaming real-time scoring progress for an article",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "text/event-stream"
                 ],
-                "tags": [
-                    "LLM"
-                ],
-                "summary": "Score progress SSE stream",
+                "summary": "Stream LLM scoring progress",
                 "operationId": "getScoreProgress",
                 "parameters": [
                     {
-                        "minimum": 1,
                         "type": "integer",
                         "description": "Article ID",
                         "name": "id",
@@ -506,15 +515,15 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "event-stream containing progress updates",
+                        "description": "SSE stream of progress updates",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState"
+                            "$ref": "#/definitions/models.ProgressState"
                         }
                     },
                     "400": {
-                        "description": "Invalid article ID",
+                        "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.StandardResponse"
                         }
                     }
                 }
@@ -543,7 +552,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ManualScoreRequest"
+                            "$ref": "#/definitions/api.ManualScoreRequest"
                         }
                     }
                 ],
@@ -551,13 +560,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.StandardResponse"
+                            "$ref": "#/definitions/api.StandardResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -583,7 +592,7 @@ const docTemplate = `{
                         "schema": {
                             "allOf": [
                                 {
-                                    "$ref": "#/definitions/internal_api.StandardResponse"
+                                    "$ref": "#/definitions/api.StandardResponse"
                                 },
                                 {
                                     "type": "object",
@@ -602,7 +611,7 @@ const docTemplate = `{
                     "500": {
                         "description": "Server error",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ErrorResponse"
+                            "$ref": "#/definitions/api.ErrorResponse"
                         }
                     }
                 }
@@ -610,7 +619,243 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "github_com_alexandru-savinov_BalancedNewsGo_internal_models.ProgressState": {
+        "api.ArticleResponse": {
+            "type": "object",
+            "properties": {
+                "article_id": {
+                    "type": "integer"
+                },
+                "composite_score": {
+                    "type": "number"
+                },
+                "confidence": {
+                    "type": "number"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "published_at": {
+                    "type": "string"
+                },
+                "score_source": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.CreateArticleRequest": {
+            "description": "Request body for creating a new article",
+            "type": "object",
+            "required": [
+                "content",
+                "pub_date",
+                "source",
+                "title",
+                "url"
+            ],
+            "properties": {
+                "content": {
+                    "description": "Article content",
+                    "type": "string",
+                    "example": "Article content..."
+                },
+                "pub_date": {
+                    "description": "Publication date in RFC3339 format",
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "source": {
+                    "description": "News source name",
+                    "type": "string",
+                    "example": "CNN"
+                },
+                "title": {
+                    "description": "Article title",
+                    "type": "string",
+                    "example": "Breaking News"
+                },
+                "url": {
+                    "description": "Article URL",
+                    "type": "string",
+                    "example": "https://example.com/article"
+                }
+            }
+        },
+        "api.CreateArticleResponse": {
+            "description": "Response from creating a new article",
+            "type": "object",
+            "properties": {
+                "article_id": {
+                    "description": "ID of the created article",
+                    "type": "integer",
+                    "example": 42
+                },
+                "status": {
+                    "description": "Status of the operation",
+                    "type": "string",
+                    "example": "created"
+                }
+            }
+        },
+        "api.ErrorDetail": {
+            "description": "Detailed error information",
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Error code",
+                    "type": "string",
+                    "example": "validation_error"
+                },
+                "message": {
+                    "description": "Human-readable error message",
+                    "type": "string",
+                    "example": "Invalid input parameters"
+                }
+            }
+        },
+        "api.ErrorResponse": {
+            "description": "Standard API error response",
+            "type": "object",
+            "properties": {
+                "error": {
+                    "description": "Error details",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.ErrorDetail"
+                        }
+                    ]
+                },
+                "success": {
+                    "description": "Always false for errors",
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "api.FeedbackRequest": {
+            "description": "Request body for submitting user feedback",
+            "type": "object",
+            "required": [
+                "article_id",
+                "feedback_text",
+                "user_id"
+            ],
+            "properties": {
+                "article_id": {
+                    "description": "Article ID",
+                    "type": "integer"
+                },
+                "category": {
+                    "description": "Feedback category: agree, disagree, unclear, other",
+                    "type": "string",
+                    "example": "agree"
+                },
+                "ensemble_output_id": {
+                    "description": "ID of specific ensemble output",
+                    "type": "integer"
+                },
+                "feedback_text": {
+                    "description": "Feedback content",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Source of the feedback",
+                    "type": "string",
+                    "example": "web"
+                },
+                "user_id": {
+                    "description": "User ID",
+                    "type": "string"
+                }
+            }
+        },
+        "api.IndividualScoreResult": {
+            "description": "Individual model scoring result",
+            "type": "object",
+            "properties": {
+                "confidence": {
+                    "description": "Model confidence",
+                    "type": "number",
+                    "example": 0.8
+                },
+                "created_at": {
+                    "description": "When the score was generated",
+                    "type": "string"
+                },
+                "explanation": {
+                    "description": "Explanation for the score",
+                    "type": "string",
+                    "example": "Reasoning"
+                },
+                "model": {
+                    "description": "Model name",
+                    "type": "string",
+                    "example": "claude-3"
+                },
+                "score": {
+                    "description": "Bias score",
+                    "type": "number",
+                    "example": 0.3
+                }
+            }
+        },
+        "api.ManualScoreRequest": {
+            "description": "Request body for manually setting an article's bias score",
+            "type": "object",
+            "required": [
+                "score"
+            ],
+            "properties": {
+                "score": {
+                    "description": "Score value between -1.0 and 1.0",
+                    "type": "number",
+                    "example": 0.5
+                }
+            }
+        },
+        "api.ScoreResponse": {
+            "description": "Political bias score analysis result",
+            "type": "object",
+            "properties": {
+                "composite_score": {
+                    "description": "Overall bias score",
+                    "type": "number",
+                    "example": 0.25
+                },
+                "results": {
+                    "description": "Individual model scores",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.IndividualScoreResult"
+                    }
+                },
+                "status": {
+                    "description": "Status message if applicable",
+                    "type": "string",
+                    "example": "scoring_unavailable"
+                }
+            }
+        },
+        "api.StandardResponse": {
+            "description": "Standard API success response",
+            "type": "object",
+            "properties": {
+                "data": {
+                    "description": "Response data payload"
+                },
+                "success": {
+                    "description": "Always true for success",
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "models.ProgressState": {
             "description": "Progress state for long-running operations",
             "type": "object",
             "properties": {
@@ -651,269 +896,6 @@ const docTemplate = `{
                     "description": "Current detailed step",
                     "type": "string",
                     "example": "Scoring"
-                }
-            }
-        },
-        "internal_api.Article": {
-            "description": "A news article with bias analysis information",
-            "type": "object",
-            "properties": {
-                "composite_score": {
-                    "description": "Political bias score (-1 to 1)",
-                    "type": "number",
-                    "example": 0.25
-                },
-                "confidence": {
-                    "description": "Confidence in the score (0 to 1)",
-                    "type": "number",
-                    "example": 0.85
-                },
-                "content": {
-                    "description": "Article content",
-                    "type": "string",
-                    "example": "Article content..."
-                },
-                "created_at": {
-                    "description": "When added to the system",
-                    "type": "string",
-                    "example": "2023-01-02T00:00:00Z"
-                },
-                "id": {
-                    "description": "Unique identifier",
-                    "type": "integer",
-                    "example": 42
-                },
-                "pub_date": {
-                    "description": "Article publication date",
-                    "type": "string",
-                    "example": "2023-01-01T12:00:00Z"
-                },
-                "score_source": {
-                    "description": "Source of the score",
-                    "type": "string",
-                    "example": "llm"
-                },
-                "source": {
-                    "description": "News source name",
-                    "type": "string",
-                    "example": "CNN"
-                },
-                "title": {
-                    "description": "Article title",
-                    "type": "string",
-                    "example": "Breaking News"
-                },
-                "url": {
-                    "description": "URL to the original article",
-                    "type": "string",
-                    "example": "https://example.com/article"
-                }
-            }
-        },
-        "internal_api.CreateArticleRequest": {
-            "description": "Request body for creating a new article",
-            "type": "object",
-            "required": [
-                "content",
-                "pub_date",
-                "source",
-                "title",
-                "url"
-            ],
-            "properties": {
-                "content": {
-                    "description": "Article content",
-                    "type": "string",
-                    "example": "Article content..."
-                },
-                "pub_date": {
-                    "description": "Publication date in RFC3339 format",
-                    "type": "string",
-                    "example": "2023-01-01T12:00:00Z"
-                },
-                "source": {
-                    "description": "News source name",
-                    "type": "string",
-                    "example": "CNN"
-                },
-                "title": {
-                    "description": "Article title",
-                    "type": "string",
-                    "example": "Breaking News"
-                },
-                "url": {
-                    "description": "Article URL",
-                    "type": "string",
-                    "example": "https://example.com/article"
-                }
-            }
-        },
-        "internal_api.CreateArticleResponse": {
-            "description": "Response from creating a new article",
-            "type": "object",
-            "properties": {
-                "article_id": {
-                    "description": "ID of the created article",
-                    "type": "integer",
-                    "example": 42
-                },
-                "status": {
-                    "description": "Status of the operation",
-                    "type": "string",
-                    "example": "created"
-                }
-            }
-        },
-        "internal_api.ErrorDetail": {
-            "description": "Detailed error information",
-            "type": "object",
-            "properties": {
-                "code": {
-                    "description": "Error code",
-                    "type": "string",
-                    "example": "validation_error"
-                },
-                "message": {
-                    "description": "Human-readable error message",
-                    "type": "string",
-                    "example": "Invalid input parameters"
-                }
-            }
-        },
-        "internal_api.ErrorResponse": {
-            "description": "Standard API error response",
-            "type": "object",
-            "properties": {
-                "error": {
-                    "description": "Error details",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/internal_api.ErrorDetail"
-                        }
-                    ]
-                },
-                "success": {
-                    "description": "Always false for errors",
-                    "type": "boolean",
-                    "example": false
-                }
-            }
-        },
-        "internal_api.FeedbackRequest": {
-            "description": "Request body for submitting user feedback",
-            "type": "object",
-            "required": [
-                "article_id",
-                "feedback_text",
-                "user_id"
-            ],
-            "properties": {
-                "article_id": {
-                    "description": "Article ID",
-                    "type": "integer"
-                },
-                "category": {
-                    "description": "Feedback category: agree, disagree, unclear, other",
-                    "type": "string",
-                    "example": "agree"
-                },
-                "ensemble_output_id": {
-                    "description": "ID of specific ensemble output",
-                    "type": "integer"
-                },
-                "feedback_text": {
-                    "description": "Feedback content",
-                    "type": "string"
-                },
-                "source": {
-                    "description": "Source of the feedback",
-                    "type": "string",
-                    "example": "web"
-                },
-                "user_id": {
-                    "description": "User ID",
-                    "type": "string"
-                }
-            }
-        },
-        "internal_api.IndividualScoreResult": {
-            "description": "Individual model scoring result",
-            "type": "object",
-            "properties": {
-                "confidence": {
-                    "description": "Model confidence",
-                    "type": "number",
-                    "example": 0.8
-                },
-                "created_at": {
-                    "description": "When the score was generated",
-                    "type": "string"
-                },
-                "explanation": {
-                    "description": "Explanation for the score",
-                    "type": "string",
-                    "example": "Reasoning"
-                },
-                "model": {
-                    "description": "Model name",
-                    "type": "string",
-                    "example": "claude-3"
-                },
-                "score": {
-                    "description": "Bias score",
-                    "type": "number",
-                    "example": 0.3
-                }
-            }
-        },
-        "internal_api.ManualScoreRequest": {
-            "description": "Request body for manually setting an article's bias score",
-            "type": "object",
-            "required": [
-                "score"
-            ],
-            "properties": {
-                "score": {
-                    "description": "Score value between -1.0 and 1.0",
-                    "type": "number",
-                    "example": 0.5
-                }
-            }
-        },
-        "internal_api.ScoreResponse": {
-            "description": "Political bias score analysis result",
-            "type": "object",
-            "properties": {
-                "composite_score": {
-                    "description": "Overall bias score",
-                    "type": "number",
-                    "example": 0.25
-                },
-                "results": {
-                    "description": "Individual model scores",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/internal_api.IndividualScoreResult"
-                    }
-                },
-                "status": {
-                    "description": "Status message if applicable",
-                    "type": "string",
-                    "example": "scoring_unavailable"
-                }
-            }
-        },
-        "internal_api.StandardResponse": {
-            "description": "Standard API success response",
-            "type": "object",
-            "properties": {
-                "data": {
-                    "description": "Response data payload"
-                },
-                "success": {
-                    "description": "Always true for success",
-                    "type": "boolean",
-                    "example": true
                 }
             }
         }

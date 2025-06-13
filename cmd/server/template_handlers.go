@@ -1,18 +1,39 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"strconv"
-	"strings"
+	"time"
 
-	dbpkg "github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"log"
+
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/api"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
 
-// TemplateIndexHandler handles the articles listing page
-func TemplateIndexHandler(db *sqlx.DB) gin.HandlerFunc {
-	return func(c *gin.Context) { // Get query parameters for filtering
+// TemplateHandlers contains the internal API client for template rendering
+// These handlers use internal API calls instead of HTTP to maintain API-first architecture
+// while avoiding circular dependencies
+type TemplateHandlers struct {
+	client *api.InternalAPIClient
+}
+
+// NewTemplateHandlers creates a new handler instance with the internal API client
+func NewTemplateHandlers(dbConn *sqlx.DB) *TemplateHandlers {
+	return &TemplateHandlers{
+		client: api.NewInternalAPIClient(dbConn),
+	}
+}
+
+// TemplateIndexHandler handles the articles listing page using internal API client
+func (h *TemplateHandlers) TemplateIndexHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Get query parameters for filtering
 		source := c.Query("source")
 		bias := c.Query("bias")
 		if bias == "" {
@@ -28,103 +49,69 @@ func TemplateIndexHandler(db *sqlx.DB) gin.HandlerFunc {
 
 		limit := 20 // Articles per page
 		offset := (page - 1) * limit
-
-		// Build query conditions
-		var whereConditions []string
-		var args []interface{}
-		argIndex := 1
+		// Build API parameters
+		params := api.InternalArticlesParams{
+			Limit:  limit,
+			Offset: offset,
+		}
 
 		if source != "" {
-			whereConditions = append(whereConditions, "source = $"+strconv.Itoa(argIndex))
-			args = append(args, source)
-			argIndex++
+			params.Source = source
 		}
 
-		// Implement bias filtering using composite_score thresholds
 		if bias != "" {
-			switch strings.ToLower(bias) {
-			case "left":
-				whereConditions = append(whereConditions, "composite_score < $"+strconv.Itoa(argIndex))
-				args = append(args, -0.1)
-				argIndex++
-			case "right":
-				whereConditions = append(whereConditions, "composite_score > $"+strconv.Itoa(argIndex))
-				args = append(args, 0.1)
-				argIndex++
-			case "center":
-				whereConditions = append(whereConditions, "composite_score >= $"+strconv.Itoa(argIndex)+" AND composite_score <= $"+strconv.Itoa(argIndex+1))
-				args = append(args, -0.1, 0.1)
-				argIndex += 2
-			}
+			params.Leaning = bias // Use Leaning field instead of Bias
 		}
 
-		if query != "" {
-			whereConditions = append(whereConditions, "(title LIKE $"+strconv.Itoa(argIndex)+" OR content LIKE $"+strconv.Itoa(argIndex+1)+")")
-			args = append(args, "%"+query+"%", "%"+query+"%")
-			argIndex += 2
-		}
+		// Note: Query parameter is not supported in current internal API client
+		// This would need to be added to the API later
 
-		whereClause := ""
-		if len(whereConditions) > 0 {
-			whereClause = "WHERE " + strings.Join(whereConditions, " AND ")
-		}
-		// Get articles
-		sqlQuery := `
-			SELECT id, title, source, url, pub_date, content, 
-			       composite_score, confidence, score_source, created_at
-			FROM articles ` + whereClause + `
-			ORDER BY pub_date DESC
-			LIMIT $` + strconv.Itoa(argIndex) + ` OFFSET $` + strconv.Itoa(argIndex+1)
-
-		args = append(args, limit, offset)
-
-		rows, err := db.Query(sqlQuery, args...)
+		// Get articles from internal API client
+		articles, err := h.client.GetArticles(ctx, params)
 		if err != nil {
+			log.Printf("[DEBUG] TemplateIndexHandler ERROR path - Error fetching articles: %v", err)
 			c.HTML(http.StatusInternalServerError, "articles.html", gin.H{
-				"Error": "Error fetching articles: " + err.Error(),
+				"Error":          "Error fetching articles: " + err.Error(),
+				"Articles":       []api.InternalArticle{}, // Pass empty slice
+				"Sources":        []string{},
+				"SearchQuery":    query,
+				"SelectedSource": source,
+				"SelectedBias":   bias,
+				"CurrentPage":    1,        // Default value
+				"TotalPages":     1,        // Default value
+				"Pages":          []int{1}, // Default value
+				"PrevPage":       0,        // Default value
+				"NextPage":       0,        // Default value
 			})
+			log.Printf("[DEBUG] TemplateIndexHandler ERROR path - Error fetching articles: %v. CurrentPage type: %T, value: %v", err, 1, 1) // DEBUG
 			return
 		}
-		defer rows.Close()
-		var articles []dbpkg.Article
-		for rows.Next() {
-			var article dbpkg.Article
-			err := rows.Scan(
-				&article.ID, &article.Title, &article.Source, &article.URL,
-				&article.PubDate, &article.Content, &article.CompositeScore,
-				&article.Confidence, &article.ScoreSource, &article.CreatedAt,
-			)
-			if err != nil {
-				continue
-			}
-			articles = append(articles, article)
-		}
 
-		// Get total count for pagination
-		countQuery := "SELECT COUNT(*) FROM articles " + whereClause
-		countArgs := args[:len(args)-2] // Remove limit and offset
-
-		var totalCount int
-		err = db.Get(&totalCount, countQuery, countArgs...)
-		if err != nil {
-			totalCount = 0
+		// Simplified pagination since we don't have a count endpoint yet
+		// Estimate based on whether we got a full page
+		totalCount := offset + len(articles)
+		if len(articles) == limit {
+			totalCount += 1 // Assume there's at least one more page
 		}
 
 		totalPages := (totalCount + limit - 1) / limit
 
 		// Generate page numbers for pagination
 		var pages []int
-		start := max(1, page-2)
-		end := min(totalPages, page+2)
+		start := maxInt(1, page-2)
+		end := minInt(totalPages, page+2)
 		for i := start; i <= end; i++ {
 			pages = append(pages, i)
 		}
 
-		// Get available sources for filter
+		// Get available sources by analyzing current articles
+		sourceSet := make(map[string]bool)
+		for _, article := range articles {
+			sourceSet[article.Source] = true
+		}
 		var sources []string
-		err = db.Select(&sources, "SELECT DISTINCT source FROM articles ORDER BY source")
-		if err != nil {
-			sources = []string{}
+		for s := range sourceSet {
+			sources = append(sources, s)
 		}
 
 		c.HTML(http.StatusOK, "articles.html", gin.H{
@@ -139,12 +126,16 @@ func TemplateIndexHandler(db *sqlx.DB) gin.HandlerFunc {
 			"PrevPage":       page - 1,
 			"NextPage":       page + 1,
 		})
+		log.Printf("[DEBUG] TemplateIndexHandler SUCCESS path - CurrentPage type: %T, value: %v", page, page) // DEBUG
 	}
 }
 
-// TemplateArticleHandler handles the individual article detail page
-func TemplateArticleHandler(db *sqlx.DB) gin.HandlerFunc {
+// TemplateArticleHandler handles the individual article detail page using internal API client
+func (h *TemplateHandlers) TemplateArticleHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
@@ -153,14 +144,8 @@ func TemplateArticleHandler(db *sqlx.DB) gin.HandlerFunc {
 			})
 			return
 		}
-		// Get the article
-		var article dbpkg.Article
-		err = db.Get(&article, `
-			SELECT id, title, source, url, pub_date, content,
-			       composite_score, confidence, score_source, created_at,
-				   bias_label, analysis_notes
-			FROM articles WHERE id = $1`, id)
-
+		// Get the article from internal API
+		article, err := h.client.GetArticle(ctx, int64(id))
 		if err != nil {
 			c.HTML(http.StatusNotFound, "article.html", gin.H{
 				"Error": "Article not found",
@@ -168,40 +153,60 @@ func TemplateArticleHandler(db *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get recent articles for sidebar
-		var recentArticles []dbpkg.Article
-		err = db.Select(&recentArticles, `
-			SELECT id, title, source
-			FROM articles 
-			WHERE id != $1
-			ORDER BY pub_date DESC 
-			LIMIT 5`, id)
+		// Get recent articles for sidebar (excluding current article)
+		recentParams := api.InternalArticlesParams{
+			Limit: 6, // Get 6 so we can filter out current and have 5
+		}
+		recentArticles, err := h.client.GetArticles(ctx, recentParams)
 		if err != nil {
-			recentArticles = []dbpkg.Article{}
+			recentArticles = []api.InternalArticle{} // Fallback to empty list
 		}
 
-		// Get basic statistics
-		stats := getBasicStats(db)
+		// Filter out current article from recent articles
+		var filteredRecent []api.InternalArticle
+		for _, recent := range recentArticles {
+			if recent.ID != int64(id) && len(filteredRecent) < 5 {
+				filteredRecent = append(filteredRecent, recent)
+			}
+		}
+
+		// Basic statistics - simplified for now
+		stats := map[string]interface{}{
+			"totalArticles": len(recentArticles),
+			"currentTime":   ctx.Value("time"),
+		}
 
 		c.HTML(http.StatusOK, "article.html", gin.H{
 			"Article":        article,
-			"RecentArticles": recentArticles,
+			"RecentArticles": filteredRecent,
 			"Stats":          stats,
 		})
 	}
 }
 
-// TemplateAdminHandler handles the admin dashboard page
-func TemplateAdminHandler(db *sqlx.DB) gin.HandlerFunc {
+// TemplateAdminHandler handles the admin dashboard page using API client
+func (h *TemplateHandlers) TemplateAdminHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
 		// Get system statistics
-		stats := getDetailedStats(db)
+		stats, err := h.getDetailedStats(ctx)
+		if err != nil {
+			stats = make(map[string]interface{}) // Fallback to empty stats
+		}
 
 		// Get system status
-		systemStatus := getSystemStatus(db)
+		systemStatus, err := h.getSystemStatus(ctx)
+		if err != nil {
+			systemStatus = make(map[string]bool) // Fallback to empty status
+		}
 
-		// Get recent activity (this could be expanded to include actual activity logs)
-		recentActivity := getRecentActivity(db)
+		// Get recent activity
+		recentActivity, err := h.getRecentActivity(ctx)
+		if err != nil {
+			recentActivity = []map[string]interface{}{} // Fallback to empty activity
+		}
 
 		c.HTML(http.StatusOK, "admin.html", gin.H{
 			"Stats":          stats,
@@ -211,124 +216,298 @@ func TemplateAdminHandler(db *sqlx.DB) gin.HandlerFunc {
 	}
 }
 
-// Helper functions
+// HTMX Fragment Handlers for dynamic loading
 
-func formatBiasScore(score float64) string {
-	return strconv.FormatFloat(score, 'f', 2, 64)
+// TemplateArticlesFragmentHandler returns just the article list for HTMX updates
+func (h *TemplateHandlers) TemplateArticlesFragmentHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Get query parameters for filtering (same as main handler)
+		source := c.Query("source")
+		bias := c.Query("bias")
+		if bias == "" {
+			bias = c.Query("leaning")
+		}
+		query := c.Query("query")
+		pageStr := c.DefaultQuery("page", "1")
+
+		page, err := strconv.Atoi(pageStr)
+		if err != nil || page < 1 {
+			page = 1
+		}
+
+		limit := 20
+		offset := (page - 1) * limit
+
+		// Build API parameters
+		params := api.InternalArticlesParams{
+			Limit:  limit,
+			Offset: offset,
+		}
+
+		if source != "" {
+			params.Source = source
+		}
+
+		if bias != "" {
+			params.Leaning = bias
+		}
+		// Get articles from API
+		articles, err := h.client.GetArticles(ctx, params)
+		if err != nil {
+			c.HTML(http.StatusInternalServerError, "article-list-fragment", gin.H{
+				"Error": "Error fetching articles: " + err.Error(),
+			})
+			return
+		}
+
+		// Calculate pagination (simplified)
+		totalCount := offset + len(articles)
+		if len(articles) == limit {
+			totalCount += 1
+		}
+		totalPages := (totalCount + limit - 1) / limit
+
+		var pages []int
+		start := maxInt(1, page-2)
+		end := minInt(totalPages, page+2)
+		for i := start; i <= end; i++ {
+			pages = append(pages, i)
+		}
+		// Return just the fragment
+		c.HTML(http.StatusOK, "article-list-fragment", gin.H{
+			"Articles":       articles,
+			"SearchQuery":    query,
+			"SelectedSource": source,
+			"SelectedBias":   bias,
+			"CurrentPage":    page,
+			"TotalPages":     totalPages,
+			"Pages":          pages,
+			"PrevPage":       page - 1,
+			"NextPage":       page + 1,
+		})
+	}
 }
 
-func getBasicStats(db *sqlx.DB) map[string]interface{} {
+// TemplateArticleFragmentHandler returns the full article page for HTMX navigation
+func (h *TemplateHandlers) TemplateArticleFragmentHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		idStr := c.Param("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			c.HTML(http.StatusBadRequest, "article_htmx.html", gin.H{
+				"Error": "Invalid article ID",
+			})
+			return
+		}
+		// Get the article from API
+		article, err := h.client.GetArticle(ctx, int64(id))
+		if err != nil {
+			c.HTML(http.StatusNotFound, "article_htmx.html", gin.H{
+				"Error": "Article not found",
+			})
+			return
+		}
+
+		// Get recent articles for sidebar
+		recentParams := api.InternalArticlesParams{Limit: 6}
+		recentArticles, err := h.client.GetArticles(ctx, recentParams)
+		if err != nil {
+			recentArticles = []api.InternalArticle{}
+		}
+
+		// Filter out current article
+		var filteredRecent []api.InternalArticle
+		for _, recent := range recentArticles {
+			if recent.ID != int64(id) && len(filteredRecent) < 5 {
+				filteredRecent = append(filteredRecent, recent)
+			}
+		}
+
+		// Get stats
+		stats, err := h.getBasicStats(ctx)
+		if err != nil {
+			stats = make(map[string]interface{})
+		}
+
+		c.HTML(http.StatusOK, "article_htmx.html", gin.H{
+			"Article":        article,
+			"RecentArticles": filteredRecent,
+			"Stats":          stats,
+		})
+	}
+}
+
+// TemplateArticleSummaryFragmentHandler returns article summary fragment
+func (h *TemplateHandlers) TemplateArticleSummaryFragmentHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		idStr := c.Param("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			c.HTML(http.StatusBadRequest, "error-fragment", gin.H{
+				"Error": "Invalid article ID",
+			})
+			return
+		}
+
+		// Get article and extract summary
+		article, err := h.client.GetArticle(ctx, int64(id))
+		if err != nil {
+			c.HTML(http.StatusInternalServerError, "error-fragment", gin.H{
+				"Error": "Error fetching article: " + err.Error(),
+			})
+			return
+		}
+
+		c.HTML(http.StatusOK, "summary-fragment", gin.H{
+			"Summary": article.Summary,
+		})
+	}
+}
+
+// Helper functions that use the API client
+
+func (h *TemplateHandlers) getBasicStats(ctx context.Context) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
-	// Total articles
-	var totalArticles int
-	db.Get(&totalArticles, "SELECT COUNT(*) FROM articles")
-	stats["TotalArticles"] = totalArticles
+	// Get a sample of articles to calculate stats from
+	// Since we don't have count endpoints, we'll estimate from a larger sample
+	allParams := api.InternalArticlesParams{
+		Limit: 1000, // Get a large sample to calculate from
+	}
+	allArticles, err := h.client.GetArticles(ctx, allParams)
+	if err != nil {
+		return nil, err
+	}
 
-	// Count by bias
-	var leftCount, centerCount, rightCount int
-	db.Get(&leftCount, "SELECT COUNT(*) FROM articles WHERE bias_label = 'left'")
-	db.Get(&centerCount, "SELECT COUNT(*) FROM articles WHERE bias_label = 'center'")
-	db.Get(&rightCount, "SELECT COUNT(*) FROM articles WHERE bias_label = 'right'")
+	totalCount := len(allArticles)
+	stats["TotalArticles"] = totalCount
+
+	// Count by bias from the articles we have
+	leftCount := 0
+	centerCount := 0
+	rightCount := 0
+
+	for _, article := range allArticles {
+		// Use composite score to determine bias
+		if article.CompositeScore < -0.1 {
+			leftCount++
+		} else if article.CompositeScore > 0.1 {
+			rightCount++
+		} else {
+			centerCount++
+		}
+	}
 
 	stats["LeftCount"] = leftCount
 	stats["CenterCount"] = centerCount
 	stats["RightCount"] = rightCount
 
 	// Calculate percentages
-	if totalArticles > 0 {
-		stats["LeftPercentage"] = (leftCount * 100) / totalArticles
-		stats["CenterPercentage"] = (centerCount * 100) / totalArticles
-		stats["RightPercentage"] = (rightCount * 100) / totalArticles
+	if totalCount > 0 {
+		stats["LeftPercentage"] = (leftCount * 100) / totalCount
+		stats["CenterPercentage"] = (centerCount * 100) / totalCount
+		stats["RightPercentage"] = (rightCount * 100) / totalCount
 	} else {
 		stats["LeftPercentage"] = 0
 		stats["CenterPercentage"] = 0
 		stats["RightPercentage"] = 0
 	}
 
-	return stats
+	return stats, nil
 }
 
-func getDetailedStats(db *sqlx.DB) map[string]interface{} {
-	stats := getBasicStats(db)
+func (h *TemplateHandlers) getDetailedStats(ctx context.Context) (map[string]interface{}, error) {
+	stats, err := h.getBasicStats(ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	// Articles today
-	var articlesToday int
-	db.Get(&articlesToday, "SELECT COUNT(*) FROM articles WHERE date(published_date) = date('now')")
-	stats["ArticlesToday"] = articlesToday
+	// Get additional stats that would need new API endpoints
+	// For now, we'll use placeholder values or try to estimate from existing data
 
-	// Pending analysis (articles without scores)
-	var pendingAnalysis int
-	db.Get(&pendingAnalysis, "SELECT COUNT(*) FROM articles WHERE composite_score IS NULL")
-	stats["PendingAnalysis"] = pendingAnalysis
+	// Articles today - would need a date filter in the API
+	stats["ArticlesToday"] = 0 // Placeholder
 
-	// Active sources
-	var activeSources int
-	db.Get(&activeSources, "SELECT COUNT(DISTINCT source) FROM articles")
-	stats["ActiveSources"] = activeSources
+	// Pending analysis - would need to check for articles without scores
+	stats["PendingAnalysis"] = 0 // Placeholder
+
+	// Active sources - estimate from sample articles
+	allParams := api.InternalArticlesParams{
+		Limit: 1000,
+	}
+	allArticles, err := h.client.GetArticles(ctx, allParams)
+	if err == nil {
+		sourceSet := make(map[string]bool)
+		for _, article := range allArticles {
+			sourceSet[article.Source] = true
+		}
+		stats["ActiveSources"] = len(sourceSet)
+	} else {
+		stats["ActiveSources"] = 0
+	}
 
 	// Database size (approximation)
-	stats["DatabaseSize"] = "~2.5MB" // This could be calculated more accurately
+	stats["DatabaseSize"] = "~2.5MB" // Placeholder
 
-	return stats
+	return stats, nil
 }
 
-func getSystemStatus(db *sqlx.DB) map[string]bool {
+func (h *TemplateHandlers) getSystemStatus(ctx context.Context) (map[string]bool, error) {
 	status := make(map[string]bool)
 
-	// Database connectivity
-	err := db.Ping()
+	// Test API connectivity by making a simple request
+	params := api.InternalArticlesParams{Limit: 1}
+	_, err := h.client.GetArticles(ctx, params)
 	status["DatabaseOK"] = err == nil
+	// Check feed health if available - simplified check
+	status["RSSServiceOK"] = true // Simplified for internal client
 
-	// LLM service (simplified check)
-	status["LLMServiceOK"] = true // This should check actual LLM service status
+	// LLM service check - placeholder
+	status["LLMServiceOK"] = true // Placeholder
 
-	// RSS service (simplified check)
-	status["RSSServiceOK"] = true // This should check RSS feed status
-
-	return status
+	return status, nil
 }
 
-func getRecentActivity(db *sqlx.DB) []map[string]interface{} {
-	// This is a simplified implementation
-	// In a real system, you'd have an activity log table
+func (h *TemplateHandlers) getRecentActivity(ctx context.Context) ([]map[string]interface{}, error) {
 	var activities []map[string]interface{}
 
 	// Get recent articles as activity
-	rows, err := db.Query(`
-		SELECT title, published_date 
-		FROM articles 
-		ORDER BY published_date DESC 
-		LIMIT 5`)
-
-	if err != nil {
-		return activities
+	params := api.InternalArticlesParams{
+		Limit: 5,
 	}
-	defer rows.Close()
+	articles, err := h.client.GetArticles(ctx, params)
+	if err != nil {
+		return activities, err
+	}
 
-	for rows.Next() {
-		var title string
-		var publishedDate string
-		rows.Scan(&title, &publishedDate)
-
+	for _, article := range articles {
 		activities = append(activities, map[string]interface{}{
-			"Message":   "New article: " + title,
-			"Timestamp": publishedDate,
+			"Message":   "New article: " + article.Title,
+			"Timestamp": article.PubDate,
 		})
 	}
 
-	return activities
+	return activities, nil
 }
 
-// Helper functions for min/max
-func min(a, b int) int {
+// Helper functions for min/max (renamed to avoid conflicts)
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}

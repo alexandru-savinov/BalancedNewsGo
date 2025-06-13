@@ -206,7 +206,7 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 		defer func() {
 			if r := recover(); r != nil {
 				// Log the panic
-				log.Printf("[PANIC RECOVERED] %v\n%s", r, string(debug.Stack()))
+				log.Printf("[PANIC] %v\\n%s", r, debug.Stack()) // Added stack trace
 				// Return an error response
 				RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Internal Server Error: %v", r)))
 			}
@@ -396,49 +396,87 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @ID getArticlesList
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
+		log.Printf("[DEBUG] getArticlesHandler: Entered handler. Request: %s", c.Request.URL.String())
+
 		source := c.Query("source")
 		leaning := c.Query("leaning")
 		limitStr := c.DefaultQuery("limit", "20")
 		offsetStr := c.DefaultQuery("offset", "0")
 
+		log.Printf("[DEBUG] getArticlesHandler: Parsed query params - source: %s, leaning: %s, limit: %s, offset: %s", source, leaning, limitStr, offsetStr) // Added log
+
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
-			log.Printf("[ERROR] getArticlesHandler: invalid limit parameter: %v", err)
+			log.Printf("[ERROR] getArticlesHandler: invalid limit parameter: %v. Value: %s", err, limitStr) // Enhanced log
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'limit' parameter"))
 			return
 		}
 		offset, err := strconv.Atoi(offsetStr)
 		if err != nil || offset < 0 {
-			log.Printf("[ERROR] getArticlesHandler: invalid offset parameter: %v", err)
+			log.Printf("[ERROR] getArticlesHandler: invalid offset parameter: %v. Value: %s", err, offsetStr) // Enhanced log
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'offset' parameter"))
 			return
 		}
 
 		log.Printf("[INFO] getArticlesHandler: Fetching articles (source=%s, leaning=%s, limit=%d, offset=%d)", source, leaning, limit, offset)
+		// Corrected parameters for db.FetchArticles
+		log.Printf("[DEBUG] getArticlesHandler: Calling db.FetchArticles with source: '%s', leaning: '%s', limit: %d, offset: %d", source, leaning, limit, offset) // Added log
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
+		// totalCount is not returned by FetchArticles, so its usage is removed for now.
+		log.Printf("[DEBUG] getArticlesHandler: After db.FetchArticles. Error: %v. Articles count: %d", err, len(articles))
+
 		if err != nil {
-			log.Printf("[ERROR] getArticlesHandler: Database error fetching articles: %+v", err)
-			RespondError(c, WrapError(err, ErrInternal, "Failed to fetch articles"))
+			log.Printf("[ERROR] getArticlesHandler: Raw error from db.FetchArticles: %#v. Params - Source: '%s', Leaning: '%s', Limit: %d, Offset: %d", err, source, leaning, limit, offset)
+			RespondError(c, WrapError(err, ErrInternal, fmt.Sprintf("Failed to fetch articles: %v", err)))
 			return
 		}
 
-		// Enhance articles with composite scores and confidence
+		// Estimate totalCount for now. This should be replaced with a proper count query later.
+		totalCount := offset + len(articles)
+		if len(articles) == limit {
+			// If we fetched a full page, there might be more records.
+			// This is a rough estimation and might not be accurate.
+			// A separate COUNT(*) query would be more reliable.
+			totalCount += 1 // Placeholder to indicate more might exist
+		}
+
+		if len(articles) == 0 {
+			c.Header("X-Total-Count", strconv.Itoa(totalCount))
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"data":    []ArticleResponse{},
+			})
+			return
+		}
+
+		// Enhance articles with composite scores and confidence (simplified error handling for now)
 		for i := range articles {
-			scores, _ := db.FetchLLMScores(dbConn, articles[i].ID)
-			if len(scores) > 0 {
+			scores, fetchErr := db.FetchLLMScores(dbConn, articles[i].ID)
+			if fetchErr != nil {
+				log.Printf("WARNING: getArticlesHandler - Error fetching LLM scores for article ID %d: %v", articles[i].ID, fetchErr)
+			} else if len(scores) > 0 {
 				var weightedSum, sumWeights float64
+				validScoresCount := 0
 				for _, s := range scores {
 					var meta struct {
 						Confidence float64 `json:"confidence"`
 					}
-					_ = json.Unmarshal([]byte(s.Metadata), &meta)
+					if s.Metadata != "" {
+						if metaErr := json.Unmarshal([]byte(s.Metadata), &meta); metaErr != nil {
+							log.Printf("WARNING: getArticlesHandler - Error unmarshalling metadata for score ID %d (article ID %d): %v", s.ID, articles[i].ID, metaErr)
+							continue // Skip this score if metadata is malformed
+						}
+					} else {
+						log.Printf("WARNING: getArticlesHandler - Empty metadata for score ID %d (article ID %d)", s.ID, articles[i].ID)
+						continue // Skip this score if metadata is empty
+					}
 					weightedSum += s.Score * meta.Confidence
 					sumWeights += meta.Confidence
+					validScoresCount++
 				}
-				if sumWeights > 0 {
+				if sumWeights > 0 && validScoresCount > 0 {
 					compositeScore := weightedSum / sumWeights
-					avgConfidence := sumWeights / float64(len(scores))
+					avgConfidence := sumWeights / float64(validScoresCount)
 					articles[i].CompositeScore = &compositeScore
 					articles[i].Confidence = &avgConfidence
 				}
@@ -450,11 +488,17 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			out = append(out, toArticleResponse(&articles[i]))
 		}
 
+		c.Header("X-Total-Count", strconv.Itoa(totalCount))
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data":    out,
 		})
-		LogPerformance("getArticlesHandler", start)
+		log.Printf("[DEBUG] getArticlesHandler: Preparing to send response. Number of articles: %d", len(out)) // Added log
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"data":    out,
+		})
+		log.Printf("[DEBUG] getArticlesHandler: Response sent successfully.") // Added log
 	}
 }
 

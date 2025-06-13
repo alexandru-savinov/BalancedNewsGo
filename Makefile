@@ -1,6 +1,3 @@
-# Attempt to use bash/sh for shell-specific syntax
-SHELL = sh
-
 # Configurable race detection flag: enabled by default on non-Windows, disabled on Windows
 ifeq ($(OS),Windows_NT)
     ENABLE_RACE_DETECTION ?= false
@@ -55,7 +52,7 @@ COVERAGE_DIR := ./coverage
 COVERAGE_THRESHOLD ?= 90
 
 # Binaries
-SERVER_BIN      := $(BIN_DIR)/newbalancer_server
+SERVER_BIN      := bin\newbalancer_server.exe # Use backslashes for Windows
 
 # Flags
 SHORT           := -short
@@ -81,10 +78,11 @@ $(COVER_DIR):
 	@go run ./tools/mkdir/main.go $(COVER_DIR)
 
 build: $(BIN_DIR) ## Compile backend server into ./bin
-	$(GO) build -o $(SERVER_BIN) ./cmd/server/...
+	$(GO) build -v -o $(SERVER_BIN) ./cmd/server/...
 
-run: build ## Build and run server
-	$(SERVER_BIN)
+run: build ## Build and run server in background, redirecting output
+	@echo "Running server $(SERVER_BIN) in background (output to server_run.log)..."
+	cmd /c "start /B .\$(SERVER_BIN) > server_run.log 2>&1"
 
 stop: ## Stop the running server
 	taskkill /IM newbalancer_server /F

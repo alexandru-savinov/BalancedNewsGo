@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json" // Added for json marshalling
 	"html/template"
+	"io" // Added for io.MultiWriter
 	"log"
 	"os"
 	"strings"
@@ -57,9 +58,29 @@ import (
 // @tag.description Operations related to article analysis and summaries
 
 func main() {
-	log.Println("<<<<< APPLICATION STARTED - BUILD/LOG TEST >>>>>") // DEBUG LOG ADDED
+	// --- START: Explicit File Logging Setup ---
+	logFile, err := os.OpenFile("d:\\\\Dev\\\\NBG\\\\server_app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	// Defer closing the log file, though for a long-running server, it might only close on exit.
+	// For critical logs before this point, they might go to stdout/stderr if not captured.
+	// Consider a more robust logging library for production.
 
-	err := godotenv.Load()
+	// Set standard log output to multi-writer: file and original stdout
+	// This allows seeing logs in console if running interactively AND in the file.
+	multiWriter := io.MultiWriter(logFile, os.Stdout)
+	log.SetOutput(multiWriter)
+
+	// Set Gin's default writer to the same multi-writer
+	// This ensures Gin's logs (like request logs) also go to the file and stdout.
+	gin.DefaultWriter = multiWriter
+	gin.DefaultErrorWriter = multiWriter // Also capture Gin's errors
+
+	log.Println("<<<<< APPLICATION STARTED - LOGGING TO server_app.log >>>>>")
+	// --- END: Explicit File Logging Setup ---
+
+	err = godotenv.Load()
 	if err != nil {
 		log.Println("No .env file found or error loading .env file:", err)
 	}
@@ -78,7 +99,10 @@ func main() {
 	})
 
 	// Load HTML templates
-	router.LoadHTMLGlob("templates/*")
+	router.LoadHTMLGlob("templates/*.html") // Load top-level html files
+	// router.LoadHTMLGlob("templates/fragments/*.html") // Load fragment html files
+	// router.LoadHTMLGlob("templates/**/*.html") // Load all html files in templates and subdirectories
+	// router.LoadHTMLFiles("templates/articles.html") // Attempt to load only articles.html for diagnostics
 
 	// CORS configuration
 	router.Use(cors.New(cors.Config{
@@ -98,13 +122,23 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
+	// Get port for server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
 	// Template routes for web pages
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(302, "/articles")
 	})
-	router.GET("/articles", TemplateIndexHandler(dbConn))
-	router.GET("/article/:id", TemplateArticleHandler(dbConn))
-	router.GET("/admin", TemplateAdminHandler(dbConn))
+
+	// Initialize TemplateHandlers with database connection
+	templateHandlers := NewTemplateHandlers(dbConn)
+
+	router.GET("/articles", templateHandlers.TemplateIndexHandler())
+	router.GET("/article/:id", templateHandlers.TemplateArticleHandler())
+	router.GET("/admin", templateHandlers.TemplateAdminHandler())
 
 	// Register API routes on the router instance
 	// The ProgressManager handles progress tracking for LLM scoring jobs.
@@ -158,14 +192,7 @@ func main() {
 
 	// Add Swagger route
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
-	// Register admin routes
-	RegisterAdminRoutes(router, dbConn)
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
 	log.Printf("Server running on :%s", port)
 
 	if err := router.Run(":" + port); err != nil {

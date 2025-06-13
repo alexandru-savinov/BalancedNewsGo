@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -68,6 +69,46 @@ var (
 		},
 		[]string{"provider", "model", "error_type", "status_code"},
 	)
+
+	// New metrics for caching and request monitoring
+	CacheHits = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cache_hits_total",
+			Help: "Total number of cache hits",
+		},
+	)
+
+	CacheMisses = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cache_misses_total",
+			Help: "Total number of cache misses",
+		},
+	)
+
+	RequestErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "request_errors_total",
+			Help: "Total number of request errors by type",
+		},
+		[]string{"error_type"},
+	)
+
+	RequestLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "request_latency_seconds",
+			Help:    "Request latency distribution in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "status_code"},
+	)
+
+	ResponseStatus = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "response_status_total",
+			Help: "Total number of responses by status code",
+		},
+		[]string{"status_code"},
+	)
 )
 
 func InitLLMMetrics() {
@@ -83,6 +124,13 @@ func InitLLMMetrics() {
 
 	// Register detailed LLM API errors metric
 	prometheus.MustRegister(LLMAPIErrorsTotal)
+
+	// Register new metrics
+	prometheus.MustRegister(CacheHits)
+	prometheus.MustRegister(CacheMisses)
+	prometheus.MustRegister(RequestErrors)
+	prometheus.MustRegister(RequestLatency)
+	prometheus.MustRegister(ResponseStatus)
 }
 
 func IncLLMRequest(model, promptHash string) {
@@ -130,4 +178,25 @@ func IncLLMCreditsExhausted() {
 
 func IncLLMStreamingError() {
 	LLMStreamingErrors.Inc()
+}
+
+// New helper functions for cache and request metrics
+func RecordCacheHit() {
+	CacheHits.Inc()
+}
+
+func RecordCacheMiss() {
+	CacheMisses.Inc()
+}
+
+func RecordError(errorType string) {
+	RequestErrors.WithLabelValues(errorType).Inc()
+}
+
+func RecordLatency(duration time.Duration) {
+	RequestLatency.WithLabelValues("", "").Observe(duration.Seconds())
+}
+
+func RecordStatus(statusCode int) {
+	ResponseStatus.WithLabelValues(fmt.Sprintf("%d", statusCode)).Inc()
 }
