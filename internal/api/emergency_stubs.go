@@ -105,49 +105,6 @@ func scoreProgressHandler(pm *llm.ProgressManager) gin.HandlerFunc {
 	}
 }
 
-func scoreProgressSSEHandler(sm *llm.ScoreManager) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("X-Handler-Status", "emergency-stub")
-		c.Header("X-Stub-Version", "2.0")
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.Header("Connection", "keep-alive")
-		
-		response := gin.H{
-			"error": "SSE handler temporarily unavailable during emergency recovery",
-			"status": "emergency_stub",
-			"version": "2.0",
-			"estimated_fix": "48 hours",
-			"sse_support": "planned",
-			"timestamp": time.Now().UTC(),
-		}
-		
-		c.JSON(http.StatusNotImplemented, response)
-	}
-}
-
-// Emergency stub: Alternative handler signature that might be needed in tests
-func scoreProgressSSEHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("X-Handler-Status", "emergency-stub")
-		c.Header("X-Stub-Version", "2.0")
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.Header("Connection", "keep-alive")
-		
-		response := gin.H{
-			"error": "SSE handler temporarily unavailable during emergency recovery (no-param version)",
-			"status": "emergency_stub",
-			"version": "2.0",
-			"estimated_fix": "48 hours",
-			"sse_support": "planned",
-			"timestamp": time.Now().UTC(),
-		}
-		
-		c.JSON(http.StatusNotImplemented, response)
-	}
-}
-
 // Emergency stub: Health check endpoint for monitoring
 func EmergencyHealthHandler(c *gin.Context) {
 	c.Header("X-Emergency-Mode", "active")
@@ -158,10 +115,8 @@ func EmergencyHealthHandler(c *gin.Context) {
 		"api_status": "stubs_active",
 		"estimated_full_recovery": "48-72 hours",
 		"emergency_contact": "dev-team-lead@company.com",
-		"last_updated": time.Now().UTC(),
-		"stub_handlers": []string{
+		"last_updated": time.Now().UTC(),		"stub_handlers": []string{
 			"scoreProgressHandler",
-			"scoreProgressSSEHandler",
 			"APITemplateHandlers",
 		},
 	}
