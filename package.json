@@ -1,7 +1,8 @@
 {
   "name": "newbalancer_go",
   "version": "1.0.0",
-  "main": "index.js",  "scripts": {
+  "main": "index.js",
+  "scripts": {
     "test": "scripts/test.cmd",
     "test:backend": "scripts/test.cmd backend",
     "test:all": "scripts/test.cmd all",
@@ -34,6 +35,7 @@
     "@types/eventsource": "^1.1.15",
     "@types/node": "^22.14.1",
     "eventsource": "^3.0.7",
+    "jest-environment-jsdom": "^30.0.0",
     "jsdom": "^26.1.0",
     "newman": "^6.2.1",
     "typescript": "^5.8.3"

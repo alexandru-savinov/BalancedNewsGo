@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/jmoiron/sqlx"
@@ -31,17 +32,17 @@ type InternalArticlesParams struct {
 
 // InternalArticle represents an article in the internal API
 type InternalArticle struct {
-	ID             int64   `json:"id"`
-	Title          string  `json:"title"`
-	Content        string  `json:"content"`
-	URL            string  `json:"url"`
-	Source         string  `json:"source"`
-	PubDate        string  `json:"pub_date"`
-	CompositeScore float64 `json:"composite_score"`
-	Confidence     float64 `json:"confidence"`
-	ScoreSource    string  `json:"score_source"`
-	Bias           string  `json:"bias"`
-	Summary        string  `json:"summary"`
+	ID             int64     `json:"id"`
+	Title          string    `json:"title"`
+	Content        string    `json:"content"`
+	URL            string    `json:"url"`
+	Source         string    `json:"source"`
+	PubDate        time.Time `json:"pub_date"`
+	CompositeScore float64   `json:"composite_score"`
+	Confidence     float64   `json:"confidence"`
+	ScoreSource    string    `json:"score_source"`
+	Bias           string    `json:"bias"`
+	Summary        string    `json:"summary"`
 }
 
 // GetArticles fetches articles using the same logic as the HTTP API handler
@@ -90,14 +91,13 @@ func (c *InternalAPIClient) GetArticles(ctx context.Context, params InternalArti
 		if dbArticle.ScoreSource != nil {
 			scoreSource = *dbArticle.ScoreSource
 		}
-
 		articles[i] = InternalArticle{
 			ID:             dbArticle.ID,
 			Title:          dbArticle.Title,
 			Content:        dbArticle.Content,
 			URL:            dbArticle.URL,
 			Source:         dbArticle.Source,
-			PubDate:        dbArticle.PubDate.Format("2006-01-02 15:04:05"),
+			PubDate:        dbArticle.PubDate,
 			CompositeScore: compositeScore,
 			Confidence:     confidence,
 			ScoreSource:    scoreSource,
@@ -143,14 +143,13 @@ func (c *InternalAPIClient) GetArticle(ctx context.Context, id int64) (*Internal
 	if dbArticle.ScoreSource != nil {
 		scoreSource = *dbArticle.ScoreSource
 	}
-
 	article := &InternalArticle{
 		ID:             dbArticle.ID,
 		Title:          dbArticle.Title,
 		Content:        dbArticle.Content,
 		URL:            dbArticle.URL,
 		Source:         dbArticle.Source,
-		PubDate:        dbArticle.PubDate.Format("2006-01-02 15:04:05"),
+		PubDate:        dbArticle.PubDate,
 		CompositeScore: compositeScore,
 		Confidence:     confidence,
 		ScoreSource:    scoreSource,
