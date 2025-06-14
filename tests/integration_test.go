@@ -4,19 +4,17 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/testing"
+	internalTesting "github.com/alexandru-savinov/BalancedNewsGo/internal/testing"
 )
 
 // TestDatabaseIntegration demonstrates database testing with testcontainers
-func TestDatabaseIntegration(t *testing.T) {
-	// Setup test database with PostgreSQL
-	config := testing.DatabaseTestConfig{
+func TestDatabaseIntegration(t *testing.T) { // Setup test database with PostgreSQL
+	config := internalTesting.DatabaseTestConfig{
 		UsePostgres:    true,
 		MigrationsPath: "../migrations",
 		SeedDataPath:   "../testdata/seed",
 	}
-
-	testDB := testing.SetupTestDatabase(t, config)
+	testDB := internalTesting.SetupTestDatabase(t, config)
 	defer testDB.Cleanup()
 
 	t.Run("TestArticleStorage", func(t *testing.T) {
@@ -33,15 +31,13 @@ func TestDatabaseIntegration(t *testing.T) {
 }
 
 // TestSQLiteIntegration demonstrates SQLite testing
-func TestSQLiteIntegration(t *testing.T) {
-	// Setup test database with SQLite
-	config := testing.DatabaseTestConfig{
+func TestSQLiteIntegration(t *testing.T) { // Setup test database with SQLite
+	config := internalTesting.DatabaseTestConfig{
 		UseSQLite:      true,
 		SQLiteInMemory: true,
 		MigrationsPath: "../migrations",
 	}
-
-	testDB := testing.SetupTestDatabase(t, config)
+	testDB := internalTesting.SetupTestDatabase(t, config)
 	defer testDB.Cleanup()
 
 	t.Run("TestBasicOperations", func(t *testing.T) {
@@ -49,14 +45,14 @@ func TestSQLiteIntegration(t *testing.T) {
 	})
 }
 
-func testArticleStorage(t *testing.T, testDB *testing.TestDatabase) {
+func testArticleStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 	// Test article storage functionality
 	testDB.Transaction(t, func(tx *sql.Tx) {
 		// Insert test article
 		_, err := tx.Exec(`
-			INSERT INTO articles (id, title, content, url, source, published_at, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())
-		`, "test-1", "Test Article", "Test content", "http://test.com", "test-source")
+			INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
+			VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
+		`, 1, "Test Article", "Test content", "http://test.com", "test-source")
 
 		if err != nil {
 			t.Fatalf("Failed to insert test article: %v", err)
@@ -64,7 +60,7 @@ func testArticleStorage(t *testing.T, testDB *testing.TestDatabase) {
 
 		// Query the article
 		var title, content string
-		err = tx.QueryRow("SELECT title, content FROM articles WHERE id = $1", "test-1").Scan(&title, &content)
+		err = tx.QueryRow("SELECT title, content FROM articles WHERE id = $1", 1).Scan(&title, &content)
 		if err != nil {
 			t.Fatalf("Failed to query test article: %v", err)
 		}
@@ -79,14 +75,14 @@ func testArticleStorage(t *testing.T, testDB *testing.TestDatabase) {
 	})
 }
 
-func testScoreStorage(t *testing.T, testDB *testing.TestDatabase) {
+func testScoreStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 	// Test score storage functionality
 	testDB.Transaction(t, func(tx *sql.Tx) {
 		// First insert an article
 		_, err := tx.Exec(`
-			INSERT INTO articles (id, title, content, url, source, published_at, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW())
-		`, "test-2", "Test Article 2", "Test content 2", "http://test2.com", "test-source")
+			INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
+			VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
+		`, 2, "Test Article 2", "Test content 2", "http://test2.com", "test-source")
 
 		if err != nil {
 			t.Fatalf("Failed to insert test article: %v", err)
@@ -126,7 +122,7 @@ func testScoreStorage(t *testing.T, testDB *testing.TestDatabase) {
 	})
 }
 
-func testFeedbackStorage(t *testing.T, testDB *testing.TestDatabase) {
+func testFeedbackStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 	// Test feedback storage functionality
 	testDB.Transaction(t, func(tx *sql.Tx) {
 		// Insert feedback
@@ -161,7 +157,7 @@ func testFeedbackStorage(t *testing.T, testDB *testing.TestDatabase) {
 	})
 }
 
-func testBasicDatabaseOperations(t *testing.T, testDB *testing.TestDatabase) {
+func testBasicDatabaseOperations(t *testing.T, testDB *internalTesting.TestDatabase) {
 	// Test basic database operations
 	queries := []string{
 		"SELECT COUNT(*) FROM sqlite_master WHERE type='table'",

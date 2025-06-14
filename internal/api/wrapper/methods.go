@@ -19,11 +19,9 @@ func (c *APIClient) GetArticles(ctx context.Context, params ArticlesParams) ([]A
 			return articles, nil
 		}
 	}
-
 	// Cache miss - call API with retry logic
 	var articles []Article
 	var lastErr error
-
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
@@ -44,6 +42,7 @@ func (c *APIClient) GetArticles(ctx context.Context, params ArticlesParams) ([]A
 
 		// Convert to our model
 		articles = convertArticles(rawArticles)
+		lastErr = nil // Clear the error on success
 		break
 	}
 
@@ -75,7 +74,6 @@ func (c *APIClient) GetArticle(ctx context.Context, id int64) (*Article, error) 
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		rawArticle, err := c.raw.ArticlesAPI.GetArticle(ctx, id)
 		if err != nil {
 			lastErr = c.translateError(err)
@@ -84,6 +82,7 @@ func (c *APIClient) GetArticle(ctx context.Context, id int64) (*Article, error) 
 
 		// Convert to our model
 		article = convertArticle(rawArticle)
+		lastErr = nil // Clear the error on success
 		break
 	}
 
@@ -115,7 +114,6 @@ func (c *APIClient) GetArticleSummary(ctx context.Context, id int64) (string, er
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		result, err := c.raw.ArticlesAPI.GetArticleSummary(ctx, id)
 		if err != nil {
 			lastErr = c.translateError(err)
@@ -123,6 +121,7 @@ func (c *APIClient) GetArticleSummary(ctx context.Context, id int64) (string, er
 		}
 
 		summary = result
+		lastErr = nil // Clear the error on success
 		break
 	}
 
@@ -154,7 +153,6 @@ func (c *APIClient) GetArticleBias(ctx context.Context, id int64) (*ScoreRespons
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		rawBias, err := c.raw.ArticlesAPI.GetArticleBias(ctx, id)
 		if err != nil {
 			lastErr = c.translateError(err)
@@ -163,6 +161,7 @@ func (c *APIClient) GetArticleBias(ctx context.Context, id int64) (*ScoreRespons
 
 		// Convert to our model
 		bias = convertScoreResponse(rawBias)
+		lastErr = nil // Clear the error on success
 		break
 	}
 
@@ -192,7 +191,6 @@ func (c *APIClient) GetArticleEnsemble(ctx context.Context, id int64) (interface
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		result, err := c.raw.ArticlesAPI.GetArticleEnsemble(ctx, id)
 		if err != nil {
 			lastErr = c.translateError(err)
@@ -200,6 +198,7 @@ func (c *APIClient) GetArticleEnsemble(ctx context.Context, id int64) (interface
 		}
 
 		ensemble = result
+		lastErr = nil // Clear the error on success
 		break
 	}
 
@@ -227,7 +226,6 @@ func (c *APIClient) CreateArticle(ctx context.Context, req CreateArticleRequest)
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		rawResp, err := c.raw.ArticlesAPI.CreateArticle(ctx, rawReq)
 		if err != nil {
 			lastErr = c.translateError(err)
@@ -239,6 +237,7 @@ func (c *APIClient) CreateArticle(ctx context.Context, req CreateArticleRequest)
 			ArticleID: rawResp.ArticleID,
 			Status:    rawResp.Status,
 		}
+		lastErr = nil // Clear the error on success
 		return resp, nil
 	}
 
@@ -261,7 +260,6 @@ func (c *APIClient) ReanalyzeArticle(ctx context.Context, id int64, req *ManualS
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		result, err := c.raw.LLMApi.ReanalyzeArticle(ctx, id, rawReq)
 		if err != nil {
 			lastErr = c.translateError(err)
@@ -270,6 +268,7 @@ func (c *APIClient) ReanalyzeArticle(ctx context.Context, id int64, req *ManualS
 
 		// Invalidate related caches
 		c.invalidateArticleCache(id)
+		lastErr = nil // Clear the error on success
 		return result, nil
 	}
 
@@ -295,7 +294,6 @@ func (c *APIClient) GetFeedHealth(ctx context.Context) (FeedHealth, error) {
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		rawHealth, err := c.raw.FeedsApi.GetFeedHealth(ctx)
 		if err != nil {
 			lastErr = c.translateError(err)
@@ -303,6 +301,7 @@ func (c *APIClient) GetFeedHealth(ctx context.Context) (FeedHealth, error) {
 		}
 
 		health = FeedHealth(rawHealth)
+		lastErr = nil // Clear the error on success
 		break
 	}
 
@@ -325,13 +324,13 @@ func (c *APIClient) TriggerRefresh(ctx context.Context) (string, error) {
 		if attempt > 0 {
 			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
 		}
-
 		result, err := c.raw.FeedsApi.TriggerRefresh(ctx)
 		if err != nil {
 			lastErr = c.translateError(err)
 			continue
 		}
 
+		lastErr = nil // Clear the error on success
 		return result, nil
 	}
 

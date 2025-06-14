@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -28,18 +29,27 @@ import (
 // TestSSEProgressConcurrentClients verifies multiple clients receive progress updates
 func TestSSEProgressConcurrentClients(t *testing.T) {
 	done := make(chan struct{})
-	go func() {
-		// Set the final state before starting clients
-		progressMapLock.Lock()
-		progressMap[1] = &models.ProgressState{
+	go func() { // Create a simple progress manager for testing
+		progressMgr := llm.NewProgressManager(5 * time.Minute)
+
+		// Create a minimal score manager with the progress manager
+		scoreManager := &llm.ScoreManager{}
+		// Use reflection to set the progressMgr field since it's private
+		// Or alternatively, create it using the constructor with nil for other fields
+
+		// Set the expected progress state directly in the progress manager
+		expectedProgress := &models.ProgressState{
 			Step:    "done",
 			Percent: 100,
 			Status:  "Success",
 		}
-		progressMapLock.Unlock()
+		progressMgr.SetProgress(1, expectedProgress)
+
+		// Create ScoreManager with the progress manager (pass nil for other dependencies we don't need)
+		scoreManager = llm.NewScoreManager(nil, nil, nil, progressMgr)
 
 		router := gin.New()
-		router.GET("/api/llm/score-progress/:id", scoreProgressSSEHandler())
+		router.GET("/api/llm/score-progress/:id", scoreProgressSSEHandler(scoreManager))
 
 		var wg sync.WaitGroup
 		clients := 5

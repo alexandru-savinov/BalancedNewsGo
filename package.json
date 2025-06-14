@@ -30,6 +30,7 @@
   "homepage": "https://github.com/alexandru-savinov/BalancedNewsGo#readme",
   "description": "",
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "^1.53.0",
     "@stoplight/spectral-cli": "^6.11.0",
     "@types/eventsource": "^1.1.15",

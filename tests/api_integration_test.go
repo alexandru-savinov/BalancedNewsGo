@@ -5,37 +5,36 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/testing"
+	internaltesting "github.com/alexandru-savinov/BalancedNewsGo/internal/testing"
 )
 
 // TestAPIIntegration demonstrates API testing with test server management
-func TestAPIIntegration(t *testing.T) {
-	// Setup test database
-	dbConfig := testing.DatabaseTestConfig{
+func TestAPIIntegration(t *testing.T) { // Setup test database
+	dbConfig := internaltesting.DatabaseTestConfig{
 		UseSQLite:      true,
 		SQLiteInMemory: true,
 		MigrationsPath: "../migrations",
 		SeedDataPath:   "../testdata/seed",
 	}
 
-	testDB := testing.SetupTestDatabase(t, dbConfig)
+	testDB := internaltesting.SetupTestDatabase(t, dbConfig)
 	defer testDB.Cleanup()
 
 	// Setup test server
-	serverConfig := testing.DefaultTestServerConfig()
+	serverConfig := internaltesting.DefaultTestServerConfig()
 	serverConfig.Environment["DB_CONNECTION"] = testDB.GetConnectionString()
 	serverConfig.Environment["TEST_MODE"] = "true"
 
-	serverManager := testing.NewTestServerManager(serverConfig)
+	serverManager := internaltesting.NewTestServerManager(serverConfig)
 	if err := serverManager.Start(t); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
 
 	// Create API test suite
-	suite := testing.NewAPITestSuite(serverManager.GetBaseURL())
+	suite := internaltesting.NewAPITestSuite(serverManager.GetBaseURL())
 
 	// Add test cases
-	suite.AddTestCase(testing.APITestCase{
+	suite.AddTestCase(internaltesting.APITestCase{
 		Name:           "Health Check",
 		Method:         "GET",
 		Path:           "/healthz",
@@ -51,7 +50,7 @@ func TestAPIIntegration(t *testing.T) {
 		},
 	})
 
-	suite.AddTestCase(testing.APITestCase{
+	suite.AddTestCase(internaltesting.APITestCase{
 		Name:           "Get Articles",
 		Method:         "GET",
 		Path:           "/api/articles",
@@ -65,7 +64,7 @@ func TestAPIIntegration(t *testing.T) {
 		},
 	})
 
-	suite.AddTestCase(testing.APITestCase{
+	suite.AddTestCase(internaltesting.APITestCase{
 		Name:    "Score Article",
 		Method:  "POST",
 		Path:    "/api/articles/score",
@@ -74,13 +73,12 @@ func TestAPIIntegration(t *testing.T) {
 			"article_id": "test-article-1",
 			"content":    "This is a test article for scoring",
 		},
-		ExpectedStatus: http.StatusOK,
-		Setup: func(t *testing.T) {
+		ExpectedStatus: http.StatusOK, Setup: func(t *testing.T) {
 			// Insert test article before scoring
 			_, err := testDB.DB.Exec(`
-				INSERT INTO articles (id, title, content, url, source, published_at, created_at, updated_at)
-				VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'), datetime('now'))
-			`, "test-article-1", "Test Article", "This is a test article for scoring", "http://test.com", "test-source")
+				INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
+				VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
+			`, 1, "Test Article", "This is a test article for scoring", "http://test.com", "test-source")
 			if err != nil {
 				t.Fatalf("Failed to insert test article: %v", err)
 			}
@@ -101,7 +99,7 @@ func TestAPIIntegration(t *testing.T) {
 		},
 	})
 
-	suite.AddTestCase(testing.APITestCase{
+	suite.AddTestCase(internaltesting.APITestCase{
 		Name:    "Submit Feedback",
 		Method:  "POST",
 		Path:    "/api/feedback",
@@ -124,7 +122,7 @@ func TestAPIIntegration(t *testing.T) {
 		},
 	})
 
-	suite.AddTestCase(testing.APITestCase{
+	suite.AddTestCase(internaltesting.APITestCase{
 		Name:           "Get Article Scores",
 		Method:         "GET",
 		Path:           "/api/articles/test-article-1/scores",
@@ -150,16 +148,14 @@ func TestAPIPerformance(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping performance test in short mode")
 	}
-
 	// Setup test server
-	serverConfig := testing.DefaultTestServerConfig()
-	serverManager := testing.NewTestServerManager(serverConfig)
+	serverConfig := internaltesting.DefaultTestServerConfig()
+	serverManager := internaltesting.NewTestServerManager(serverConfig)
 	if err := serverManager.Start(t); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
-
 	// Performance test configuration
-	perfConfig := testing.PerformanceTestConfig{
+	perfConfig := internaltesting.PerformanceTestConfig{
 		URL:               serverManager.GetBaseURL() + "/healthz",
 		Method:            "GET",
 		ConcurrentUsers:   10,
@@ -168,7 +164,7 @@ func TestAPIPerformance(t *testing.T) {
 	}
 
 	// Run performance test
-	result := testing.RunPerformanceTest(t, perfConfig)
+	result := internaltesting.RunPerformanceTest(t, perfConfig)
 
 	// Validate performance metrics
 	if result.ErrorRate > 0.01 { // Allow up to 1% error rate

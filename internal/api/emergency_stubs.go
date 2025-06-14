@@ -8,7 +8,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -87,22 +90,88 @@ func SetProgress(articleID int64, state *models.ProgressState) {
 // Emergency stub: Missing handlers with comprehensive responses
 func scoreProgressHandler(pm *llm.ProgressManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("X-Handler-Status", "emergency-stub")
-		c.Header("X-Stub-Version", "2.0")
-		c.Header("X-ETA", "48 hours")
+		// Get article ID from URL parameter
+		articleIDStr := c.Param("id")
+		articleID, err := strconv.ParseInt(articleIDStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Invalid article ID",
+			})
+			return
+		}
+		// Set SSE headers
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Headers", "Cache-Control")
 
-		response := gin.H{
-			"error":         "Score progress handler temporarily unavailable during emergency recovery",
-			"status":        "emergency_stub",
-			"version":       "2.0",
-			"estimated_fix": "48 hours",
-			"contact":       "api-team-lead@company.com",
-			"alternative":   "Use /health endpoint for system status",
-			"timestamp":     time.Now().UTC(),
+		// Get flusher for immediate sending
+		flusher, ok := c.Writer.(http.Flusher)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Streaming unsupported",
+			})
+			return
 		}
 
-		c.JSON(http.StatusNotImplemented, response)
+		// Send initial event
+		initialState := pm.GetProgress(articleID)
+		if initialState == nil {
+			initialState = &models.ProgressState{
+				Status:      "Initializing",
+				Message:     "SSE connection established, awaiting progress.",
+				Percent:     0,
+				LastUpdated: 0,
+			}
+		}
+
+		// Send initial progress event
+		fmt.Fprintf(c.Writer, "event: progress\n")
+		fmt.Fprintf(c.Writer, "data: %s\n\n", formatProgressData(*initialState))
+		flusher.Flush()
+
+		// Set up ticker for periodic updates
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+
+		// Context for cancellation
+		ctx := c.Request.Context()
+
+		for {
+			select {
+			case <-ctx.Done():
+				// Client disconnected
+				return
+			case <-ticker.C:
+				// Check for progress updates
+				if pm != nil {
+					if currentState := pm.GetProgress(articleID); currentState != nil {
+						fmt.Fprintf(c.Writer, "event: progress\n")
+						fmt.Fprintf(c.Writer, "data: %s\n\n", formatProgressData(*currentState))
+						flusher.Flush()
+
+						// Stop if completed
+						if currentState.Status == "Completed" || currentState.Status == "Failed" {
+							return
+						}
+					}
+				}
+			}
+		}
 	}
+}
+
+// Helper function to format progress data as JSON
+func formatProgressData(state models.ProgressState) string {
+	data, _ := json.Marshal(map[string]interface{}{
+		"step":         state.Status,
+		"message":      state.Message,
+		"percent":      state.Percent,
+		"status":       "Connected",
+		"last_updated": state.LastUpdated,
+	})
+	return string(data)
 }
 
 // Emergency stub: Health check endpoint for monitoring
