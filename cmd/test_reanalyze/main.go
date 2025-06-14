@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
@@ -48,19 +50,27 @@ func main() {
 	if err := os.Setenv("LLM_BASE_URL", "http://localhost:8090"); err != nil { // Use local mock service URL
 		log.Printf("Warning: failed to set LLM_BASE_URL: %v", err)
 	}
-
 	// Create client using constructor
 	llmClient, err := llm.NewLLMClient(dbConn)
 	if err != nil {
 		log.Fatalf("Failed to create LLM client: %v", err)
 	}
+	// Create ScoreManager and its dependencies for the reanalysis
+	cache := llm.NewCache()
+	calculator := &llm.DefaultScoreCalculator{}
+	progressMgr := llm.NewProgressManager(5 * time.Minute) // 5 minute cleanup interval
+	scoreManager := llm.NewScoreManager(dbConn, cache, calculator, progressMgr)
 
 	// Use short timeout for testing
 	llmClient.SetHTTPLLMTimeout(5 * 1000000000) // 5 seconds in nanoseconds
 
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	// Reanalyze article
 	log.Printf("Starting reanalysis for article ID %d: %s", articleID, article.Title)
-	err = llmClient.ReanalyzeArticle(articleID)
+	err = llmClient.ReanalyzeArticle(ctx, articleID, scoreManager)
 	if err != nil {
 		log.Fatalf("Reanalysis failed: %v", err)
 	}

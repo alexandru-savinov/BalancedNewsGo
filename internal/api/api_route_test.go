@@ -248,7 +248,7 @@ func TestFeedHealthHandlerFunc(t *testing.T) {
 // TestSetProgressAndGetProgress tests the setProgress and getProgress functions
 func TestSetProgressAndGetProgress(t *testing.T) {
 	// Initialize ProgressManager
-	pm := llm.NewProgressManager()
+	pm := llm.NewProgressManager(time.Minute)
 
 	// Setup router with the real progress manager
 	router := gin.New()
@@ -260,7 +260,7 @@ func TestSetProgressAndGetProgress(t *testing.T) {
 
 	// Simulate setting progress using the ProgressManager
 	articleID := 123
-	state := models.ProgressState{Status: "Processing", PercentComplete: 50, Message: "Halfway there"}
+	state := &models.ProgressState{Status: "Processing", Percent: 50, Message: "Halfway there"}
 	pm.SetProgress(articleID, state) // Use ProgressManager to set progress
 
 	// Simulate getting progress using the ProgressManager
@@ -277,7 +277,7 @@ func TestSetProgressAndGetProgress(t *testing.T) {
 
 func TestScoreProgressSSE_RealHandler(t *testing.T) {
 	// Initialize ProgressManager
-	pm := llm.NewProgressManager()
+	pm := llm.NewProgressManager(time.Minute)
 
 	// Setup router with the real progress manager
 	router := gin.New()
@@ -313,9 +313,8 @@ func TestScoreProgressSSE_RealHandler(t *testing.T) {
 
 	// Simulate progress updates
 	go func() {
-		time.Sleep(100 * time.Millisecond) // Wait for client to connect
-		pm.SetProgress(1, models.ProgressState{Status: "Processing", PercentComplete: 50, Message: "Test Update"})
-		pm.SetProgress(1, models.ProgressState{Status: "Success", PercentComplete: 100, Message: "Done"})
+		time.Sleep(100 * time.Millisecond) // Wait for client to connect		pm.SetProgress(1, &models.ProgressState{Status: "Processing", Percent: 50, Message: "Test Update"})
+		pm.SetProgress(1, &models.ProgressState{Status: "Success", Percent: 100, Message: "Done"})
 	}()
 
 	// Read and verify progress events
