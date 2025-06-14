@@ -120,7 +120,7 @@ func main() {
 					// We will need to be vigilant and potentially re-apply this edit with correct IDs if they change.
 
 					for _, modelCfg := range llmModelsForAnalysis {
-						start := time.Now()						// Inner func for error handling and stats
+						start := time.Now() // Inner func for error handling and stats
 						analysisErr := func() error {
 							llmScoreResponse, errAn := llmClient.AnalyzeContent(article.ID, article.Content, modelCfg.ModelName, modelCfg.URL, scoreManager)
 							apiStats.AddCall(time.Since(start), errAn)

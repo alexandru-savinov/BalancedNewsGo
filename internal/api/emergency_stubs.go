@@ -12,14 +12,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
+	"github.com/gin-gonic/gin"
 )
 
 // Emergency stub: Missing template handlers with proper structure
 type APITemplateHandlers struct {
-	initialized   bool
+	initialized  bool
 	version      string
 	createdAt    time.Time
 	stubMode     bool
@@ -30,22 +30,22 @@ type APITemplateHandlers struct {
 func NewAPITemplateHandlers(baseURL string) *APITemplateHandlers {
 	return &APITemplateHandlers{
 		initialized:  true,
-		version:     "emergency-stub-2.0",
-		createdAt:   time.Now(),
-		stubMode:    true,
+		version:      "emergency-stub-2.0",
+		createdAt:    time.Now(),
+		stubMode:     true,
 		handlerCount: 0,
-		baseURL:     baseURL,
+		baseURL:      baseURL,
 	}
 }
 
 // Method stubs for APITemplateHandlers
 func (h *APITemplateHandlers) GetStatus() map[string]interface{} {
 	return map[string]interface{}{
-		"status": "emergency_stub",
-		"version": h.version,
+		"status":     "emergency_stub",
+		"version":    h.version,
 		"created_at": h.createdAt,
-		"stub_mode": h.stubMode,
-		"base_url": h.baseURL,
+		"stub_mode":  h.stubMode,
+		"base_url":   h.baseURL,
 	}
 }
 
@@ -53,16 +53,16 @@ func (h *APITemplateHandlers) GetStatus() map[string]interface{} {
 func (h *APITemplateHandlers) GetArticleStats(ctx context.Context) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"total_articles": 0,
-		"status": "emergency_stub",
-		"message": "API template handler temporarily unavailable during emergency recovery",
+		"status":         "emergency_stub",
+		"message":        "API template handler temporarily unavailable during emergency recovery",
 	}, nil
 }
 
 func (h *APITemplateHandlers) GetSourceStats(ctx context.Context) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"total_sources": 0,
-		"status": "emergency_stub",
-		"message": "API template handler temporarily unavailable during emergency recovery",
+		"status":        "emergency_stub",
+		"message":       "API template handler temporarily unavailable during emergency recovery",
 	}, nil
 }
 
@@ -90,17 +90,17 @@ func scoreProgressHandler(pm *llm.ProgressManager) gin.HandlerFunc {
 		c.Header("X-Handler-Status", "emergency-stub")
 		c.Header("X-Stub-Version", "2.0")
 		c.Header("X-ETA", "48 hours")
-		
+
 		response := gin.H{
-			"error": "Score progress handler temporarily unavailable during emergency recovery",
-			"status": "emergency_stub",
-			"version": "2.0",
+			"error":         "Score progress handler temporarily unavailable during emergency recovery",
+			"status":        "emergency_stub",
+			"version":       "2.0",
 			"estimated_fix": "48 hours",
-			"contact": "api-team-lead@company.com",
-			"alternative": "Use /health endpoint for system status",
-			"timestamp": time.Now().UTC(),
+			"contact":       "api-team-lead@company.com",
+			"alternative":   "Use /health endpoint for system status",
+			"timestamp":     time.Now().UTC(),
 		}
-		
+
 		c.JSON(http.StatusNotImplemented, response)
 	}
 }
@@ -108,18 +108,18 @@ func scoreProgressHandler(pm *llm.ProgressManager) gin.HandlerFunc {
 // Emergency stub: Health check endpoint for monitoring
 func EmergencyHealthHandler(c *gin.Context) {
 	c.Header("X-Emergency-Mode", "active")
-	
+
 	health := gin.H{
-		"status": "emergency_recovery",
-		"build_status": "functional",
-		"api_status": "stubs_active",
+		"status":                  "emergency_recovery",
+		"build_status":            "functional",
+		"api_status":              "stubs_active",
 		"estimated_full_recovery": "48-72 hours",
-		"emergency_contact": "dev-team-lead@company.com",
-		"last_updated": time.Now().UTC(),		"stub_handlers": []string{
+		"emergency_contact":       "dev-team-lead@company.com",
+		"last_updated":            time.Now().UTC(), "stub_handlers": []string{
 			"scoreProgressHandler",
 			"APITemplateHandlers",
 		},
 	}
-	
+
 	c.JSON(http.StatusOK, health)
 }
