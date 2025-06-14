@@ -23,6 +23,11 @@ import (
 // Import mock.Anything directly to make it accessible in test methods
 var Anything = mock.Anything
 
+// Helper function for creating string pointers
+func strPtr(s string) *string {
+	return &s
+}
+
 // Constants for commonly used values
 const (
 	articlesEndpoint    = "/api/articles"

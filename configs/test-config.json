@@ -1,0 +1,43 @@
+{
+  "database": {
+    "type": "sqlite",
+    "connection": ":memory:",
+    "migrations_path": "./migrations",
+    "seed_data": true
+  },
+  "server": {
+    "port": 8080,
+    "host": "localhost",
+    "timeout": "30s",
+    "read_timeout": "10s",
+    "write_timeout": "10s"
+  },
+  "logging": {
+    "level": "debug",
+    "format": "json",
+    "output": "stdout"
+  },
+  "testing": {
+    "use_containers": false,
+    "container_timeout": "60s",
+    "cleanup_after_test": true,
+    "parallel_tests": true,
+    "test_data_path": "./testdata"
+  },
+  "llm": {
+    "provider": "mock",
+    "timeout": "30s",
+    "max_retries": 3,
+    "mock_responses": true
+  },
+  "rss": {
+    "fetch_timeout": "10s",
+    "max_articles": 10,
+    "mock_feeds": true
+  },
+  "metrics": {
+    "enabled": false,
+    "endpoint": "",
+    "collection_interval": "1m"
+  }
+}

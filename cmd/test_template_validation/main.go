@@ -10,8 +10,6 @@ import (
 
 func main() {
 	// Test template parsing to ensure our changes don't break Go template compilation
-	templatesDir := "templates"
-
 	fmt.Println("🧪 Testing Template Compilation...")
 
 	// Test main templates
