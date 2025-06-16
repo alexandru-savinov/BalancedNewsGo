@@ -22,21 +22,25 @@ async function globalTeardown(config: FullConfig) {
     console.log('📊 Generating test summary...');
     const fs = await import('fs');
     const path = await import('path');
-    
-    const resultsPath = path.resolve('test-results/test-results.json');
+      const resultsPath = path.resolve('test-results/test-results.json');
     if (fs.existsSync(resultsPath)) {
       const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
       const stats = results.stats || {};
       
       console.log('📈 Test Execution Summary:');
-      console.log(`  - Total tests: ${stats.total || 0}`);
-      console.log(`  - Passed: ${stats.passed || 0}`);
-      console.log(`  - Failed: ${stats.failed || 0}`);
-      console.log(`  - Skipped: ${stats.skipped || 0}`);
+      const total = (stats.expected || 0) + (stats.unexpected || 0) + (stats.skipped || 0);
+      const passed = stats.expected || 0;
+      const failed = stats.unexpected || 0;
+      const skipped = stats.skipped || 0;
+      
+      console.log(`  - Total tests: ${total}`);
+      console.log(`  - Passed: ${passed}`);
+      console.log(`  - Failed: ${failed}`);
+      console.log(`  - Skipped: ${skipped}`);
       const durationText = stats.duration ? `${Math.round(stats.duration / 1000)}s` : 'Unknown';
       console.log(`  - Duration: ${durationText}`);
       
-      const passRate = stats.total ? Math.round((stats.passed / stats.total) * 100) : 0;
+      const passRate = total ? Math.round((passed / total) * 100) : 0;
       console.log(`  - Pass rate: ${passRate}%`);
       
       if (passRate >= 85) {

@@ -96,11 +96,10 @@ func main() {
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
 		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
-	})
-
-	// Load HTML templates
-	router.LoadHTMLGlob("templates/*.html") // Load top-level html files
+	})	// Load HTML templates
+	// router.LoadHTMLGlob("templates/*.html") // Load top-level html files
 	// router.LoadHTMLGlob("templates/fragments/*.html") // Load fragment html files
+	router.LoadHTMLFiles("templates/articles.html", "templates/article.html", "templates/admin.html", "templates/article_htmx.html", "templates/articles_htmx.html") // Load specific files
 	// router.LoadHTMLGlob("templates/**/*.html") // Load all html files in templates and subdirectories
 	// router.LoadHTMLFiles("templates/articles.html") // Attempt to load only articles.html for diagnostics
 
@@ -135,10 +134,13 @@ func main() {
 
 	// Initialize TemplateHandlers with database connection
 	templateHandlers := NewTemplateHandlers(dbConn)
-
 	router.GET("/articles", templateHandlers.TemplateIndexHandler())
 	router.GET("/article/:id", templateHandlers.TemplateArticleHandler())
 	router.GET("/admin", templateHandlers.TemplateAdminHandler())
+		// HTMX fragment routes for dynamic loading
+	router.GET("/htmx/articles", templateHandlers.TemplateArticlesFragmentHandler())
+	router.GET("/htmx/articles/load-more", templateHandlers.TemplateArticlesLoadMoreHandler())
+	router.GET("/htmx/article/:id", templateHandlers.TemplateArticleFragmentHandler())
 
 	// Register API routes on the router instance
 	// The ProgressManager handles progress tracking for LLM scoring jobs.

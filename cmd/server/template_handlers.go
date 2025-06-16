@@ -68,23 +68,22 @@ func (h *TemplateHandlers) TemplateIndexHandler() gin.HandlerFunc {
 
 		// Get articles from internal API client
 		articles, err := h.client.GetArticles(ctx, params)
-		if err != nil {
-			log.Printf("[DEBUG] TemplateIndexHandler ERROR path - Error fetching articles: %v", err)
-			c.HTML(http.StatusInternalServerError, "articles.html", gin.H{
-				"Error":          "Error fetching articles: " + err.Error(),
-				"Articles":       []api.InternalArticle{}, // Pass empty slice
-				"Sources":        []string{},
-				"SearchQuery":    query,
-				"SelectedSource": source,
-				"SelectedBias":   bias,
-				"CurrentPage":    1,        // Default value
-				"TotalPages":     1,        // Default value
-				"Pages":          []int{1}, // Default value
-				"PrevPage":       0,        // Default value
-				"NextPage":       0,        // Default value
-			})
-			log.Printf("[DEBUG] TemplateIndexHandler ERROR path - Error fetching articles: %v. CurrentPage type: %T, value: %v", err, 1, 1) // DEBUG
-			return
+		if err != nil {		log.Printf("[DEBUG] TemplateIndexHandler ERROR path - Error fetching articles: %v", err)
+		c.HTML(http.StatusInternalServerError, "articles.html", gin.H{
+			"Error":          "Error fetching articles: " + err.Error(),
+			"Articles":       []api.InternalArticle{}, // Pass empty slice
+			"Sources":        []string{},
+			"SearchQuery":    query,
+			"SelectedSource": source,
+			"SelectedBias":   bias,
+			"CurrentPage":    1,        // Default value
+			"TotalPages":     1,        // Default value
+			"Pages":          []int{1}, // Default value
+			"PrevPage":       0,        // Default value
+			"NextPage":       0,        // Default value
+		})
+		log.Printf("[DEBUG] TemplateIndexHandler ERROR path - Error fetching articles: %v. CurrentPage type: %T, value: %v", err, 1, 1) // DEBUG
+		return
 		}
 
 		// Simplified pagination since we don't have a count endpoint yet
@@ -114,18 +113,18 @@ func (h *TemplateHandlers) TemplateIndexHandler() gin.HandlerFunc {
 			sources = append(sources, s)
 		}
 
-		c.HTML(http.StatusOK, "articles.html", gin.H{
-			"Articles":       articles,
-			"Sources":        sources,
-			"SearchQuery":    query,
-			"SelectedSource": source,
-			"SelectedBias":   bias,
-			"CurrentPage":    page,
-			"TotalPages":     totalPages,
-			"Pages":          pages,
-			"PrevPage":       page - 1,
-			"NextPage":       page + 1,
-		})
+	c.HTML(http.StatusOK, "articles.html", gin.H{
+		"Articles":       articles,
+		"Sources":        sources,
+		"SearchQuery":    query,
+		"SelectedSource": source,
+		"SelectedBias":   bias,
+		"CurrentPage":    page,
+		"TotalPages":     totalPages,
+		"Pages":          pages,
+		"PrevPage":       page - 1,
+		"NextPage":       page + 1,
+	})
 		log.Printf("[DEBUG] TemplateIndexHandler SUCCESS path - CurrentPage type: %T, value: %v", page, page) // DEBUG
 	}
 }
@@ -138,18 +137,16 @@ func (h *TemplateHandlers) TemplateArticleHandler() gin.HandlerFunc {
 
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.HTML(http.StatusBadRequest, "article.html", gin.H{
-				"Error": "Invalid article ID",
-			})
+		if err != nil {		c.HTML(http.StatusBadRequest, "article.html", gin.H{
+			"Error": "Invalid article ID",
+		})
 			return
 		}
 		// Get the article from internal API
 		article, err := h.client.GetArticle(ctx, int64(id))
-		if err != nil {
-			c.HTML(http.StatusNotFound, "article.html", gin.H{
-				"Error": "Article not found",
-			})
+		if err != nil {		c.HTML(http.StatusNotFound, "article.html", gin.H{
+			"Error": "Article not found",
+		})
 			return
 		}
 
@@ -176,11 +173,11 @@ func (h *TemplateHandlers) TemplateArticleHandler() gin.HandlerFunc {
 			"currentTime":   ctx.Value("time"),
 		}
 
-		c.HTML(http.StatusOK, "article.html", gin.H{
-			"Article":        article,
-			"RecentArticles": filteredRecent,
-			"Stats":          stats,
-		})
+	c.HTML(http.StatusOK, "article.html", gin.H{
+		"Article":        article,
+		"RecentArticles": filteredRecent,
+		"Stats":          stats,
+	})
 	}
 }
 
@@ -208,11 +205,11 @@ func (h *TemplateHandlers) TemplateAdminHandler() gin.HandlerFunc {
 			recentActivity = []map[string]interface{}{} // Fallback to empty activity
 		}
 
-		c.HTML(http.StatusOK, "admin.html", gin.H{
-			"Stats":          stats,
-			"SystemStatus":   systemStatus,
-			"RecentActivity": recentActivity,
-		})
+	c.HTML(http.StatusOK, "admin.html", gin.H{
+		"Stats":          stats,
+		"SystemStatus":   systemStatus,
+		"RecentActivity": recentActivity,
+	})
 	}
 }
 
@@ -299,18 +296,16 @@ func (h *TemplateHandlers) TemplateArticleFragmentHandler() gin.HandlerFunc {
 
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.HTML(http.StatusBadRequest, "article_htmx.html", gin.H{
-				"Error": "Invalid article ID",
-			})
+		if err != nil {		c.HTML(http.StatusBadRequest, "article_htmx.html", gin.H{
+			"Error": "Invalid article ID",
+		})
 			return
 		}
 		// Get the article from API
 		article, err := h.client.GetArticle(ctx, int64(id))
-		if err != nil {
-			c.HTML(http.StatusNotFound, "article_htmx.html", gin.H{
-				"Error": "Article not found",
-			})
+		if err != nil {		c.HTML(http.StatusNotFound, "article_htmx.html", gin.H{
+			"Error": "Article not found",
+		})
 			return
 		}
 
@@ -335,11 +330,11 @@ func (h *TemplateHandlers) TemplateArticleFragmentHandler() gin.HandlerFunc {
 			stats = make(map[string]interface{})
 		}
 
-		c.HTML(http.StatusOK, "article_htmx.html", gin.H{
-			"Article":        article,
-			"RecentArticles": filteredRecent,
-			"Stats":          stats,
-		})
+	c.HTML(http.StatusOK, "article_htmx.html", gin.H{
+		"Article":        article,
+		"RecentArticles": filteredRecent,
+		"Stats":          stats,
+	})
 	}
 }
 
@@ -512,4 +507,56 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// TemplateArticlesLoadMoreHandler returns just article items for load more functionality
+func (h *TemplateHandlers) TemplateArticlesLoadMoreHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		// Get query parameters for filtering (same as main handler)
+		source := c.Query("source")
+		bias := c.Query("bias")
+		if bias == "" {
+			bias = c.Query("leaning")
+		}
+		pageStr := c.DefaultQuery("page", "1")
+
+		page, err := strconv.Atoi(pageStr)
+		if err != nil || page < 1 {
+			page = 1
+		}
+
+		limit := 20
+		offset := (page - 1) * limit
+
+		// Build API parameters
+		params := api.InternalArticlesParams{
+			Limit:  limit,
+			Offset: offset,
+		}
+
+		if source != "" {
+			params.Source = source
+		}
+
+		if bias != "" {
+			params.Leaning = bias
+		}
+
+		// Get articles from API
+		articles, err := h.client.GetArticles(ctx, params)
+		if err != nil {
+			c.HTML(http.StatusInternalServerError, "article-items-fragment", gin.H{
+				"Error": "Error fetching articles: " + err.Error(),
+			})
+			return
+		}
+
+		// Return just the article items for appending
+		c.HTML(http.StatusOK, "article-items-fragment", gin.H{
+			"Articles": articles,
+		})
+	}
 }

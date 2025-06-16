@@ -14,8 +14,7 @@ type Article struct {
 	CompositeScore float64   `json:"CompositeScore,omitempty"`
 	Confidence     float64   `json:"Confidence,omitempty"`
 	ScoreSource    string    `json:"ScoreSource,omitempty"`
-	BiasLabel      string    `json:"BiasLabel,omitempty"`
-	AnalysisNotes  string    `json:"AnalysisNotes,omitempty"`
+	// BiasLabel field removed - not present in database
 }
 
 // CreateArticleRequest represents the request to create an article

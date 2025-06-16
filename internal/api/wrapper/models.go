@@ -22,8 +22,7 @@ type Article struct {
 	CompositeScore float64   `json:"composite_score,omitempty"`
 	Confidence     float64   `json:"confidence,omitempty"`
 	ScoreSource    string    `json:"score_source,omitempty"`
-	BiasLabel      string    `json:"bias_label,omitempty"`
-	AnalysisNotes  string    `json:"analysis_notes,omitempty"`
+	// BiasLabel field removed - not present in database
 }
 
 type ArticlesParams struct {
@@ -81,7 +80,6 @@ func convertArticle(raw *rawclient.Article) *Article {
 	if raw == nil {
 		return nil
 	}
-
 	return &Article{
 		ArticleID:      raw.ArticleID,
 		Title:          raw.Title,
@@ -91,10 +89,8 @@ func convertArticle(raw *rawclient.Article) *Article {
 		PubDate:        raw.PubDate,
 		CreatedAt:      raw.CreatedAt,
 		CompositeScore: raw.CompositeScore,
-		Confidence:     raw.Confidence,
-		ScoreSource:    raw.ScoreSource,
-		BiasLabel:      raw.BiasLabel,
-		AnalysisNotes:  raw.AnalysisNotes,
+		Confidence:     raw.Confidence, ScoreSource: raw.ScoreSource,
+		// BiasLabel removed - not present in database
 	}
 }
 

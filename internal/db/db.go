@@ -40,7 +40,6 @@ type Article struct {
 	Confidence     *float64   `db:"confidence" json:"confidence,omitempty"`
 	ScoreSource    *string    `db:"score_source" json:"score_source,omitempty"`
 	BiasLabel      *string    `db:"bias_label" json:"bias_label,omitempty"`
-	AnalysisNotes  *string    `db:"analysis_notes" json:"analysis_notes,omitempty"`
 	Bias           string     `db:"-" json:"bias,omitempty"` // Calculated field, not stored in DB
 }
 

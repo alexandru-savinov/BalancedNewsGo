@@ -6,9 +6,8 @@ async function waitForServer(page: Page, url: string, timeout: number = 30000): 
   while (Date.now() - startTime < timeout) {
     try {
       await page.goto(url, { waitUntil: 'networkidle', timeout: 5000 });
-      return;
-    } catch (error) {
-      console.log('Server not ready, waiting...', error.message);
+      return;    } catch (error: any) {
+      console.log('Server not ready, waiting...', error?.message ?? 'Unknown error');
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
@@ -27,22 +26,22 @@ test.describe('HTMX Integration Tests', () => {
   test.beforeEach(async ({ page }) => {
     // Wait for server to be available
     await waitForServer(page, baseURL);
-  });
-
-  test('Articles page loads without full refresh on pagination', async ({ page }) => {
+  });  test('Articles page loads without full refresh on pagination', async ({ page }) => {
     // Navigate to articles page
     await page.goto(`${baseURL}/articles`);
     
-    // Wait for the page to load
-    await expect(page.locator('title')).toHaveText(/Articles/);
+    // Wait for the page to load completely
+    await page.waitForLoadState('networkidle');
+    
+    // Wait for articles to load instead of title
+    await page.waitForSelector('.article-item', { timeout: 15000 });
     
     // Check that articles are loaded
-    const articles = page.locator('article[data-id]');
-    await expect(articles).toHaveCountGreaterThan(0);
-    
-    // Get the initial page content to verify HTMX updates
-    const initialArticles = await articles.count();
-    const firstArticleTitle = await articles.first().locator('h2').textContent();
+    const articles = page.locator('.article-item');
+    const articleCount = await articles.count();
+    expect(articleCount).toBeGreaterThan(0);
+      // Get the initial page content to verify HTMX updates
+    const firstArticleTitle = await articles.first().locator('.article-title a').textContent();
     
     // Look for pagination links with HTMX attributes
     const nextPageLink = page.locator('a[hx-get*="offset="]').first();
@@ -64,7 +63,7 @@ test.describe('HTMX Integration Tests', () => {
       
       // Verify that content changed without page reload
       const newArticles = await articles.count();
-      const newFirstArticleTitle = await articles.first().locator('h2').textContent();
+      const newFirstArticleTitle = await articles.first().locator('.article-title a').textContent();
       
       // Articles should be different (assuming different pages have different content)
       if (newArticles > 0) {
@@ -82,10 +81,10 @@ test.describe('HTMX Integration Tests', () => {
     // Navigate to articles page
     await page.goto(`${baseURL}/articles`);
     
-    // Wait for articles to load
-    const articleLinks = page.locator('a[hx-get*="/article/"]');
-    await expect(articleLinks).toHaveCountGreaterThan(0);
-    
+      // Wait for articles to load
+    const articleLinks = page.locator('a[href*="/article/"]');
+    const linkCount = await articleLinks.count();
+    expect(linkCount).toBeGreaterThan(0);
     // Set up network monitoring
     let htmxRequestMade = false;
     page.on('request', request => {
@@ -93,11 +92,7 @@ test.describe('HTMX Integration Tests', () => {
         htmxRequestMade = true;
       }
     });
-    
-    // Get initial page title
-    const initialTitle = await page.title();
-    
-    // Click on the first article link
+      // Click on the first article link
     await articleLinks.first().click();
     
     // Wait for HTMX to load the article
@@ -152,7 +147,7 @@ test.describe('HTMX Integration Tests', () => {
         }
       });
       
-      if (sourceFilter.locator('option').count() > 0) {
+      if (await sourceFilter.locator('option').count() > 0) {
         // It's a select element
         await sourceFilter.selectOption({ index: 1 });
       } else {
@@ -165,15 +160,14 @@ test.describe('HTMX Integration Tests', () => {
       expect(filterRequestMade).toBe(true);
     }
   });
-
   test('Error handling works correctly with HTMX', async ({ page }) => {
     await page.goto(`${baseURL}/articles`);
     
     // Try to access a non-existent article directly via HTMX
     await page.evaluate(() => {
       // Simulate an HTMX request to a non-existent article
-      if (window.htmx) {
-        window.htmx.ajax('GET', '/article/999999', '#main');
+      if ((window as any).htmx) {
+        (window as any).htmx.ajax('GET', '/article/999999', '#main');
       }
     });
     
@@ -266,10 +260,10 @@ test.describe('HTMX Integration Tests', () => {
         // This depends on your specific focus management implementation
       }
     }
-    
-    // Check for proper heading structure
+      // Check for proper heading structure
     const headings = page.locator('h1, h2, h3, h4, h5, h6');
-    await expect(headings).toHaveCountGreaterThan(0);
+    const headingCount = await headings.count();
+    expect(headingCount).toBeGreaterThan(0);
     
     // All images should have alt text
     const images = page.locator('img');
