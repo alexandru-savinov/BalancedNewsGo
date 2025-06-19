@@ -1,6 +1,9 @@
 # Configuration Reference
 
 This document provides a comprehensive reference for all configuration options in the NewsBalancer system.
+If you are setting up a development environment, see the [Testing guide](testing.md)
+for recommended variables. Production configuration examples are covered in the
+[Deployment guide](deployment.md).
 
 ## Environment Variables (`.env.example`)
 
@@ -118,3 +121,8 @@ For production deployment, consider the following configuration updates:
 3. Set up monitoring endpoints for health checks
 4. Configure rate limiting for API endpoints
 5. Set appropriate timeouts for LLM services
+
+## See also
+- [README](../README.md)
+- [Testing guide](testing.md)
+- [Deployment guide](deployment.md)

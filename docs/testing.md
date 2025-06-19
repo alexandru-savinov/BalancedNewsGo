@@ -2,7 +2,9 @@
 
 ## Overview
 
-This document provides information on how to test the NewsBalancer Go application, including running test suites, troubleshooting common issues, and understanding test output.
+This document explains how to test the NewsBalancer Go application, including running test suites and troubleshooting common issues.
+For required environment variables see the [Configuration reference](configuration_reference.md).
+Deployment instructions are provided in the [Deployment guide](deployment.md).
 
 ## Recent Improvements
 
@@ -274,3 +276,8 @@ A new, more comprehensive and strict test suite is available:
 - **Review `test-results/updated_backend_cli.txt`** for detailed failure reasons
 
 > **Note:** The `unified_backend_tests.json` suite is more forgiving and will pass even if some advanced features or strict error handling are missing. Use `updated_backend_tests.json` for full coverage and to catch subtle or edge-case bugs.
+
+## See also
+- [README](../README.md)
+- [Configuration reference](configuration_reference.md)
+- [Deployment guide](deployment.md)

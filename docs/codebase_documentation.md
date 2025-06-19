@@ -3,6 +3,7 @@
 ## 1. Introduction
 
 This document provides a high-level overview and detailed documentation of the Go codebase for the NewsBalancer project. The primary goal of NewsBalancer is to fetch news articles from various RSS feeds, analyze their political bias using Large Language Models (LLMs), store the results, and expose this data through a modern responsive web interface and API.
+For installation and quick start instructions see the [README](../README.md).
 
 **Project Status:**
 - **✅ Production Ready** with Editorial template integration complete
@@ -464,3 +465,9 @@ OpenRouter errors are tracked using Prometheus metrics:
    - Check for network connectivity issues
    - Verify OpenRouter streaming endpoint status
    - Consider falling back to non-streaming API
+
+## See also
+- [Configuration reference](configuration_reference.md)
+- [Testing guide](testing.md)
+- [Deployment guide](deployment.md)
+

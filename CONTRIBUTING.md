@@ -6,7 +6,7 @@ Thank you for considering contributing to NewsBalancer! Please take a moment to 
 
 1.  **Fork the repository** on GitHub.
 2.  **Clone your fork** locally: `git clone <your-fork-url>`
-3.  **Set up the development environment:** Follow the instructions in the `README.md` under "Development -> Environment Setup".
+3.  **Set up the development environment:** Install Go and Node.js as listed in the [README](README.md) and create a `.env` file using `.env.example` as a template.
 4.  **Create a new branch** for your feature or bug fix: `git checkout -b <branch-name>` (e.g., `feature/add-new-feed` or `fix/api-cache-bug`).
 
 ## Making Changes
@@ -35,3 +35,5 @@ Thank you for considering contributing to NewsBalancer! Please take a moment to 
 6.  Be prepared to discuss your changes and make further adjustments based on feedback.
 
 Thank you for your contribution!
+
+See [Configuration reference](docs/configuration_reference.md) and [Testing guide](docs/testing.md) for more details.
