@@ -90,8 +90,7 @@ func TestAPIClientIntegration(t *testing.T) {
 		assert.Equal(t, 0.75, articles1[0].CompositeScore)
 		assert.Equal(t, 0.9, articles1[0].Confidence)
 		assert.Equal(t, "llm-model-x", articles1[0].ScoreSource)
-		assert.Equal(t, "neutral", articles1[0].BiasLabel)
-		assert.Equal(t, "Initial analysis complete.", articles1[0].AnalysisNotes)
+		// BiasLabel and AnalysisNotes fields removed - not present in Article struct
 
 		// Assertions for Article 2
 		assert.Equal(t, int64(2), articles1[1].ArticleID)
@@ -104,8 +103,7 @@ func TestAPIClientIntegration(t *testing.T) {
 		assert.Equal(t, 0.85, articles1[1].CompositeScore)
 		assert.Equal(t, 0.95, articles1[1].Confidence)
 		assert.Equal(t, "llm-model-y", articles1[1].ScoreSource)
-		assert.Equal(t, "left", articles1[1].BiasLabel)
-		assert.Equal(t, "Further analysis needed.", articles1[1].AnalysisNotes)
+		// BiasLabel and AnalysisNotes fields removed - not present in Article struct
 
 		// Second call with same params - should hit cache
 		articles2, err := client.GetArticles(ctx, params)
@@ -132,8 +130,7 @@ func TestAPIClientIntegration(t *testing.T) {
 		assert.Equal(t, 0.75, article.CompositeScore)
 		assert.Equal(t, 0.9, article.Confidence)
 		assert.Equal(t, "llm-model-x", article.ScoreSource)
-		assert.Equal(t, "neutral", article.BiasLabel)
-		assert.Equal(t, "Initial analysis complete.", article.AnalysisNotes)
+		// BiasLabel and AnalysisNotes fields removed - not present in Article struct
 	})
 
 	// Context cancellation test needs to be after other tests that might use the same base URL

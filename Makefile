@@ -37,7 +37,7 @@ endif
 
 # Go / tools
 GO              := go
-GOLANGCI        := golangci-lint
+GOLANGCI        := C:\Users\Alexander.Savinov\go\bin\golangci-lint.exe
 SWAG            := swag
 
 # Paths

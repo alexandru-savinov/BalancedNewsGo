@@ -1,9 +1,9 @@
 run:
   skip-tests: true
-  skip-files:
-    - "_test\\.go$"
 
 issues:
+  exclude-files:
+    - "_test\\.go$"
   exclude-rules:
     - path: "_test\\.go$"
       linters:
