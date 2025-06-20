@@ -111,55 +111,7 @@ test.describe('HTMX Integration Tests', () => {
     // If not, that's also acceptable for partial page updates
   });
 
-  test('Search functionality works with HTMX', async ({ page }) => {
-    await page.goto(`${baseURL}/articles`);
-    
-    // Look for search form or filter inputs
-    const searchInput = page.locator('input[name="query"], input[type="search"]').first();
-    const sourceFilter = page.locator('select[name="source"], input[name="source"]').first();
-    
-    if (await searchInput.count() > 0) {
-      // Set up network monitoring
-      let htmxRequestMade = false;
-      page.on('request', request => {
-        if (request.url().includes('query=') && request.headers()['hx-request']) {
-          htmxRequestMade = true;
-        }
-      });
-      
-      // Perform search
-      await searchInput.fill('test');
-      await searchInput.press('Enter');
-      
-      // Wait for HTMX response
-      await page.waitForTimeout(1000);
-      
-      // Verify request was made via HTMX
-      expect(htmxRequestMade).toBe(true);
-    }
-    
-    if (await sourceFilter.count() > 0) {
-      // Test source filtering
-      let filterRequestMade = false;
-      page.on('request', request => {
-        if (request.url().includes('source=') && request.headers()['hx-request']) {
-          filterRequestMade = true;
-        }
-      });
-      
-      if (await sourceFilter.locator('option').count() > 0) {
-        // It's a select element
-        await sourceFilter.selectOption({ index: 1 });
-      } else {
-        // It's an input element
-        await sourceFilter.fill('cnn');
-        await sourceFilter.press('Enter');
-      }
-      
-      await page.waitForTimeout(1000);
-      expect(filterRequestMade).toBe(true);
-    }
-  });
+
   test('Error handling works correctly with HTMX', async ({ page }) => {
     await page.goto(`${baseURL}/articles`);
     

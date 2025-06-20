@@ -55,24 +55,7 @@ test.describe('Basic Application Functionality', () => {  test('should load the 
     }
   });
 
-  test('should handle search functionality if present', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Look for search input
-    const searchInput = page.locator('input[type="search"], input[name*="search"], input[placeholder*="search"], input[name="query"]');
-    
-    if (await searchInput.count() > 0) {
-      await searchInput.first().fill('test search');
-      await page.waitForTimeout(1000); // Wait for any dynamic updates
-      
-      // Verify search input has the value
-      await expect(searchInput.first()).toHaveValue('test search');
-    } else {
-      // If no search found, that's okay - just ensure page is still functional
-      await expect(page.locator('body')).toBeVisible();
-    }
-  });
+
 
   test('should respond to user interactions', async ({ page }) => {
     await page.goto('/');

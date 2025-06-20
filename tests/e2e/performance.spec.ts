@@ -84,10 +84,10 @@ test.describe('Performance Tests', () => {  test('should meet Core Web Vitals th
     await Promise.all(pages.map(async (p) => {
       await p.waitForLoadState('networkidle');
       
-      // Try to interact with search if available
-      const searchInput = p.locator('[data-testid="search-input"], input[type="search"]');
-      if (await searchInput.count() > 0) {
-        await searchInput.first().fill('concurrent test');
+      // Try to interact with form inputs if available
+      const formInputs = p.locator('input[type="text"], input[type="email"], textarea');
+      if (await formInputs.count() > 0) {
+        await formInputs.first().fill('concurrent test');
       }
     }));
     
@@ -214,9 +214,9 @@ test.describe('Performance Tests', () => {  test('should meet Core Web Vitals th
     await page.waitForLoadState('networkidle');
     
     // Perform some actions that might trigger API calls
-    const searchInput = page.locator('[data-testid="search-input"], input[type="search"]');
-    if (await searchInput.count() > 0) {
-      await searchInput.first().fill('performance test');
+    const formInputs = page.locator('input[type="text"], input[type="email"], textarea');
+    if (await formInputs.count() > 0) {
+      await formInputs.first().fill('performance test');
       await page.waitForTimeout(2000);
     }
     

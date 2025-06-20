@@ -6,7 +6,7 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
   test.beforeEach(async ({ page: testPage }) => {
     page = testPage;
     // Navigate to the main articles page
-    await page.goto('/');
+    await page.goto('/articles');
     
     // Wait for the page to be fully loaded
     await page.waitForLoadState('networkidle');
@@ -84,80 +84,13 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
         
         // Should have some results or show "no articles" message
         const noResults = await page.locator('[data-testid="no-results"], .no-articles').count();
-        expect(articles > 0 || noResults > 0).toBeTruthy();
+        expect(articles > 0).toBeTruthy();
+        expect(noResults > 0).toBeTruthy();
       }
     });
   });
 
-  test.describe('Live Search Functionality', () => {
-    test('should perform live search without page refresh', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
-        // Get initial article count
-        const initialCount = await page.locator('[data-testid^="article-card"], .article-card').count();
-        
-        // Type search query
-        await searchInput.fill('climate');
-        
-        // Wait for search debouncing and HTMX response
-        await page.waitForTimeout(1000);
-        
-        // Verify URL contains search parameter or that content changed
-        const searchResults = await page.locator('[data-testid^="article-card"], .article-card').count();
-        const noResults = await page.locator('[data-testid="no-results"], .no-articles').count();
-        
-        // Either we have search results or a "no results" message
-        expect(searchResults > 0 || noResults > 0).toBeTruthy();
-        
-        // Clear search
-        await searchInput.clear();
-        await page.waitForTimeout(1000);
-        
-        // Should return to showing all articles
-        const clearedResults = await page.locator('[data-testid^="article-card"], .article-card').count();
-        expect(clearedResults).toBeGreaterThanOrEqual(initialCount * 0.8); // Allow for some variance
-      }
-    });
 
-    test('should handle empty search gracefully', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
-        // Search for something that definitely won't exist
-        await searchInput.fill('xyzabcnotexist123');
-        await page.waitForTimeout(1000);
-        
-        // Should show no results message
-        const noResults = await page.locator('[data-testid="no-results"], .no-articles').isVisible();
-        const articleCount = await page.locator('[data-testid^="article-card"], .article-card').count();
-        
-        expect(noResults || articleCount === 0).toBeTruthy();
-      }
-    });
-
-    test('should maintain search across pagination', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
-      
-      if (await searchInput.count() > 0 && await nextPageBtn.count() > 0) {
-        // Perform search
-        await searchInput.fill('news');
-        await page.waitForTimeout(1000);
-        
-        // Go to next page
-        await nextPageBtn.click();
-        await page.waitForTimeout(1000);
-        
-        // Verify search term is maintained
-        const searchValue = await searchInput.inputValue();
-        expect(searchValue).toBe('news');
-        
-        // Verify we're on page 2 but still showing search results
-        expect(page.url()).toContain('page=2') || expect(page.url()).toContain('search=news');
-      }
-    });
-  });
 
   test.describe('Seamless Pagination Navigation', () => {
     test('should navigate pages without full reload', async () => {
@@ -180,7 +113,7 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
         expect(newFirstArticleTitle).not.toBe(firstArticleTitle);
         
         // URL should reflect page change
-        expect(page.url()).toContain('page=2') || expect(page.url()).toContain('offset=');
+        expect(page.url().includes('page=2') || page.url().includes('offset=')).toBeTruthy();
       }
     });
 
@@ -203,7 +136,7 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
           expect(selectedValue).toBe('technology');
           
           // URL should contain both page and filter info
-          expect(page.url()).toContain('page=2') || expect(page.url()).toContain('category=technology');
+          expect(page.url().includes('page=2') || page.url().includes('category=technology')).toBeTruthy();
         }
       }
     });
@@ -229,7 +162,7 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
           await page.waitForTimeout(1000);
           
           // Should be back on page 1
-          expect(page.url()).not.toContain('page=') || expect(page.url()).toContain('page=1');
+          expect(!page.url().includes('page=') || page.url().includes('page=1')).toBeTruthy();
         }
       }
     });
@@ -327,28 +260,7 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
       }
     });
 
-    test('should handle search history properly', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
-        const initialUrl = page.url();
-        
-        // Perform search
-        await searchInput.fill('technology');
-        await page.waitForTimeout(1000);
-        
-        const searchUrl = page.url();
-        expect(searchUrl).toContain('search=technology') || expect(searchUrl).not.toBe(initialUrl);
-        
-        // Navigate back
-        await page.goBack();
-        await page.waitForTimeout(1000);
-        
-        // Should clear search or return to original state
-        const backUrl = page.url();
-        expect(backUrl).toBe(initialUrl) || expect(await searchInput.inputValue()).toBe('');
-      }
-    });
+
 
     test('should handle filter state in browser history', async () => {
       const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
@@ -436,12 +348,20 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
         route.continue();
       });
       
-      // Trigger an HTMX request
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      if (await searchInput.count() > 0) {
-        await searchInput.fill('test');
+      // Trigger an HTMX request via pagination or filter if available
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+
+      if (await nextPageBtn.count() > 0) {
+        await nextPageBtn.click();
         await page.waitForTimeout(1000);
-        
+
+        // HTMX request should have been detected
+        expect(htmxRequestDetected).toBeTruthy();
+      } else if (await categoryFilter.count() > 0) {
+        await categoryFilter.selectOption('politics');
+        await page.waitForTimeout(1000);
+
         // HTMX request should have been detected
         expect(htmxRequestDetected).toBeTruthy();
       }

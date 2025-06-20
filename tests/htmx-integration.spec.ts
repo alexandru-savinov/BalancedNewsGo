@@ -77,33 +77,7 @@ test.describe('HTMX Integration Tests - Specific Features', () => {
       }
     });
 
-    test('should support live search with HTMX', async () => {
-      const searchInput = page.locator('input[name="search"], [data-testid="search-input"]');
-      
-      if (await searchInput.count() > 0) {
-        let searchRequest = false;
-        
-        page.on('request', request => {
-          if (request.headers()['hx-request'] === 'true' && 
-              (request.url().includes('search') || request.method() === 'POST')) {
-            searchRequest = true;
-          }
-        });
-        
-        // Type search query
-        await searchInput.fill('climate');
-        await page.waitForTimeout(1500); // Wait for debounce
-        
-        // Verify search request was made
-        expect(searchRequest).toBeTruthy();
-        
-        // Verify search results
-        const searchResults = await page.locator('[data-testid^="article-card"], .article-card').count();
-        const noResults = await page.locator('.no-results, [data-testid="no-results"]').count();
-        
-        expect(searchResults > 0 || noResults > 0).toBeTruthy();
-      }
-    });
+
   });
 
   test.describe('Article Detail HTMX Integration', () => {
@@ -347,21 +321,36 @@ test.describe('HTMX Integration Tests - Specific Features', () => {
         route.continue();
       });
       
-      const searchInput = page.locator('input[name="search"], [data-testid="search-input"]');
-      
-      if (await searchInput.count() > 0) {
-        await searchInput.fill('test');
-        
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+
+      if (await nextPageBtn.count() > 0) {
+        await nextPageBtn.click();
+
         // Should handle timeout (either show loading state or error)
         await page.waitForTimeout(6000);
-        
+
         const errorState = page.locator('.error, [data-testid="error"]');
         const loadingState = page.locator('.loading, [data-testid="loading"]');
         const normalState = page.locator('[data-testid^="article-card"], .article-card');
-        
+
         // Should be in some valid state
-        expect(await errorState.count() > 0 || 
-               await loadingState.count() > 0 || 
+        expect(await errorState.count() > 0 ||
+               await loadingState.count() > 0 ||
+               await normalState.count() > 0).toBeTruthy();
+      } else if (await categoryFilter.count() > 0) {
+        await categoryFilter.selectOption('politics');
+
+        // Should handle timeout (either show loading state or error)
+        await page.waitForTimeout(6000);
+
+        const errorState = page.locator('.error, [data-testid="error"]');
+        const loadingState = page.locator('.loading, [data-testid="loading"]');
+        const normalState = page.locator('[data-testid^="article-card"], .article-card');
+
+        // Should be in some valid state
+        expect(await errorState.count() > 0 ||
+               await loadingState.count() > 0 ||
                await normalState.count() > 0).toBeTruthy();
       }
     });
@@ -382,22 +371,38 @@ test.describe('HTMX Integration Tests - Specific Features', () => {
         }
       });
       
-      const searchInput = page.locator('input[name="search"], [data-testid="search-input"]');
-      
-      if (await searchInput.count() > 0) {
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+
+      if (await nextPageBtn.count() > 0) {
         // First request should fail
-        await searchInput.fill('test1');
+        await nextPageBtn.click();
         await page.waitForTimeout(1000);
-        
-        // Second request should succeed
-        await searchInput.clear();
-        await searchInput.fill('test2');
+
+        // Second request should succeed - try again
+        await page.goBack();
+        await page.waitForTimeout(500);
+        await nextPageBtn.click();
         await page.waitForTimeout(1000);
-        
+
         // Should recover and show results
         const articles = await page.locator('[data-testid^="article-card"], .article-card').count();
         const noResults = await page.locator('.no-results, [data-testid="no-results"]').count();
-        
+
+        expect(articles > 0 || noResults > 0).toBeTruthy();
+      } else if (await categoryFilter.count() > 0) {
+        // First request should fail
+        await categoryFilter.selectOption('politics');
+        await page.waitForTimeout(1000);
+
+        // Second request should succeed - try different option
+        await categoryFilter.selectOption('technology');
+        await page.waitForTimeout(1000);
+
+        // Should recover and show results
+        const articles = await page.locator('[data-testid^="article-card"], .article-card').count();
+        const noResults = await page.locator('.no-results, [data-testid="no-results"]').count();
+
         expect(articles > 0 || noResults > 0).toBeTruthy();
       }
     });

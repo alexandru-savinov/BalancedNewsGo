@@ -96,10 +96,21 @@ func main() {
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
 		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
-	})	// Load HTML templates
+	}) // Load HTML templates
 	// router.LoadHTMLGlob("templates/*.html") // Load top-level html files
 	// router.LoadHTMLGlob("templates/fragments/*.html") // Load fragment html files
-	router.LoadHTMLFiles("templates/articles.html", "templates/article.html", "templates/admin.html", "templates/article_htmx.html", "templates/articles_htmx.html") // Load specific files
+	router.LoadHTMLFiles(
+		"templates/articles.html",
+		"templates/article.html",
+		"templates/admin.html",
+		"templates/article_htmx.html",
+		"templates/articles_htmx.html",
+		"templates/fragments/article-list.html",
+		"templates/fragments/article-items.html",
+		"templates/fragments/article-detail.html",
+		"templates/fragments/error.html",
+		"templates/fragments/summary.html",
+	) // Load specific files
 	// router.LoadHTMLGlob("templates/**/*.html") // Load all html files in templates and subdirectories
 	// router.LoadHTMLFiles("templates/articles.html") // Attempt to load only articles.html for diagnostics
 
@@ -130,14 +141,12 @@ func main() {
 	// Template routes for web pages
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(302, "/articles")
-	})
-
-	// Initialize TemplateHandlers with database connection
+	}) // Initialize TemplateHandlers with database connection
 	templateHandlers := NewTemplateHandlers(dbConn)
 	router.GET("/articles", templateHandlers.TemplateIndexHandler())
 	router.GET("/article/:id", templateHandlers.TemplateArticleHandler())
 	router.GET("/admin", templateHandlers.TemplateAdminHandler())
-		// HTMX fragment routes for dynamic loading
+	// HTMX fragment routes for dynamic loading
 	router.GET("/htmx/articles", templateHandlers.TemplateArticlesFragmentHandler())
 	router.GET("/htmx/articles/load-more", templateHandlers.TemplateArticlesLoadMoreHandler())
 	router.GET("/htmx/article/:id", templateHandlers.TemplateArticleFragmentHandler())

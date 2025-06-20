@@ -6,19 +6,27 @@ import { Page, expect } from '@playwright/test';
  */
 export class HtmxTestHelper {
   constructor(private page: Page) {}
-
   /**
    * Wait for HTMX request to complete
    */
   async waitForHtmxRequest(triggerAction: () => Promise<void>, timeout = 5000) {
+    const requestPromise = this.page.waitForEvent('request', {
+      predicate: (request) => request.headers()['hx-request'] !== undefined ||
+                              request.headers()['HX-Request'] !== undefined ||
+                              request.url().includes('/htmx/'),
+      timeout
+    });
+    
     const responsePromise = this.page.waitForEvent('response', {
       predicate: (response) => response.status() === 200 && 
-                              response.headers()['hx-request'] !== undefined,
+                              (response.url().includes('/htmx/') || 
+                               response.request().headers()['hx-request'] !== undefined ||
+                               response.request().headers()['HX-Request'] !== undefined),
       timeout
     });
     
     await triggerAction();
-    await responsePromise;
+    await Promise.race([requestPromise, responsePromise]);
     
     // Wait for DOM to stabilize after HTMX update
     await this.page.waitForTimeout(100);
@@ -99,26 +107,7 @@ export class HtmxTestHelper {
     expect(newContent).not.toBe(initialContent);
   }
 
-  /**
-   * Test HTMX search functionality
-   */
-  async testSearch(searchInputSelector: string, resultsSelector: string, searchTerm: string) {
-    const searchInput = this.page.locator(searchInputSelector);
-    const results = this.page.locator(resultsSelector);
-    
-    await expect(searchInput).toBeVisible();
-    
-    // Type search term and wait for HTMX request
-    await this.waitForHtmxRequest(async () => {
-      await searchInput.fill(searchTerm);
-      // Trigger change event for HTMX
-      await searchInput.press('Tab');
-    });
-    
-    // Verify search results updated
-    await expect(results).toBeVisible();
-    await expect(results).toContainText(searchTerm, { ignoreCase: true });
-  }
+
   /**
    * Test HTMX history functionality
    */

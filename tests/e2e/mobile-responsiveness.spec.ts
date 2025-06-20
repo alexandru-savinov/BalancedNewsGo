@@ -1,69 +1,50 @@
 import { test, expect, devices } from '@playwright/test';
 
-// Define mobile test configurations using test.extend
-const mobileIPhoneTest = test.extend({
-  page: async ({ browser }, use) => {
-    const context = await browser.newContext(devices['iPhone 12']);
-    const page = await context.newPage();
-    await use(page);
-    await context.close();
-  },
-});
-
-const mobilePixelTest = test.extend({
-  page: async ({ browser }, use) => {
-    const context = await browser.newContext(devices['Pixel 5']);
-    const page = await context.newPage();
-    await use(page);
-    await context.close();
-  },
-});
-
-const mobileGalaxyTest = test.extend({
-  page: async ({ browser }, use) => {
-    const context = await browser.newContext(devices['Galaxy S9+']);
-    const page = await context.newPage();
-    await use(page);
-    await context.close();
-  },
-});
-
-const mobileIPadTest = test.extend({
-  page: async ({ browser }, use) => {
-    const context = await browser.newContext(devices['iPad Pro']);
-    const page = await context.newPage();
-    await use(page);
-    await context.close();
-  },
-});
+// Helper function to create mobile test with specific device
+async function createMobileTest(browser: any, deviceName: string) {
+  const device = devices[deviceName];
+  const context = await browser.newContext(device);
+  const page = await context.newPage();
+  return { page, context };
+}
 
 // iPhone 12 Mobile Tests
-test.describe.serial('Mobile Tests - iPhone 12', () => {
+test.describe('Mobile Tests - iPhone 12', () => {
 
-  mobileIPhoneTest('should display properly on iPhone 12', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    const mainContent = page.locator('main, .main-content, .content, body');
-    await expect(mainContent.first()).toBeVisible();
+  test('should display properly on iPhone 12', async ({ browser }) => {
+    const { page, context } = await createMobileTest(browser, 'iPhone 12');
+    try {
+      await page.goto('/');
+      await page.waitForLoadState('networkidle');
+
+      const mainContent = page.locator('main, .main-content, .content, body');
+      await expect(mainContent.first()).toBeVisible();
+    } finally {
+      await context.close();
+    }
   });
 
-  mobileIPhoneTest('should handle touch interactions on iPhone 12', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    
-    // Find touchable elements
-    const touchableElements = page.locator('button, a, [role="button"], [onclick]');
-    
-    if (await touchableElements.count() > 0) {
-      const element = touchableElements.first();
-      
-      // Perform touch interaction
-      await element.tap();
-      await page.waitForTimeout(500);
-      
-      // Verify page is still functional
-      await expect(page.locator('body')).toBeVisible();
+  test('should handle touch interactions on iPhone 12', async ({ browser }) => {
+    const { page, context } = await createMobileTest(browser, 'iPhone 12');
+    try {
+      await page.goto('/');
+      await page.waitForLoadState('networkidle');
+
+      // Find touchable elements
+      const touchableElements = page.locator('button, a, [role="button"], [onclick]');
+
+      if (await touchableElements.count() > 0) {
+        const element = touchableElements.first();
+
+        // Perform touch interaction
+        await element.tap();
+        await page.waitForTimeout(500);
+
+        // Verify page is still functional
+        await expect(page.locator('body')).toBeVisible();
+      }
+    } finally {
+      await context.close();
     }
   });
 });
@@ -113,7 +94,7 @@ test.describe('Mobile Tests - iPad', () => {
   mobileTestIPad('should display properly on iPad', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
+
     const mainContent = page.locator('main, .main-content, .content, body');
     await expect(mainContent.first()).toBeVisible();
   });
@@ -180,7 +161,7 @@ test.describe('Mobile Functionality', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     
-    const inputs = page.locator('input[type="text"], input[type="email"], input[type="search"], textarea');
+    const inputs = page.locator('input[type="text"], input[type="email"], textarea');
     
     if (await inputs.count() > 0) {
       const input = inputs.first();

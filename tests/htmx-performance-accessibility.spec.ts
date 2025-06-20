@@ -26,28 +26,52 @@ test.describe('HTMX Performance & Accessibility E2E Tests', () => {
     });
 
     test('should handle rapid HTMX requests efficiently', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+
+      if (await nextPageBtn.count() > 0) {
         const startTime = Date.now();
-        
-        // Simulate rapid typing
-        await searchInput.fill('t');
+
+        // Simulate rapid navigation
+        await nextPageBtn.click();
         await page.waitForTimeout(100);
-        await searchInput.fill('te');
-        await page.waitForTimeout(100);
-        await searchInput.fill('tech');
-        await page.waitForTimeout(100);
-        await searchInput.fill('technology');
-        
+
+        const prevPageBtn = page.locator('[data-testid="prev-page"], .pagination .prev');
+        if (await prevPageBtn.count() > 0) {
+          await prevPageBtn.click();
+          await page.waitForTimeout(100);
+          await nextPageBtn.click();
+        }
+
         // Wait for final request to complete
         await page.waitForTimeout(2000);
-        
+
         const totalTime = Date.now() - startTime;
-        
+
         // Should handle rapid requests without excessive delay
         expect(totalTime).toBeLessThan(5000);
-        
+
+        // Should show results
+        const results = await page.locator('[data-testid^="article-card"], .article-card').count();
+        expect(results).toBeGreaterThan(0);
+      } else if (await categoryFilter.count() > 0) {
+        const startTime = Date.now();
+
+        // Simulate rapid filter changes
+        await categoryFilter.selectOption('politics');
+        await page.waitForTimeout(100);
+        await categoryFilter.selectOption('technology');
+        await page.waitForTimeout(100);
+        await categoryFilter.selectOption('business');
+
+        // Wait for final request to complete
+        await page.waitForTimeout(2000);
+
+        const totalTime = Date.now() - startTime;
+
+        // Should handle rapid requests without excessive delay
+        expect(totalTime).toBeLessThan(5000);
+
         // Should show results
         const results = await page.locator('[data-testid^="article-card"], .article-card').count();
         const noResults = await page.locator('[data-testid="no-results"], .no-articles').count();
@@ -87,26 +111,43 @@ test.describe('HTMX Performance & Accessibility E2E Tests', () => {
     });
 
     test('should not cause memory leaks with repeated HTMX requests', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
-        // Perform multiple search operations
-        const searchTerms = ['tech', 'news', 'politics', 'science', 'business'];
-        
-        for (const term of searchTerms) {
-          await searchInput.clear();
-          await searchInput.fill(term);
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
+
+      if (await categoryFilter.count() > 0) {
+        // Perform multiple filter operations
+        const filterOptions = ['politics', 'technology', 'business', 'science', 'sports'];
+
+        for (const option of filterOptions) {
+          await categoryFilter.selectOption(option);
           await page.waitForTimeout(500);
-          
-          // Verify each search completes successfully
+
+          // Verify each filter completes successfully
           await page.waitForSelector('[data-testid^="article-card"], .article-card, [data-testid="no-results"]');
         }
-        
-        // Clear search to return to normal state
-        await searchInput.clear();
+
+        // Reset filter to show all
+        await categoryFilter.selectOption('');
         await page.waitForTimeout(500);
-        
+
         // Should return to showing all articles
+        const finalArticles = await page.locator('[data-testid^="article-card"], .article-card').count();
+        expect(finalArticles).toBeGreaterThan(0);
+      } else if (await nextPageBtn.count() > 0) {
+        // Perform multiple pagination operations
+        for (let i = 0; i < 3; i++) {
+          if (await nextPageBtn.isVisible() && !await nextPageBtn.isDisabled()) {
+            await nextPageBtn.click();
+            await page.waitForTimeout(500);
+
+            // Verify each navigation completes successfully
+            await page.waitForSelector('[data-testid^="article-card"], .article-card');
+          } else {
+            break;
+          }
+        }
+
+        // Should still show articles
         const finalArticles = await page.locator('[data-testid^="article-card"], .article-card').count();
         expect(finalArticles).toBeGreaterThan(0);
       }
@@ -115,19 +156,19 @@ test.describe('HTMX Performance & Accessibility E2E Tests', () => {
 
   test.describe('Accessibility with HTMX', () => {
     test('should maintain focus management during HTMX updates', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
-        // Focus on search input
-        await searchInput.focus();
-        
-        // Perform search
-        await searchInput.fill('technology');
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+
+      if (await categoryFilter.count() > 0) {
+        // Focus on category filter
+        await categoryFilter.focus();
+
+        // Change filter
+        await categoryFilter.selectOption('technology');
         await page.waitForTimeout(1000);
-        
-        // Focus should remain on search input after HTMX update
+
+        // Focus should remain on filter after HTMX update
         const focusedElement = await page.evaluate(() => document.activeElement?.tagName);
-        expect(focusedElement).toBe('INPUT');
+        expect(focusedElement).toBe('SELECT');
       }
     });
 
@@ -235,22 +276,36 @@ test.describe('HTMX Performance & Accessibility E2E Tests', () => {
 
     test('should handle loading states accessibly', async () => {
       const loadingIndicator = page.locator('[data-testid="loading"], .loading, .htmx-indicator');
-      
+
       // Trigger a slow operation
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
-        await searchInput.fill('test');
-        
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+
+      if (await nextPageBtn.count() > 0) {
+        await nextPageBtn.click();
+
         // Check if loading indicator appears and has proper attributes
         if (await loadingIndicator.count() > 0) {
           const ariaLabel = await loadingIndicator.getAttribute('aria-label');
           const role = await loadingIndicator.getAttribute('role');
-          
+
           // Should have appropriate ARIA attributes for loading state
           expect(ariaLabel || role).toBeTruthy();
         }
-        
+
+        await page.waitForTimeout(1000);
+      } else if (await categoryFilter.count() > 0) {
+        await categoryFilter.selectOption('technology');
+
+        // Check if loading indicator appears and has proper attributes
+        if (await loadingIndicator.count() > 0) {
+          const ariaLabel = await loadingIndicator.getAttribute('aria-label');
+          const role = await loadingIndicator.getAttribute('role');
+
+          // Should have appropriate ARIA attributes for loading state
+          expect(ariaLabel || role).toBeTruthy();
+        }
+
         await page.waitForTimeout(1000);
       }
     });
@@ -263,16 +318,27 @@ test.describe('HTMX Performance & Accessibility E2E Tests', () => {
         route.abort('failed');
       });
       
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
-      
-      if (await searchInput.count() > 0) {
-        await searchInput.fill('test');
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
+      const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
+
+      if (await nextPageBtn.count() > 0) {
+        await nextPageBtn.click();
         await page.waitForTimeout(2000);
-        
+
         // Should show error message or maintain previous state
         const errorMsg = page.locator('[data-testid="error"], .error');
         const articles = page.locator('[data-testid^="article-card"], .article-card');
-        
+
+        // Either error message shown or previous content maintained
+        expect(await errorMsg.count() > 0 || await articles.count() > 0).toBeTruthy();
+      } else if (await categoryFilter.count() > 0) {
+        await categoryFilter.selectOption('technology');
+        await page.waitForTimeout(2000);
+
+        // Should show error message or maintain previous state
+        const errorMsg = page.locator('[data-testid="error"], .error');
+        const articles = page.locator('[data-testid^="article-card"], .article-card');
+
         // Either error message shown or previous content maintained
         expect(await errorMsg.count() > 0 || await articles.count() > 0).toBeTruthy();
       }
@@ -303,30 +369,43 @@ test.describe('HTMX Performance & Accessibility E2E Tests', () => {
     });
 
     test('should handle concurrent HTMX requests properly', async () => {
-      const searchInput = page.locator('[data-testid="search-input"], input[name="search"], .search-input');
+      const nextPageBtn = page.locator('[data-testid="next-page"], .pagination .next');
       const categoryFilter = page.locator('[data-testid="category-filter"], select[name="category"]');
-      
-      if (await searchInput.count() > 0 && await categoryFilter.count() > 0) {
+
+      if (await nextPageBtn.count() > 0 && await categoryFilter.count() > 0) {
         // Trigger multiple requests simultaneously
-        const searchPromise = searchInput.fill('technology');
+        const navigationPromise = nextPageBtn.click();
         const filterPromise = categoryFilter.selectOption('politics');
-        
-        await Promise.all([searchPromise, filterPromise]);
-        
+
+        await Promise.all([navigationPromise, filterPromise]);
+
         // Wait for requests to settle
         await page.waitForTimeout(2000);
-        
+
         // Should handle concurrent requests and show consistent state
         const articles = await page.locator('[data-testid^="article-card"], .article-card').count();
         const noResults = await page.locator('[data-testid="no-results"], .no-articles').count();
-        
+
         expect(articles > 0 || noResults > 0).toBeTruthy();
-        
+
         // Final state should be consistent
-        const searchValue = await searchInput.inputValue();
         const filterValue = await categoryFilter.inputValue();
-        
-        expect(searchValue).toBe('technology');
+        expect(filterValue).toBe('politics');
+      } else if (await categoryFilter.count() > 0) {
+        // Test rapid filter changes
+        await categoryFilter.selectOption('technology');
+        await categoryFilter.selectOption('politics');
+
+        // Wait for requests to settle
+        await page.waitForTimeout(2000);
+
+        // Should show consistent final state
+        const articles = await page.locator('[data-testid^="article-card"], .article-card').count();
+        const noResults = await page.locator('[data-testid="no-results"], .no-articles').count();
+
+        expect(articles > 0 || noResults > 0).toBeTruthy();
+
+        const filterValue = await categoryFilter.inputValue();
         expect(filterValue).toBe('politics');
       }
     });

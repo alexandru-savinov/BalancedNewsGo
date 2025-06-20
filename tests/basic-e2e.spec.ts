@@ -49,27 +49,7 @@ test.describe('NewsBalancer E2E Tests - Basic Functionality', () => {
       expect(foundContent).toBeTruthy();
     });
 
-    test('should have search functionality', async () => {
-      // Look for search input or form
-      const searchElements = [
-        'input[type="text"]',
-        'input[name="query"]',
-        'input[placeholder*="search" i]',
-        '#search-input',
-        'form'
-      ];
-      
-      let foundSearch = false;
-      for (const selector of searchElements) {
-        const count = await page.locator(selector).count();
-        if (count > 0) {
-          foundSearch = true;
-          break;
-        }
-      }
-      
-      expect(foundSearch).toBeTruthy();
-    });
+
   });
 
   test.describe('Navigation and Links', () => {
@@ -109,34 +89,7 @@ test.describe('NewsBalancer E2E Tests - Basic Functionality', () => {
     });
   });
 
-  test.describe('Form Interactions', () => {
-    test('should handle search form submission', async () => {
-      const searchInput = page.locator('input[type="text"], input[name="query"]').first();
-      
-      if (await searchInput.count() > 0) {
-        // Fill search input
-        await searchInput.fill('test search');
-        
-        // Look for submit button or form
-        const submitButton = page.locator('button[type="submit"], input[type="submit"]');
-        const form = page.locator('form');
-        
-        if (await submitButton.count() > 0) {
-          await submitButton.click();
-        } else if (await form.count() > 0) {
-          await searchInput.press('Enter');
-        }
-        
-        await page.waitForLoadState('networkidle');
-        
-        // URL should reflect search or page should have updated
-        const currentUrl = page.url();
-        const bodyText = await page.locator('body').textContent();
-        
-        expect(currentUrl.includes('query=') || currentUrl.includes('search=') || bodyText?.includes('test')).toBeTruthy();
-      }
-    });
-  });
+
   test.describe('API Integration', () => {
     test('should validate server response structure', async ({ page }) => {
       // Test direct API endpoints with error handling

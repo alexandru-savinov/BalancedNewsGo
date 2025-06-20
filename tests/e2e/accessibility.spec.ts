@@ -20,13 +20,13 @@ test.describe('Accessibility Tests', () => {
       await expect(nav.first()).toBeVisible();
     }
     
-    // Check search input has proper labels
-    const searchInput = page.locator('[data-testid="search-input"], input[type="search"]');
-    if (await searchInput.count() > 0) {
-      const hasAriaLabel = await searchInput.first().getAttribute('aria-label');
+    // Check form inputs have proper labels
+    const formInputs = page.locator('input[type="text"], input[type="email"], textarea');
+    if (await formInputs.count() > 0) {
+      const hasAriaLabel = await formInputs.first().getAttribute('aria-label');
       const hasLabel = await page.locator('label').count();
-      const hasPlaceholder = await searchInput.first().getAttribute('placeholder');
-      
+      const hasPlaceholder = await formInputs.first().getAttribute('placeholder');
+
       expect(hasAriaLabel || hasLabel > 0 || hasPlaceholder).toBeTruthy();
     }
     
