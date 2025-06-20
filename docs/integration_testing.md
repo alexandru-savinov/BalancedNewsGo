@@ -1,12 +1,12 @@
 # Integration Testing Guide
 
-This guide focuses on performing integration testing with the NewsBalancer system, particularly for components that interact with external services like LLM APIs.
+This guide focuses on performing integration testing with the NewsBalancer system, particularly for components that interact with external services like LLM APIs. For a general overview of testing see the [Testing guide](testing.md).
 
 ## Prerequisites
 
 Before running integration tests, ensure you have:
 
-- Go 1.19+ installed
+- Go 1.23+ installed
 - SQLite3 command-line tools (optional, for database inspection)
 - Newman/Postman for API testing
 - Valid LLM API credentials (or mock configuration)
@@ -207,3 +207,9 @@ For CI pipelines, always use:
 - The mock LLM service
 - Isolated database instances
 - Explicit port assignments (to avoid conflicts)
+
+## See also
+- [README](../README.md)
+- [Configuration reference](configuration_reference.md)
+- [Deployment guide](deployment.md)
+

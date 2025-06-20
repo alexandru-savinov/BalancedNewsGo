@@ -1,6 +1,8 @@
 # Deployment Guide
 
-This guide provides instructions for deploying the NewsBalancer system in production environments.
+This guide explains how to deploy the NewsBalancer system in production environments.
+Before deploying, review the [Configuration reference](configuration_reference.md)
+for required variables and see the [Testing guide](testing.md) to validate your build.
 
 ## Production Deployment Checklist
 
@@ -52,7 +54,7 @@ export DATABASE_URL=/path/to/production/database.db
 Create a `Dockerfile` in the project root:
 
 ```dockerfile
-FROM golang:1.20-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 COPY . .
@@ -293,3 +295,9 @@ For production, redirect logs to a log management system:
 3. **Recovery Testing**
    - Regularly test database restoration procedures
    - Document and practice recovery steps
+
+## See also
+- [README](../README.md)
+- [Configuration reference](configuration_reference.md)
+- [Testing guide](testing.md)
+
