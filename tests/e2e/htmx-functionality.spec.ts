@@ -17,6 +17,142 @@ test.describe('HTMX Functionality', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
+  // Helper functions for HTMX element discovery - moved outside test to reduce nesting
+  const findLoadMoreButtons = async (page: any) => {
+    const loadMoreButtons = page.locator('[hx-get*="load-more"], button[hx-get], [hx-get*="page"]');
+    if (await loadMoreButtons.count() > 0) {
+      const element = loadMoreButtons.first();
+      const target = await element.getAttribute('hx-target') ?? '#articles-container';
+      return { element, target };
+    }
+    return null;
+  };
+
+  const findFilterForms = async (page: any) => {
+    const filterForms = page.locator('form[hx-get], select[hx-get]');
+    if (await filterForms.count() > 0) {
+      const element = filterForms.first();
+      const target = await element.getAttribute('hx-target') ?? '#articles-container';
+
+      // For select elements, we need to change the value to trigger an update
+      if (await element.evaluate((el: any) => el.tagName.toLowerCase()) === 'select') {
+        const options = element.locator('option');
+        const optionCount = await options.count();
+        if (optionCount > 1) {
+          // Select the second option (index 1) to ensure content changes
+          await element.selectOption({ index: 1 });
+        }
+      }
+      return { element, target };
+    }
+    return null;
+  };
+
+  const findGenericHtmxElements = async (page: any) => {
+    const htmxElements = page.locator('[hx-get]:not([hx-target="body"]), [hx-post], [hx-put], [hx-delete]');
+    if (await htmxElements.count() > 0) {
+      const element = htmxElements.first();
+      const target = await element.getAttribute('hx-target') ?? '#articles-container';
+      return { element, target };
+    }
+    return null;
+  };
+
+  const shouldClickElement = async (element: any) => {
+    const tagName = await element.evaluate((el: any) => el.tagName.toLowerCase());
+    return tagName !== 'select';
+  };
+
+  const findNavigationLink = async (page: any, initialUrl: string) => {
+    const navigationLinks = page.locator('nav a, .nav a, [data-testid*="nav"] a');
+    const linkCount = await navigationLinks.count();
+
+    for (let i = 0; i < linkCount; i++) {
+      const link = navigationLinks.nth(i);
+      const href = await link.getAttribute('href');
+
+      // Look for a link that goes to a different page than current
+      if (href && href.startsWith('/') && !initialUrl.includes(href)) {
+        return link;
+      }
+    }
+    return null;
+  };
+
+  const testContentUpdate = async (page: any, htmxHelper: HtmxTestHelper) => {
+    // Look for HTMX elements that are more likely to cause content changes
+    // Prioritize load more buttons, filters, and form submissions over navigation links
+    const elementInfo = await findLoadMoreButtons(page) ||
+                        await findFilterForms(page) ||
+                        await findGenericHtmxElements(page);
+
+    if (!elementInfo) {
+      console.log('No suitable HTMX elements found for content update test, skipping');
+      test.skip();
+      return;
+    }
+
+    const { element: targetElement, target: targetSelector } = elementInfo;
+    const contentArea = page.locator(targetSelector);
+
+    // Wait for the content area to be visible
+    await expect(contentArea).toBeVisible();
+
+    const initialContent = await contentArea.textContent();
+
+    await htmxHelper.waitForHtmxRequest(async () => {
+      // If it's a select element and we haven't already changed it, click it
+      if (await shouldClickElement(targetElement)) {
+        await targetElement.click();
+      }
+    });
+
+    // Wait a bit for the content to update
+    await page.waitForTimeout(500);
+
+    const updatedContent = await contentArea.textContent();
+    expect(updatedContent).not.toBe(initialContent);
+  };
+
+  const testBrowserBackForward = async (page: any) => {
+    // Navigate to articles page first
+    await page.goto('/articles');
+    await page.waitForLoadState('networkidle');
+    const initialUrl = page.url();
+
+    const navigationLinks = page.locator('nav a, .nav a, [data-testid*="nav"] a');
+
+    if (await navigationLinks.count() === 0) {
+      console.log('No navigation links found, skipping back/forward test');
+      test.skip();
+      return;
+    }
+
+    const targetLink = await findNavigationLink(page, initialUrl);
+
+    if (!targetLink) {
+      console.log('No suitable navigation links found for back/forward test, skipping');
+      test.skip();
+      return;
+    }
+
+    // Click the link to navigate away
+    await targetLink.click();
+    await page.waitForLoadState('networkidle');
+
+    // Verify we navigated to a different URL
+    const newUrl = page.url();
+    expect(newUrl).not.toBe(initialUrl);
+
+    // Go back
+    await page.goBack();
+    await page.waitForLoadState('networkidle');
+
+    // Verify we're back to the articles page (allow for different ways to express the URL)
+    const currentUrl = page.url();
+    expect(currentUrl).toMatch(/\/articles/);
+  };
+
   test.describe('Dynamic Content Loading', () => {
     test('should load articles dynamically', async ({ page }) => {
       // Look for load more button or similar trigger
@@ -25,7 +161,7 @@ test.describe('HTMX Functionality', () => {
           page.locator('.load-more')
         )
       );
-      
+
       if (await loadMoreButton.count() > 0) {
         await htmxHelper.testDynamicLoading(
           '[data-testid="load-more-articles"], button:has-text("Load More"), .load-more',
@@ -44,19 +180,19 @@ test.describe('HTMX Functionality', () => {
           page.locator('.article-list')
         )
       );
-      
+
       if (await articlesContainer.count() > 0) {
         // Scroll to trigger loading
         await page.evaluate(() => {
           window.scrollTo(0, document.body.scrollHeight);
         });
-        
+
         // Wait for potential new content to load
         await page.waitForTimeout(2000);
-        
+
         // Verify container is visible
         await expect(articlesContainer.first()).toBeVisible();
-        
+
         const articleCount = await articlesContainer.locator('.article, [data-testid*="article"]').count();
         expect(articleCount).toBeGreaterThanOrEqual(0);
       } else {
@@ -66,131 +202,10 @@ test.describe('HTMX Functionality', () => {
     });
 
     test('should update content without page refresh', async ({ page }) => {
-      // Look for any HTMX-enabled buttons or links
-      const htmxElements = page.locator('[hx-get], [hx-post], [hx-put], [hx-delete]');
-      
-      if (await htmxElements.count() > 0) {
-        const firstElement = htmxElements.first();
-        const targetSelector = await firstElement.getAttribute('hx-target') || 'body';
-        const contentArea = page.locator(targetSelector);
-        
-        const initialContent = await contentArea.textContent();
-        
-        await htmxHelper.waitForHtmxRequest(async () => {
-          await firstElement.click();
-        });
-        
-        const updatedContent = await contentArea.textContent();
-        expect(updatedContent).not.toBe(initialContent);
-      } else {
-        console.log('No HTMX elements found, skipping content update test');
-        test.skip();
-      }
+      await testContentUpdate(page, htmxHelper);
     });
   });
-  test.describe.skip('Search Functionality', () => {
-    test('should perform live search', async ({ page }) => {
-      const searchInput = page.locator('[data-testid="search-input"]').or(
-        page.locator('input[type="search"]').or(
-          page.locator('input[name*="search"], input[placeholder*="search"]')
-        )
-      );
-      
-      if (await searchInput.count() > 0) {
-        const resultsContainer = page.locator('[data-testid="search-results"]').or(
-          page.locator('.search-results').or(
-            page.locator('.results')
-          )
-        );        // Use specific selector strings for HTMX helper
-        const searchSelector = '[data-testid="search-input"]';
-        const resultsSelector = '[data-testid="search-results"]';
-        
-        if (await page.locator(searchSelector).count() > 0 || await searchInput.count() > 0) {
-          await htmxHelper.testSearch(
-            searchSelector,
-            resultsSelector,
-            'test'
-          );
-        } else {
-          console.log('No search input found, skipping search test');
-          test.skip();
-        }
-      } else {
-        console.log('No search input found, skipping search test');
-        test.skip();
-      }
-    });
 
-    test('should clear search results', async ({ page }) => {
-      const searchInput = page.locator('[data-testid="search-input"]').or(
-        page.locator('input[type="search"]').or(
-          page.locator('input[name*="search"], input[placeholder*="search"]')
-        )
-      );
-      
-      if (await searchInput.count() > 0) {
-        const resultsContainer = page.locator('[data-testid="search-results"]').or(
-          page.locator('.search-results').or(
-            page.locator('.results')
-          )
-        );
-        
-        // Perform search first
-        await searchInput.first().fill('test');
-        await page.waitForTimeout(1000);
-        
-        // Clear search
-        await searchInput.first().fill('');
-        await page.waitForTimeout(1000);
-        
-        // Check if results are cleared or hidden
-        if (await resultsContainer.count() > 0) {
-          const resultsVisible = await resultsContainer.first().isVisible();
-          if (resultsVisible) {
-            const resultsText = await resultsContainer.first().textContent();
-            expect(resultsText?.trim() || '').toBe('');
-          }
-        }
-      } else {
-        console.log('No search input found, skipping clear search test');
-        test.skip();
-      }
-    });
-
-    test('should handle search with no results', async ({ page }) => {
-      const searchInput = page.locator('[data-testid="search-input"]').or(
-        page.locator('input[type="search"]').or(
-          page.locator('input[name*="search"], input[placeholder*="search"]')
-        )
-      );
-      
-      if (await searchInput.count() > 0) {
-        await searchInput.first().fill('xyzabc123nonexistentquery');
-        await page.waitForTimeout(2000);
-        
-        // Check for no results message
-        const noResultsMessage = page.locator('[data-testid="no-results"]').or(
-          page.locator(':has-text("No results"), :has-text("not found"), :has-text("no matches")')
-        );
-        
-        if (await noResultsMessage.count() > 0) {
-          await expect(noResultsMessage.first()).toBeVisible();
-        } else {
-          // Alternative: check that results container is empty
-          const resultsContainer = page.locator('[data-testid="search-results"]').or(
-            page.locator('.search-results')
-          );
-          if (await resultsContainer.count() > 0) {
-            const resultsCount = await resultsContainer.first().locator('.result, .item').count();
-            expect(resultsCount).toBe(0);
-          }
-        }
-      } else {
-        console.log('No search input found, skipping no results test');
-        test.skip();
-      }
-    });
-  });
 
   test.describe('Form Interactions', () => {
     test('should submit forms via HTMX', async ({ page }) => {
@@ -198,7 +213,7 @@ test.describe('HTMX Functionality', () => {
       
       if (await htmxForm.count() > 0) {
         const form = htmxForm.first();
-        const targetSelector = await form.getAttribute('hx-target') || 'body';
+        const targetSelector = await form.getAttribute('hx-target') ?? 'body';
           await htmxHelper.submitHtmxForm(
           'form[hx-post], form[hx-put], form[hx-get]',
           targetSelector
@@ -242,7 +257,7 @@ test.describe('HTMX Functionality', () => {
         const link = navigationLinks.first();
         const href = await link.getAttribute('href');
         
-        if (href && href.startsWith('/')) {
+        if (href?.startsWith('/')) {
           await link.click();
           await page.waitForLoadState('networkidle');
           
@@ -253,54 +268,10 @@ test.describe('HTMX Functionality', () => {
         console.log('No navigation links found, skipping navigation test');
         test.skip();
       }
-    });    test('should handle browser back/forward', async ({ page }) => {
-      // Navigate to articles page first 
-      await page.goto('/articles');
-      await page.waitForLoadState('networkidle');
-      const initialUrl = page.url();
-      
-      const navigationLinks = page.locator('nav a, .nav a, [data-testid*="nav"] a');
-      
-      if (await navigationLinks.count() > 0) {
-        // Find a navigation link that will actually change the URL
-        let targetLink = null;
-        const linkCount = await navigationLinks.count();
-        
-        for (let i = 0; i < linkCount; i++) {
-          const link = navigationLinks.nth(i);
-          const href = await link.getAttribute('href');
-          
-          // Look for a link that goes to a different page than current
-          if (href && href.startsWith('/') && !initialUrl.includes(href)) {
-            targetLink = link;
-            break;
-          }
-        }
-        
-        if (targetLink) {
-          // Click the link to navigate away
-          await targetLink.click();
-          await page.waitForLoadState('networkidle');
-          
-          // Verify we navigated to a different URL
-          const newUrl = page.url();
-          expect(newUrl).not.toBe(initialUrl);
-          
-          // Go back
-          await page.goBack();
-          await page.waitForLoadState('networkidle');
+    });
 
-          // Verify we're back to the articles page (allow for different ways to express the URL)
-          const currentUrl = page.url();
-          expect(currentUrl).toMatch(/\/articles/);
-        } else {
-          console.log('No suitable navigation links found for back/forward test, skipping');
-          test.skip();
-        }
-      } else {
-        console.log('No navigation links found, skipping back/forward test');
-        test.skip();
-      }
+    test('should handle browser back/forward', async ({ page }) => {
+      await testBrowserBackForward(page);
     });
   });
 
