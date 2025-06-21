@@ -1,0 +1,265 @@
+{
+  "info": {
+    "name": "Confidence Validation Tests",
+    "description": "Comprehensive test suite for validating confidence scores and confidence-related functionality in the NewsBalancer API. Tests confidence calculation, validation, edge cases, and confidence-based filtering.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.globals.set('articleSchema', {",
+          "    type: 'object',",
+          "    required: ['success', 'data'],",
+          "    properties: {",
+          "        success: { type: 'boolean' },",
+          "        data: {",
+          "            type: 'object',",
+          "            required: ['article_id', 'title', 'content', 'url', 'source'],",
+          "            properties: {",
+          "                article_id: { type: 'number' },",
+          "                title: { type: 'string' },",
+          "                content: { type: 'string' },",
+          "                url: { type: 'string' },",
+          "                source: { type: 'string' },",
+          "                composite_score: { type: ['number', 'null'] },",
+          "                confidence: { type: ['number', 'null'] }",
+          "            }",
+          "        }",
+          "    }",
+          "});",
+          "",
+          "pm.globals.set('errorSchema', {",
+          "    type: 'object',",
+          "    required: ['success', 'error'],",
+          "    properties: {",
+          "        success: { type: 'boolean' },",
+          "        error: {",
+          "            type: 'object',",
+          "            required: ['code', 'message'],",
+          "            properties: {",
+          "                code: { type: 'string' },",
+          "                message: { type: 'string' }",
+          "            }",
+          "        }",
+          "    }",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Confidence Score Validation",
+      "item": [
+        {
+          "name": "1.1 Setup Test Article",
+          "item": [
+            {
+              "name": "Create Article for Confidence Testing",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Confidence Validation Test Article\",\n  \"content\": \"This article is designed to test confidence score validation. It contains clear political content that should generate reliable confidence scores from the LLM analysis. The article discusses policy positions and political viewpoints to ensure meaningful bias analysis with measurable confidence levels.\",\n  \"source\": \"test-confidence\",\n  \"url\": \"https://example.com/confidence-test-{{$timestamp}}\",\n  \"pub_date\": \"{{$isoTimestamp}}\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 201\", function () {",
+                      "    pm.expect([200, 201]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches article schema\", function () {",
+                      "    const schema = pm.globals.get('articleSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200 || pm.response.code === 201) {",
+                      "    var json = pm.response.json();",
+                      "    pm.environment.set(\"confidenceArticleId\", json.data.article_id);",
+                      "    console.log('Created confidence test article with ID:', json.data.article_id);",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "1.2 Confidence Score Analysis",
+          "item": [
+            {
+              "name": "Trigger Analysis for Confidence Testing",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/{{confidenceArticleId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "{{confidenceArticleId}}"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 202 (Accepted)\", function () {",
+                      "    pm.response.to.have.status(202);",
+                      "});",
+                      "",
+                      "pm.test(\"Response indicates analysis started\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "});",
+                      "",
+                      "// Wait for analysis to complete",
+                      "setTimeout(function(){}, 3000);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Validate Confidence Scores",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}/bias",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{confidenceArticleId}}", "bias"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response contains confidence data\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.success).to.be.true;",
+                      "    pm.expect(json.data).to.have.property('confidence');",
+                      "});",
+                      "",
+                      "pm.test(\"Confidence score is valid\", function () {",
+                      "    var json = pm.response.json();",
+                      "    if (json.data.confidence !== null) {",
+                      "        pm.expect(json.data.confidence).to.be.a('number');",
+                      "        pm.expect(json.data.confidence).to.be.at.least(0);",
+                      "        pm.expect(json.data.confidence).to.be.at.most(1);",
+                      "        console.log('Confidence score:', json.data.confidence);",
+                      "    } else {",
+                      "        console.log('Confidence score is null - may indicate no analysis completed yet');",
+                      "    }",
+                      "});",
+                      "",
+                      "pm.test(\"Individual model confidence scores are valid\", function () {",
+                      "    var json = pm.response.json();",
+                      "    if (json.data.results && json.data.results.length > 0) {",
+                      "        json.data.results.forEach((result, index) => {",
+                      "            if (result.confidence !== null && result.confidence !== undefined) {",
+                      "                pm.expect(result.confidence).to.be.a('number');",
+                      "                pm.expect(result.confidence).to.be.at.least(0);",
+                      "                pm.expect(result.confidence).to.be.at.most(1);",
+                      "                console.log(`Model ${result.model} confidence:`, result.confidence);",
+                      "            }",
+                      "        });",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Confidence Edge Cases",
+      "item": [
+        {
+          "name": "2.1 Zero Confidence Handling",
+          "item": [
+            {
+              "name": "Test Zero Confidence Scenarios",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/{{confidenceArticleId}}/ensemble",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "{{confidenceArticleId}}", "ensemble"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200 or 404\", function () {",
+                      "    pm.expect([200, 404]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200) {",
+                      "    pm.test(\"Ensemble data contains confidence information\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.success).to.be.true;",
+                      "        pm.expect(json.data).to.have.property('ensembles');",
+                      "        ",
+                      "        if (json.data.ensembles && json.data.ensembles.length > 0) {",
+                      "            json.data.ensembles.forEach(ensemble => {",
+                      "                if (ensemble.confidence !== null) {",
+                      "                    pm.expect(ensemble.confidence).to.be.at.least(0);",
+                      "                    pm.expect(ensemble.confidence).to.be.at.most(1);",
+                      "                }",
+                      "            });",
+                      "        }",
+                      "    });",
+                      "} else {",
+                      "    pm.test(\"404 response is properly formatted\", function () {",
+                      "        const schema = pm.globals.get('errorSchema');",
+                      "        pm.response.to.have.jsonSchema(schema);",
+                      "    });",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

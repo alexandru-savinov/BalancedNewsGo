@@ -2,12 +2,13 @@ package db
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -15,6 +16,19 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
+
+// secureFloat64 generates a cryptographically secure random float64 between 0.0 and 1.0
+func secureFloat64() float64 {
+	var b [8]byte
+	_, err := rand.Read(b[:])
+	if err != nil {
+		// Fallback to a simple deterministic value if crypto/rand fails
+		log.Printf("[WARN] Failed to generate secure random number: %v", err)
+		return 0.5
+	}
+	// Convert bytes to uint64, then to float64 in range [0, 1)
+	return float64(binary.BigEndian.Uint64(b[:])) / float64(1<<64)
+}
 
 // Errors
 var (
@@ -949,7 +963,7 @@ func WithRetry(config RetryConfig, operation func() error) error {
 
 		// Calculate delay with exponential backoff and jitter
 		delay := time.Duration(float64(config.BaseDelay) *
-			(1.0 + config.JitterPercent*(2.0*rand.Float64()-1.0)))
+			(1.0 + config.JitterPercent*(2.0*secureFloat64()-1.0)))
 
 		for i := 1; i < attempt; i++ {
 			delay = time.Duration(float64(delay) * config.BackoffFactor)

@@ -109,6 +109,105 @@ var (
 		},
 		[]string{"status_code"},
 	)
+
+	// Additional metrics for comprehensive monitoring
+	ArticlesTotal = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "newsbalancer_articles_total",
+			Help: "Total number of articles in the system",
+		},
+		[]string{"status"},
+	)
+
+	ArticlesByStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "newsbalancer_articles_by_status",
+			Help: "Number of articles by analysis status",
+		},
+		[]string{"status"},
+	)
+
+	LLMQueueSize = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "newsbalancer_llm_queue_size",
+			Help: "Current size of the LLM analysis queue",
+		},
+	)
+
+	LLMQueueProcessing = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "newsbalancer_llm_queue_processing",
+			Help: "Number of articles currently being processed by LLM",
+		},
+	)
+
+	LLMAnalysesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "newsbalancer_llm_analyses_total",
+			Help: "Total number of LLM analyses completed",
+		},
+		[]string{"status", "model"},
+	)
+
+	LLMRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "newsbalancer_llm_request_duration_seconds",
+			Help:    "Duration of LLM requests in seconds",
+			Buckets: []float64{0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0},
+		},
+		[]string{"model", "provider"},
+	)
+
+	LLMConfidenceScore = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "newsbalancer_llm_confidence_score",
+			Help:    "Distribution of LLM confidence scores",
+			Buckets: []float64{0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+		},
+		[]string{"model"},
+	)
+
+	BiasScoreBucket = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "newsbalancer_bias_score_bucket",
+			Help:    "Distribution of bias scores",
+			Buckets: []float64{-1.0, -0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0},
+		},
+		[]string{"perspective"},
+	)
+
+	DatabaseConnections = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "newsbalancer_db_connections",
+			Help: "Number of database connections",
+		},
+		[]string{"state"}, // active, idle
+	)
+
+	HTTPRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"method", "endpoint", "status"},
+	)
+
+	HTTPRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "Duration of HTTP requests in seconds",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0},
+		},
+		[]string{"method", "endpoint"},
+	)
+
+	LLMErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "newsbalancer_llm_errors_total",
+			Help: "Total number of LLM errors by type",
+		},
+		[]string{"type", "model"},
+	)
 )
 
 func InitLLMMetrics() {
@@ -131,6 +230,20 @@ func InitLLMMetrics() {
 	prometheus.MustRegister(RequestErrors)
 	prometheus.MustRegister(RequestLatency)
 	prometheus.MustRegister(ResponseStatus)
+
+	// Register comprehensive monitoring metrics
+	prometheus.MustRegister(ArticlesTotal)
+	prometheus.MustRegister(ArticlesByStatus)
+	prometheus.MustRegister(LLMQueueSize)
+	prometheus.MustRegister(LLMQueueProcessing)
+	prometheus.MustRegister(LLMAnalysesTotal)
+	prometheus.MustRegister(LLMRequestDuration)
+	prometheus.MustRegister(LLMConfidenceScore)
+	prometheus.MustRegister(BiasScoreBucket)
+	prometheus.MustRegister(DatabaseConnections)
+	prometheus.MustRegister(HTTPRequestsTotal)
+	prometheus.MustRegister(HTTPRequestDuration)
+	prometheus.MustRegister(LLMErrorsTotal)
 }
 
 func IncLLMRequest(model, promptHash string) {
@@ -199,4 +312,53 @@ func RecordLatency(duration time.Duration) {
 
 func RecordStatus(statusCode int) {
 	ResponseStatus.WithLabelValues(fmt.Sprintf("%d", statusCode)).Inc()
+}
+
+// Helper functions for new comprehensive metrics
+func SetArticleCount(status string, count int) {
+	ArticlesTotal.WithLabelValues(status).Set(float64(count))
+}
+
+func SetArticlesByStatus(status string, count int) {
+	ArticlesByStatus.WithLabelValues(status).Set(float64(count))
+}
+
+func SetLLMQueueSize(size int) {
+	LLMQueueSize.Set(float64(size))
+}
+
+func SetLLMQueueProcessing(count int) {
+	LLMQueueProcessing.Set(float64(count))
+}
+
+func IncLLMAnalysis(status, model string) {
+	LLMAnalysesTotal.WithLabelValues(status, model).Inc()
+}
+
+func RecordLLMRequestDuration(duration time.Duration, model, provider string) {
+	LLMRequestDuration.WithLabelValues(model, provider).Observe(duration.Seconds())
+}
+
+func RecordLLMConfidenceScore(score float64, model string) {
+	LLMConfidenceScore.WithLabelValues(model).Observe(score)
+}
+
+func RecordBiasScore(score float64, perspective string) {
+	BiasScoreBucket.WithLabelValues(perspective).Observe(score)
+}
+
+func SetDatabaseConnections(state string, count int) {
+	DatabaseConnections.WithLabelValues(state).Set(float64(count))
+}
+
+func RecordHTTPRequest(method, endpoint, status string) {
+	HTTPRequestsTotal.WithLabelValues(method, endpoint, status).Inc()
+}
+
+func RecordHTTPDuration(duration time.Duration, method, endpoint string) {
+	HTTPRequestDuration.WithLabelValues(method, endpoint).Observe(duration.Seconds())
+}
+
+func IncLLMError(errorType, model string) {
+	LLMErrorsTotal.WithLabelValues(errorType, model).Inc()
 }

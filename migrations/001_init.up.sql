@@ -1,5 +1,5 @@
 CREATE TABLE articles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     source TEXT NOT NULL,
     pub_date TIMESTAMP NOT NULL,
     url TEXT NOT NULL UNIQUE,
@@ -8,15 +8,15 @@ CREATE TABLE articles (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status TEXT DEFAULT 'pending',
     fail_count INTEGER DEFAULT 0,
-    last_attempt DATETIME,
-    escalated BOOLEAN DEFAULT 0,
+    last_attempt TIMESTAMP,
+    escalated BOOLEAN DEFAULT FALSE,
     composite_score REAL,
     confidence REAL,
     score_source TEXT
 );
 
 CREATE TABLE llm_scores (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     article_id INTEGER NOT NULL,
     model TEXT NOT NULL,
     score REAL NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE llm_scores (
 );
 
 CREATE TABLE feedback (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     article_id INTEGER NOT NULL,
     user_id TEXT,
     feedback_text TEXT,
@@ -40,7 +40,7 @@ CREATE TABLE feedback (
 );
 
 CREATE TABLE labels (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     data TEXT NOT NULL,
     label TEXT NOT NULL,
     source TEXT NOT NULL,

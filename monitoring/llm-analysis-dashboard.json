@@ -1,0 +1,208 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "NewsBalancer - LLM Analysis Dashboard",
+    "tags": ["newsbalancer", "llm", "analysis", "ai"],
+    "style": "dark",
+    "timezone": "browser",
+    "refresh": "30s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "LLM Analysis Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(newsbalancer_llm_analyses_total{status=\"success\"}[5m]) / rate(newsbalancer_llm_analyses_total[5m]) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 80},
+                {"color": "green", "value": 95}
+              ]
+            },
+            "unit": "percent"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "LLM Rate Limit Errors",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(newsbalancer_llm_errors_total{type=\"rate_limit\"}[5m])",
+            "legendFormat": "Rate Limits/sec"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 0.1},
+                {"color": "red", "value": 1}
+              ]
+            },
+            "unit": "reqps"
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Average Confidence Score",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "avg(newsbalancer_llm_confidence_score)",
+            "legendFormat": "Avg Confidence"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 0.5},
+                {"color": "green", "value": 0.8}
+              ]
+            },
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+      },
+      {
+        "id": 4,
+        "title": "LLM Model Usage",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum by (model) (rate(newsbalancer_llm_analyses_total[5m]))",
+            "legendFormat": "{{model}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0}
+      },
+      {
+        "id": 5,
+        "title": "LLM Response Times by Model",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(newsbalancer_llm_request_duration_seconds_bucket[5m])) by (model)",
+            "legendFormat": "{{model}} - 95th percentile"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Seconds",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 6,
+        "title": "Bias Score Distribution",
+        "type": "histogram",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.1, newsbalancer_bias_score_bucket)",
+            "legendFormat": "10th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.5, newsbalancer_bias_score_bucket)",
+            "legendFormat": "50th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.9, newsbalancer_bias_score_bucket)",
+            "legendFormat": "90th percentile"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Bias Score",
+            "min": -1,
+            "max": 1
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 7,
+        "title": "LLM Error Types",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(newsbalancer_llm_errors_total[5m]) by (type)",
+            "legendFormat": "{{type}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Errors/sec",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16}
+      },
+      {
+        "id": 8,
+        "title": "Analysis Queue Depth",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "newsbalancer_llm_queue_size",
+            "legendFormat": "Queue Size"
+          },
+          {
+            "expr": "newsbalancer_llm_queue_processing",
+            "legendFormat": "Processing"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Count",
+            "min": 0
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16}
+      },
+      {
+        "id": 9,
+        "title": "Articles by Analysis Status",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum by (status) (newsbalancer_articles_by_status)",
+            "legendFormat": "{{status}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16}
+      }
+    ]
+  }
+}

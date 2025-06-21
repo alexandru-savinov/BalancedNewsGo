@@ -1,0 +1,53 @@
+{
+  "base_url": "http://localhost:8080",
+  "concurrent_users": 20,
+  "requests_per_user": 50,
+  "test_duration": "5m",
+  "endpoints": [
+    {
+      "name": "list-articles",
+      "method": "GET",
+      "path": "/api/articles",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "weight": 40
+    },
+    {
+      "name": "list-articles-with-limit",
+      "method": "GET",
+      "path": "/api/articles?limit=10",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "weight": 30
+    },
+    {
+      "name": "get-specific-article",
+      "method": "GET",
+      "path": "/api/articles/1",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "weight": 15
+    },
+    {
+      "name": "get-bias-analysis",
+      "method": "GET",
+      "path": "/api/articles/1/bias",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "weight": 10
+    },
+    {
+      "name": "get-ensemble-data",
+      "method": "GET",
+      "path": "/api/articles/1/ensemble",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "weight": 5
+    }
+  ]
+}

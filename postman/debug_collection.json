@@ -1,0 +1,269 @@
+{
+  "info": {
+    "name": "Debug Collection",
+    "description": "Debugging test suite for NewsBalancer API. This collection includes tests for error scenarios, edge cases, logging verification, and diagnostic endpoints to help troubleshoot issues during development and production.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.globals.set('errorSchema', {",
+          "    type: 'object',",
+          "    required: ['success', 'error'],",
+          "    properties: {",
+          "        success: { type: 'boolean' },",
+          "        error: {",
+          "            type: 'object',",
+          "            required: ['code', 'message'],",
+          "            properties: {",
+          "                code: { type: 'string' },",
+          "                message: { type: 'string' }",
+          "            }",
+          "        }",
+          "    }",
+          "});",
+          "",
+          "// Set debug mode flag",
+          "pm.environment.set('debugMode', 'true');"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Error Scenario Testing",
+      "item": [
+        {
+          "name": "1.1 HTTP Error Codes",
+          "item": [
+            {
+              "name": "Test 400 - Bad Request",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"invalid_field\": \"test\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 400\", function () {",
+                      "    pm.response.to.have.status(400);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Error message is descriptive\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message).to.be.a('string');",
+                      "    pm.expect(json.error.message.length).to.be.greaterThan(10);",
+                      "});",
+                      "",
+                      "console.log('Debug - 400 Error Response:', pm.response.json());"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Test 404 - Not Found",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles/99999999",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles", "99999999"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 404\", function () {",
+                      "    pm.response.to.have.status(404);",
+                      "});",
+                      "",
+                      "pm.test(\"Response matches error schema\", function () {",
+                      "    const schema = pm.globals.get('errorSchema');",
+                      "    pm.response.to.have.jsonSchema(schema);",
+                      "});",
+                      "",
+                      "pm.test(\"Error indicates resource not found\", function () {",
+                      "    var json = pm.response.json();",
+                      "    pm.expect(json.error.message.toLowerCase()).to.include('not found');",
+                      "});",
+                      "",
+                      "console.log('Debug - 404 Error Response:', pm.response.json());"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Test 405 - Method Not Allowed",
+              "request": {
+                "method": "DELETE",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 405 or 404\", function () {",
+                      "    pm.expect([404, 405]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "pm.test(\"Response indicates method not allowed or not found\", function () {",
+                      "    if (pm.response.code === 405) {",
+                      "        pm.expect(pm.response.headers.get('Allow')).to.exist;",
+                      "    }",
+                      "});",
+                      "",
+                      "console.log('Debug - Method Not Allowed Response:', pm.response.code, pm.response.text());"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "1.2 LLM Error Scenarios",
+          "item": [
+            {
+              "name": "Test LLM Rate Limiting",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/llm/reanalyze/1",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "llm", "reanalyze", "1"]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 202, 404, 429, or 503\", function () {",
+                      "    pm.expect([202, 404, 429, 503]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "if (pm.response.code === 429) {",
+                      "    pm.test(\"Rate limit error is properly formatted\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.error.message.toLowerCase()).to.include('rate limit');",
+                      "    });",
+                      "}",
+                      "",
+                      "if (pm.response.code === 503) {",
+                      "    pm.test(\"Service unavailable error is properly formatted\", function () {",
+                      "        var json = pm.response.json();",
+                      "        pm.expect(json.error.message.toLowerCase()).to.include('unavailable');",
+                      "    });",
+                      "}",
+                      "",
+                      "console.log('Debug - LLM Response:', pm.response.code, pm.response.json());"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Performance Debugging",
+      "item": [
+        {
+          "name": "2.1 Response Time Analysis",
+          "item": [
+            {
+              "name": "Measure API Response Times",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "{{baseUrl}}/api/articles?limit=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "articles"],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test(\"Response time is acceptable\", function () {",
+                      "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+                      "});",
+                      "",
+                      "pm.test(\"Response time is logged for debugging\", function () {",
+                      "    console.log('Debug - API Response Time:', pm.response.responseTime + 'ms');",
+                      "    console.log('Debug - Response Size:', pm.response.responseSize + ' bytes');",
+                      "    ",
+                      "    // Log performance metrics",
+                      "    var json = pm.response.json();",
+                      "    if (json.data && json.data.length) {",
+                      "        console.log('Debug - Articles returned:', json.data.length);",
+                      "        console.log('Debug - Avg time per article:', (pm.response.responseTime / json.data.length).toFixed(2) + 'ms');",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

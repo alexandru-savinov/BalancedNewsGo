@@ -1,0 +1,50 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: newsbalancer-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: newsbalancer
+          __path__: /var/log/newsbalancer/*.log
+    pipeline_stages:
+      - match:
+          selector: '{job="newsbalancer"}'
+          stages:
+            - regex:
+                expression: '(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>\w+)\](?:\[(?P<component>\w+)\])? (?P<message>.*)'
+            - labels:
+                level:
+                component:
+            - timestamp:
+                source: timestamp
+                format: '2006/01/02 15:04:05'
+
+  - job_name: system-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/syslog
+    pipeline_stages:
+      - match:
+          selector: '{job="system"}'
+          stages:
+            - regex:
+                expression: '(?P<timestamp>\w{3} \d{1,2} \d{2}:\d{2}:\d{2}) (?P<hostname>\S+) (?P<service>\S+): (?P<message>.*)'
+            - labels:
+                hostname:
+                service:
+            - timestamp:
+                source: timestamp
+                format: 'Jan 2 15:04:05'

@@ -58,8 +58,8 @@ SERVER_BIN      := bin\newbalancer_server.exe # Use backslashes for Windows
 SHORT           := -short
 
 .PHONY: help build run clean \
-        tidy lint unit integ e2e test coverage-core \
-        mock-llm-go mock-llm-py docker-up docker-down integration
+        tidy lint unit integ e2e test coverage-core coverage coverage-html \
+        mock-llm-go mock-llm-py docker-up docker-down integration benchmark
 
 .DEFAULT_GOAL := help
 
@@ -142,6 +142,24 @@ endif
 	$(GO) run ./tools/check_coverage/main.go $(COVERAGE_DIR)/coverage.txt $(COVERAGE_THRESHOLD)
 	@echo "Coverage tests complete."
 
+coverage: $(COVER_DIR) ## Run comprehensive coverage analysis
+ifeq ($(OS),Windows_NT)
+	@echo "Running comprehensive coverage analysis (Windows)..."
+	powershell -ExecutionPolicy Bypass -File scripts/coverage.ps1
+else
+	@echo "Running comprehensive coverage analysis (Unix)..."
+	bash scripts/coverage.sh
+endif
+
+coverage-html: coverage ## Generate and open HTML coverage report
+ifeq ($(OS),Windows_NT)
+	@echo "Opening HTML coverage report..."
+	start coverage/coverage.html
+else
+	@echo "Opening HTML coverage report..."
+	open coverage/coverage.html || xdg-open coverage/coverage.html
+endif
+
 # Docs & Contract
 # =================
 
@@ -173,3 +191,17 @@ docker-up: ## Spin up full Docker stack
 
 docker-down: ## Tear down Docker stack
 	docker compose -f infra/docker-compose.yml down -v
+
+# Performance Benchmarking
+# =========================
+
+benchmark: ## Run performance benchmarks
+	@echo "Building benchmark tool..."
+	$(GO) build -o bin/benchmark ./cmd/benchmark
+ifeq ($(OS),Windows_NT)
+	@echo "Running performance benchmarks (Windows)..."
+	powershell -ExecutionPolicy Bypass -File scripts/run-benchmarks.ps1
+else
+	@echo "Running performance benchmarks (Unix)..."
+	bash scripts/run-benchmarks.sh
+endif

@@ -1,9 +1,37 @@
-# Example Prometheus configuration for BalancedNewsGo
+# Comprehensive Prometheus configuration for NewsBalancer
 
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
 
 scrape_configs:
-  - job_name: 'balancednewsgo'
+  - job_name: 'newsbalancer-api'
     static_configs:
-      - targets: ['localhost:9090'] # Update with your application's metrics endpoint
+      - targets: ['host.docker.internal:8080'] # NewsBalancer API metrics endpoint
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
