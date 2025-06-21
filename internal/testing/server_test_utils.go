@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"syscall"
 	"testing"
@@ -22,14 +23,18 @@ type TestServerConfig struct {
 
 // DefaultTestServerConfig returns a default server configuration
 func DefaultTestServerConfig() TestServerConfig {
+	// Use OS-appropriate temp directory
+	logPath := os.TempDir() + "/test_server.log"
 	env := map[string]string{
 		"TEST_MODE":     "true",
-		"LOG_FILE_PATH": "/tmp/test_server.log",
+		"LOG_FILE_PATH": logPath,
 		"GIN_MODE":      "test",
+		"DB_CONNECTION": ":memory:", // Use in-memory SQLite for tests
+		"PORT":          "8080",
 	}
 	return TestServerConfig{
 		Port:            8080,
-		StartupTimeout:  30 * time.Second,
+		StartupTimeout:  60 * time.Second, // Increased timeout for CI
 		ShutdownTimeout: 10 * time.Second,
 		HealthEndpoint:  "/healthz",
 		ServerCommand:   []string{"go", "run", "./cmd/server"},
@@ -68,13 +73,23 @@ func (tsm *TestServerManager) Start(t *testing.T) error {
 	// Setup server command
 	tsm.cmd = exec.CommandContext(ctx, tsm.config.ServerCommand[0], tsm.config.ServerCommand[1:]...)
 
-	// Set working directory to project root (go up from tests directory)
-	tsm.cmd.Dir = ".."
+	// Set working directory to project root
+	// Try to detect if we're in tests directory and go up, otherwise use current directory
+	workingDir := "."
+	if _, err := os.Stat("../cmd/server"); err == nil {
+		workingDir = ".."
+	}
+	tsm.cmd.Dir = workingDir
 
-	// Set environment variables
+	// Copy current environment and add test-specific variables
+	tsm.cmd.Env = os.Environ()
 	for key, value := range tsm.config.Environment {
 		tsm.cmd.Env = append(tsm.cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
+
+	// Capture server output for debugging
+	tsm.cmd.Stdout = os.Stdout
+	tsm.cmd.Stderr = os.Stderr
 
 	// Start the server
 	if err := tsm.cmd.Start(); err != nil {

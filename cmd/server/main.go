@@ -100,21 +100,25 @@ func main() {
 		"mul":   func(a, b float64) float64 { return a * b },
 		"split": func(s, sep string) []string { return strings.Split(s, sep) },
 		"date":  func(t time.Time, layout string) string { return t.Format(layout) },
-	}) // Load HTML templates
-	// router.LoadHTMLGlob("templates/*.html") // Load top-level html files
-	// router.LoadHTMLGlob("templates/fragments/*.html") // Load fragment html files
-	router.LoadHTMLFiles(
-		"templates/articles.html",
-		"templates/article.html",
-		"templates/admin.html",
-		"templates/article_htmx.html",
-		"templates/articles_htmx.html",
-		"templates/fragments/article-list.html",
-		"templates/fragments/article-items.html",
-		"templates/fragments/article-detail.html",
-		"templates/fragments/error.html",
-		"templates/fragments/summary.html",
-	) // Load specific files
+	}) // Load HTML templates (skip in test mode if templates don't exist)
+	if os.Getenv("TEST_MODE") != "true" {
+		// router.LoadHTMLGlob("templates/*.html") // Load top-level html files
+		// router.LoadHTMLGlob("templates/fragments/*.html") // Load fragment html files
+		router.LoadHTMLFiles(
+			"templates/articles.html",
+			"templates/article.html",
+			"templates/admin.html",
+			"templates/article_htmx.html",
+			"templates/articles_htmx.html",
+			"templates/fragments/article-list.html",
+			"templates/fragments/article-items.html",
+			"templates/fragments/article-detail.html",
+			"templates/fragments/error.html",
+			"templates/fragments/summary.html",
+		) // Load specific files
+	} else {
+		log.Println("TEST_MODE: Skipping template loading")
+	}
 	// router.LoadHTMLGlob("templates/**/*.html") // Load all html files in templates and subdirectories
 	// router.LoadHTMLFiles("templates/articles.html") // Attempt to load only articles.html for diagnostics
 
@@ -224,7 +228,11 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	}
 
 	// Initialize database
-	dbConn, err := db.InitDB("news.db")
+	dbPath := os.Getenv("DB_CONNECTION")
+	if dbPath == "" {
+		dbPath = "news.db" // Default database path
+	}
+	dbConn, err := db.InitDB(dbPath)
 	if err != nil {
 		log.Printf("ERROR: Failed to initialize database: %v", err)
 		os.Exit(1)
@@ -242,8 +250,14 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	feedSourcesPath := "configs/feed_sources.json"
 	feedConfigData, err := os.ReadFile(feedSourcesPath)
 	if err != nil {
-		log.Printf("ERROR: Failed to read feed sources config '%s': %v", feedSourcesPath, err)
-		os.Exit(1)
+		// In test mode, create minimal config if file doesn't exist
+		if os.Getenv("TEST_MODE") == "true" {
+			log.Printf("WARNING: Feed sources config not found in test mode, using empty config")
+			feedConfigData = []byte(`{"sources": []}`)
+		} else {
+			log.Printf("ERROR: Failed to read feed sources config '%s': %v", feedSourcesPath, err)
+			os.Exit(1)
+		}
 	}
 	var feedConfig struct { // Use anonymous struct for local parsing
 		Sources []struct {

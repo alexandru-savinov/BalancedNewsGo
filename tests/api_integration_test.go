@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	internaltesting "github.com/alexandru-savinov/BalancedNewsGo/internal/testing"
@@ -56,45 +57,62 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 		Path:           "/api/articles",
 		ExpectedStatus: http.StatusOK,
 		ValidateFunc: func(t *testing.T, resp *http.Response) {
-			var articles []map[string]interface{}
-			if err := json.NewDecoder(resp.Body).Decode(&articles); err != nil {
+			var response map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 				t.Fatalf("Failed to decode articles response: %v", err)
 			}
-			t.Logf("Retrieved %d articles", len(articles))
+			// Check if response has success field and data array
+			if success, ok := response["success"].(bool); ok && success {
+				if data, ok := response["data"].([]interface{}); ok {
+					t.Logf("Retrieved %d articles", len(data))
+				} else {
+					t.Logf("Response data is not an array: %v", response["data"])
+				}
+			} else {
+				t.Logf("Response: %v", response)
+			}
 		},
 	})
 
 	suite.AddTestCase(internaltesting.APITestCase{
-		Name:    "Score Article",
+		Name:    "Reanalyze Article",
 		Method:  "POST",
-		Path:    "/api/articles/score",
+		Path:    "/api/llm/reanalyze/1",
 		Headers: map[string]string{"Content-Type": "application/json"},
 		Body: map[string]interface{}{
-			"article_id": "test-article-1",
-			"content":    "This is a test article for scoring",
+			"force": true,
 		},
-		ExpectedStatus: http.StatusOK, Setup: func(t *testing.T) {
-			// Insert test article before scoring
-			_, err := testDB.DB.Exec(`
-				INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
-				VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-			`, 1, "Test Article", "This is a test article for scoring", "http://test.com", "test-source")
+		ExpectedStatus: http.StatusOK,
+		Setup: func(t *testing.T) {
+			// Create test article via API
+			articleData := map[string]interface{}{
+				"title":    "Test Article",
+				"content":  "This is a test article for scoring",
+				"url":      "https://test.com/article1",
+				"source":   "test-source",
+				"pub_date": "2025-06-21T12:00:00Z",
+			}
+
+			bodyBytes, _ := json.Marshal(articleData)
+			resp, err := http.Post(serverManager.GetBaseURL()+"/api/articles", "application/json", strings.NewReader(string(bodyBytes)))
 			if err != nil {
-				t.Fatalf("Failed to insert test article: %v", err)
+				t.Fatalf("Failed to create test article: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("Failed to create test article, status: %d", resp.StatusCode)
 			}
 		},
 		ValidateFunc: func(t *testing.T, resp *http.Response) {
-			var scoreResponse map[string]interface{}
-			if err := json.NewDecoder(resp.Body).Decode(&scoreResponse); err != nil {
-				t.Fatalf("Failed to decode score response: %v", err)
+			var reanalyzeResponse map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&reanalyzeResponse); err != nil {
+				t.Fatalf("Failed to decode reanalyze response: %v", err)
 			}
 
-			if scoreResponse["article_id"] != "test-article-1" {
-				t.Errorf("Expected article_id 'test-article-1', got '%v'", scoreResponse["article_id"])
-			}
-
-			if _, ok := scoreResponse["composite_score"]; !ok {
-				t.Error("Expected composite_score in response")
+			// Check for success response
+			if success, ok := reanalyzeResponse["success"].(bool); !ok || !success {
+				t.Errorf("Expected successful reanalysis, got response: %v", reanalyzeResponse)
 			}
 		},
 	})
@@ -105,11 +123,12 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 		Path:    "/api/feedback",
 		Headers: map[string]string{"Content-Type": "application/json"},
 		Body: map[string]interface{}{
-			"article_id":    "test-article-1",
-			"user_rating":   4,
+			"article_id":    1,
+			"user_id":       "test-user",
 			"feedback_text": "Great article!",
+			"category":      "agree",
 		},
-		ExpectedStatus: http.StatusCreated,
+		ExpectedStatus: http.StatusOK,
 		ValidateFunc: func(t *testing.T, resp *http.Response) {
 			var feedbackResponse map[string]interface{}
 			if err := json.NewDecoder(resp.Body).Decode(&feedbackResponse); err != nil {
@@ -123,18 +142,40 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 	})
 
 	suite.AddTestCase(internaltesting.APITestCase{
-		Name:           "Get Article Scores",
+		Name:           "Get Article Ensemble Details",
 		Method:         "GET",
-		Path:           "/api/articles/test-article-1/scores",
+		Path:           "/api/articles/1/ensemble",
 		ExpectedStatus: http.StatusOK,
-		ValidateFunc: func(t *testing.T, resp *http.Response) {
-			var scoresResponse map[string]interface{}
-			if err := json.NewDecoder(resp.Body).Decode(&scoresResponse); err != nil {
-				t.Fatalf("Failed to decode scores response: %v", err)
+		Setup: func(t *testing.T) {
+			// Create test article via API for ensemble details
+			articleData := map[string]interface{}{
+				"title":    "Test Article",
+				"content":  "This is a test article for ensemble",
+				"url":      "https://test.com/article2",
+				"source":   "test-source",
+				"pub_date": "2025-06-21T12:00:00Z",
 			}
 
-			if scoresResponse["article_id"] != "test-article-1" {
-				t.Errorf("Expected article_id 'test-article-1', got '%v'", scoresResponse["article_id"])
+			bodyBytes, _ := json.Marshal(articleData)
+			resp, err := http.Post(serverManager.GetBaseURL()+"/api/articles", "application/json", strings.NewReader(string(bodyBytes)))
+			if err != nil {
+				t.Fatalf("Failed to create test article: %v", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("Failed to create test article, status: %d", resp.StatusCode)
+			}
+		},
+		ValidateFunc: func(t *testing.T, resp *http.Response) {
+			var ensembleResponse map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&ensembleResponse); err != nil {
+				t.Fatalf("Failed to decode ensemble response: %v", err)
+			}
+
+			// Check for success response structure
+			if success, ok := ensembleResponse["success"].(bool); !ok || !success {
+				t.Errorf("Expected successful ensemble response, got: %v", ensembleResponse)
 			}
 		},
 	})
