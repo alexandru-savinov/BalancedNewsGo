@@ -59,7 +59,11 @@ import (
 
 func main() {
 	// --- START: Explicit File Logging Setup ---
-	logFile, err := os.OpenFile("d:\\\\Dev\\\\NBG\\\\server_app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	logPath := os.Getenv("LOG_FILE_PATH")
+	if logPath == "" {
+		logPath = "server_app.log"
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}

@@ -22,13 +22,18 @@ type TestServerConfig struct {
 
 // DefaultTestServerConfig returns a default server configuration
 func DefaultTestServerConfig() TestServerConfig {
+	env := map[string]string{
+		"TEST_MODE":     "true",
+		"LOG_FILE_PATH": "/tmp/test_server.log",
+		"GIN_MODE":      "test",
+	}
 	return TestServerConfig{
 		Port:            8080,
 		StartupTimeout:  30 * time.Second,
 		ShutdownTimeout: 10 * time.Second,
 		HealthEndpoint:  "/healthz",
 		ServerCommand:   []string{"go", "run", "./cmd/server"},
-		Environment:     make(map[string]string),
+		Environment:     env,
 	}
 }
 
@@ -62,6 +67,9 @@ func (tsm *TestServerManager) Start(t *testing.T) error {
 
 	// Setup server command
 	tsm.cmd = exec.CommandContext(ctx, tsm.config.ServerCommand[0], tsm.config.ServerCommand[1:]...)
+
+	// Set working directory to project root (go up from tests directory)
+	tsm.cmd.Dir = ".."
 
 	// Set environment variables
 	for key, value := range tsm.config.Environment {

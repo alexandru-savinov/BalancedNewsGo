@@ -51,7 +51,7 @@ func testArticleStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 		// Insert test article
 		_, err := tx.Exec(`
 			INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
-			VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
+			VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
 		`, 1, "Test Article", "Test content", "http://test.com", "test-source")
 
 		if err != nil {
@@ -81,7 +81,7 @@ func testScoreStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 		// First insert an article
 		_, err := tx.Exec(`
 			INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
-			VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
+			VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
 		`, 2, "Test Article 2", "Test content 2", "http://test2.com", "test-source")
 
 		if err != nil {
@@ -127,29 +127,29 @@ func testFeedbackStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 	testDB.Transaction(t, func(tx *sql.Tx) {
 		// Insert feedback
 		_, err := tx.Exec(`
-			INSERT INTO user_feedback (id, article_id, user_rating, feedback_text, created_at)
+			INSERT INTO feedback (article_id, user_id, feedback_text, category, created_at)
 			VALUES ($1, $2, $3, $4, NOW())
-		`, "feedback-1", "test-2", 4, "Good article")
+		`, 1, "test-user", "Good article", "positive")
 
 		if err != nil {
 			t.Fatalf("Failed to insert test feedback: %v", err)
 		}
 
 		// Query the feedback
-		var rating int
+		var category string
 		var feedbackText string
 		err = tx.QueryRow(`
-			SELECT user_rating, feedback_text 
-			FROM user_feedback WHERE id = $1
-		`, "feedback-1").Scan(&rating, &feedbackText)
+			SELECT category, feedback_text
+			FROM feedback WHERE article_id = $1
+		`, 1).Scan(&category, &feedbackText)
 
 		if err != nil {
 			t.Fatalf("Failed to query test feedback: %v", err)
 		}
 
 		// Verify feedback
-		if rating != 4 {
-			t.Errorf("Expected rating 4, got %d", rating)
+		if category != "positive" {
+			t.Errorf("Expected category 'positive', got '%s'", category)
 		}
 		if feedbackText != "Good article" {
 			t.Errorf("Expected feedback 'Good article', got '%s'", feedbackText)

@@ -77,7 +77,7 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 			// Insert test article before scoring
 			_, err := testDB.DB.Exec(`
 				INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
-				VALUES ($1, $2, $3, $4, $5, datetime('now'), datetime('now'))
+				VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
 			`, 1, "Test Article", "This is a test article for scoring", "http://test.com", "test-source")
 			if err != nil {
 				t.Fatalf("Failed to insert test article: %v", err)
