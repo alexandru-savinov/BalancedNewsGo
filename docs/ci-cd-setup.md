@@ -127,3 +127,12 @@ The following tools have been installed and configured:
 - **actionlint** (v1.7.4) - GitHub Actions workflow validator
 - **golangci-lint** (latest) - Go linting and code quality
 - **gosec** (latest) - Go security scanner
+
+## Latest Fixes Applied
+
+### Integration Test Fixes (Latest)
+- Fixed PostgreSQL datetime syntax in integration tests (NOW() instead of datetime('now'))
+- Fixed feedback table name and column references in database tests
+- Fixed hardcoded Windows log file path in server main.go
+- Added proper environment variables for test server configuration
+- Set correct working directory for test server execution
