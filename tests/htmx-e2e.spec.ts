@@ -84,8 +84,7 @@ test.describe('HTMX E2E Tests - Dynamic Content Loading', () => {
         
         // Should have some results or show "no articles" message
         const noResults = await page.locator('[data-testid="no-results"], .no-articles').count();
-        expect(articles > 0).toBeTruthy();
-        expect(noResults > 0).toBeTruthy();
+        expect(articles > 0 || noResults > 0).toBeTruthy();
       }
     });
   });

@@ -2,7 +2,7 @@
 # This Dockerfile creates optimized production images with minimal size
 
 # Stage 1: Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -64,7 +64,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENTRYPOINT ["/newsbalancer"]
 
 # Stage 3: Development stage (includes debugging tools)
-FROM golang:1.21-alpine AS development
+FROM golang:1.23-alpine AS development
 
 # Install development tools
 RUN apk add --no-cache \
@@ -97,7 +97,7 @@ EXPOSE 8080
 CMD ["air", "-c", ".air.toml"]
 
 # Stage 4: Testing stage (includes test dependencies)
-FROM golang:1.21-alpine AS testing
+FROM golang:1.23-alpine AS testing
 
 # Install test dependencies
 RUN apk add --no-cache \

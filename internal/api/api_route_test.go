@@ -356,10 +356,10 @@ func TestScoreProgressSSE_RealHandler(t *testing.T) {
 				if err := scanner.Err(); err != nil {
 					t.Logf("Scanner error: %v", err)
 				}
-				break
+				// Final assertion for cases where we exit the loop normally
+				assert.GreaterOrEqual(t, eventsReceived, 1, "Should receive at least 1 SSE event")
+				return
 			}
 		}
 	}
-
-	assert.GreaterOrEqual(t, eventsReceived, 1, "Should receive at least 1 SSE event")
 }

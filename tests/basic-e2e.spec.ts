@@ -101,7 +101,8 @@ test.describe('NewsBalancer E2E Tests - Basic Functionality', () => {
           const responseText = await response.text();
           expect(responseText.length).toBeGreaterThan(0);
           expect(responseText.trim().startsWith('[')).toBe(true);
-        }      } catch (error: any) {
+        }
+      } catch (error: any) {
         console.log('API test skipped due to large response or network error:', error?.message);
         // This is acceptable - we just want to ensure the page loads
       }

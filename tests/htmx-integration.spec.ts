@@ -132,10 +132,8 @@ test.describe('HTMX Integration Tests - Specific Features', () => {
           await biasSlider.click();
           await page.waitForTimeout(1000);
           
-          // If request was made, verify it
-          if (biasUpdateRequest) {
-            expect(biasUpdateRequest).toBeTruthy();
-          }
+          // Verify request was made
+          expect(biasUpdateRequest).toBeTruthy();
         }
       }
     });
