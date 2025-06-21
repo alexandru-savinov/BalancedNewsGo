@@ -90,34 +90,36 @@ func testScoreStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 
 		// Insert score
 		_, err = tx.Exec(`
-			INSERT INTO article_scores (article_id, bias_score, credibility_score, composite_score, created_at)
+			INSERT INTO llm_scores (article_id, model, score, metadata, created_at)
 			VALUES ($1, $2, $3, $4, NOW())
-		`, "test-2", 0.75, 0.85, 0.80)
+		`, 2, "test-model", 0.80, "{\"bias_score\": 0.75, \"credibility_score\": 0.85}")
 
 		if err != nil {
 			t.Fatalf("Failed to insert test score: %v", err)
 		}
 
 		// Query the score
-		var biasScore, credibilityScore, compositeScore float64
+		var model string
+		var score float64
+		var metadata string
 		err = tx.QueryRow(`
-			SELECT bias_score, credibility_score, composite_score 
-			FROM article_scores WHERE article_id = $1
-		`, "test-2").Scan(&biasScore, &credibilityScore, &compositeScore)
+			SELECT model, score, metadata
+			FROM llm_scores WHERE article_id = $1
+		`, 2).Scan(&model, &score, &metadata)
 
 		if err != nil {
 			t.Fatalf("Failed to query test score: %v", err)
 		}
 
 		// Verify scores
-		if biasScore != 0.75 {
-			t.Errorf("Expected bias_score 0.75, got %f", biasScore)
+		if model != "test-model" {
+			t.Errorf("Expected model 'test-model', got '%s'", model)
 		}
-		if credibilityScore != 0.85 {
-			t.Errorf("Expected credibility_score 0.85, got %f", credibilityScore)
+		if score != 0.80 {
+			t.Errorf("Expected score 0.80, got %f", score)
 		}
-		if compositeScore != 0.80 {
-			t.Errorf("Expected composite_score 0.80, got %f", compositeScore)
+		if metadata != "{\"bias_score\": 0.75, \"credibility_score\": 0.85}" {
+			t.Errorf("Expected metadata with bias and credibility scores, got '%s'", metadata)
 		}
 	})
 }
@@ -125,11 +127,21 @@ func testScoreStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 func testFeedbackStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 	// Test feedback storage functionality
 	testDB.Transaction(t, func(tx *sql.Tx) {
-		// Insert feedback
+		// First insert an article to reference
 		_, err := tx.Exec(`
+			INSERT INTO articles (id, title, content, url, source, pub_date, created_at)
+			VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+		`, 3, "Test Article for Feedback", "Test content for feedback", "http://test-feedback.com", "test-source")
+
+		if err != nil {
+			t.Fatalf("Failed to insert test article for feedback: %v", err)
+		}
+
+		// Insert feedback
+		_, err = tx.Exec(`
 			INSERT INTO feedback (article_id, user_id, feedback_text, category, created_at)
 			VALUES ($1, $2, $3, $4, NOW())
-		`, 1, "test-user", "Good article", "positive")
+		`, 3, "test-user", "Good article", "positive")
 
 		if err != nil {
 			t.Fatalf("Failed to insert test feedback: %v", err)
@@ -141,7 +153,7 @@ func testFeedbackStorage(t *testing.T, testDB *internalTesting.TestDatabase) {
 		err = tx.QueryRow(`
 			SELECT category, feedback_text
 			FROM feedback WHERE article_id = $1
-		`, 1).Scan(&category, &feedbackText)
+		`, 3).Scan(&category, &feedbackText)
 
 		if err != nil {
 			t.Fatalf("Failed to query test feedback: %v", err)
