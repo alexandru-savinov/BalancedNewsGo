@@ -15,19 +15,19 @@ import (
 
 // BenchmarkResult represents the results of a performance benchmark
 type BenchmarkResult struct {
-	TestName        string        `json:"test_name"`
-	Timestamp       time.Time     `json:"timestamp"`
-	TotalRequests   int           `json:"total_requests"`
-	SuccessfulReqs  int           `json:"successful_requests"`
-	FailedRequests  int           `json:"failed_requests"`
-	AverageLatency  time.Duration `json:"average_latency"`
-	MinLatency      time.Duration `json:"min_latency"`
-	MaxLatency      time.Duration `json:"max_latency"`
-	P95Latency      time.Duration `json:"p95_latency"`
-	P99Latency      time.Duration `json:"p99_latency"`
-	RequestsPerSec  float64       `json:"requests_per_second"`
-	ErrorRate       float64       `json:"error_rate"`
-	TotalDuration   time.Duration `json:"total_duration"`
+	TestName       string        `json:"test_name"`
+	Timestamp      time.Time     `json:"timestamp"`
+	TotalRequests  int           `json:"total_requests"`
+	SuccessfulReqs int           `json:"successful_requests"`
+	FailedRequests int           `json:"failed_requests"`
+	AverageLatency time.Duration `json:"average_latency"`
+	MinLatency     time.Duration `json:"min_latency"`
+	MaxLatency     time.Duration `json:"max_latency"`
+	P95Latency     time.Duration `json:"p95_latency"`
+	P99Latency     time.Duration `json:"p99_latency"`
+	RequestsPerSec float64       `json:"requests_per_second"`
+	ErrorRate      float64       `json:"error_rate"`
+	TotalDuration  time.Duration `json:"total_duration"`
 }
 
 // BenchmarkConfig holds configuration for benchmark tests
@@ -41,12 +41,12 @@ type BenchmarkConfig struct {
 
 // EndpointConfig defines an endpoint to benchmark
 type EndpointConfig struct {
-	Name     string            `json:"name"`
-	Method   string            `json:"method"`
-	Path     string            `json:"path"`
-	Headers  map[string]string `json:"headers"`
-	Body     interface{}       `json:"body,omitempty"`
-	Weight   int               `json:"weight"` // Relative frequency of this endpoint
+	Name    string            `json:"name"`
+	Method  string            `json:"method"`
+	Path    string            `json:"path"`
+	Headers map[string]string `json:"headers"`
+	Body    interface{}       `json:"body,omitempty"`
+	Weight  int               `json:"weight"` // Relative frequency of this endpoint
 }
 
 // RequestResult holds the result of a single HTTP request
@@ -83,9 +83,9 @@ func (bs *BenchmarkSuite) RunLoadTest(ctx context.Context, testName string) (*Be
 
 	startTime := time.Now()
 	results := make(chan RequestResult, bs.config.ConcurrentUsers*bs.config.RequestsPerUser)
-	
+
 	var wg sync.WaitGroup
-	
+
 	// Start concurrent workers
 	for i := 0; i < bs.config.ConcurrentUsers; i++ {
 		wg.Add(1)
@@ -108,7 +108,7 @@ func (bs *BenchmarkSuite) RunLoadTest(ctx context.Context, testName string) (*Be
 	}
 
 	endTime := time.Now()
-	
+
 	// Calculate statistics
 	return bs.calculateStats(testName, allResults, startTime, endTime), nil
 }
@@ -123,7 +123,7 @@ func (bs *BenchmarkSuite) runUserSession(ctx context.Context, userID int, result
 			endpoint := bs.selectEndpoint()
 			result := bs.makeRequest(ctx, endpoint)
 			results <- result
-			
+
 			// Small delay between requests to simulate real user behavior
 			time.Sleep(time.Millisecond * 100)
 		}
@@ -139,7 +139,7 @@ func (bs *BenchmarkSuite) selectEndpoint() EndpointConfig {
 			Path:   "/api/articles",
 		}
 	}
-	
+
 	// Simple round-robin for now, could be enhanced with weighted selection
 	return bs.config.Endpoints[0]
 }
@@ -147,7 +147,7 @@ func (bs *BenchmarkSuite) selectEndpoint() EndpointConfig {
 // makeRequest executes a single HTTP request
 func (bs *BenchmarkSuite) makeRequest(ctx context.Context, endpoint EndpointConfig) RequestResult {
 	startTime := time.Now()
-	
+
 	var body io.Reader
 	if endpoint.Body != nil {
 		jsonBody, err := json.Marshal(endpoint.Body)
@@ -177,14 +177,14 @@ func (bs *BenchmarkSuite) makeRequest(ctx context.Context, endpoint EndpointConf
 	for key, value := range endpoint.Headers {
 		req.Header.Set(key, value)
 	}
-	
+
 	if endpoint.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := bs.client.Do(req)
 	latency := time.Since(startTime)
-	
+
 	if err != nil {
 		return RequestResult{
 			Success:   false,
@@ -199,7 +199,7 @@ func (bs *BenchmarkSuite) makeRequest(ctx context.Context, endpoint EndpointConf
 	_, _ = io.ReadAll(resp.Body)
 
 	success := resp.StatusCode >= 200 && resp.StatusCode < 400
-	
+
 	return RequestResult{
 		Success:   success,
 		Latency:   latency,
@@ -245,19 +245,19 @@ func (bs *BenchmarkSuite) calculateStats(testName string, results []RequestResul
 	requestsPerSec := float64(totalRequests) / totalDuration.Seconds()
 
 	result := &BenchmarkResult{
-		TestName:        testName,
-		Timestamp:       startTime,
-		TotalRequests:   totalRequests,
-		SuccessfulReqs:  successfulReqs,
-		FailedRequests:  failedRequests,
-		AverageLatency:  totalLatency / time.Duration(totalRequests),
-		MinLatency:      latencies[0],
-		MaxLatency:      latencies[len(latencies)-1],
-		P95Latency:      latencies[int(float64(len(latencies))*0.95)],
-		P99Latency:      latencies[int(float64(len(latencies))*0.99)],
-		RequestsPerSec:  requestsPerSec,
-		ErrorRate:       errorRate,
-		TotalDuration:   totalDuration,
+		TestName:       testName,
+		Timestamp:      startTime,
+		TotalRequests:  totalRequests,
+		SuccessfulReqs: successfulReqs,
+		FailedRequests: failedRequests,
+		AverageLatency: totalLatency / time.Duration(totalRequests),
+		MinLatency:     latencies[0],
+		MaxLatency:     latencies[len(latencies)-1],
+		P95Latency:     latencies[int(float64(len(latencies))*0.95)],
+		P99Latency:     latencies[int(float64(len(latencies))*0.99)],
+		RequestsPerSec: requestsPerSec,
+		ErrorRate:      errorRate,
+		TotalDuration:  totalDuration,
 	}
 
 	return result
