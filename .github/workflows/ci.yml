@@ -43,7 +43,7 @@ jobs:
 
       - name: Install golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0
 
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m
@@ -104,12 +104,16 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install golang-migrate
+        run: |
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
+          sudo mv migrate /usr/local/bin/
+
       - name: Run database migrations
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
         run: |
-          # Add migration commands here if you have them
-          echo "Database migrations would run here"
+          migrate -path ./migrations -database "$DATABASE_URL" up
 
       - name: Run unit tests
         env:
@@ -207,7 +211,8 @@ jobs:
       - name: Run Newman tests
         run: |
           newman run postman/unified_backend_tests.json \
-            --environment postman/test-environment.json \
+            --environment postman/newman_environment.json \
+            --globals postman/NewsBalancer.postman_globals.json \
             --reporters cli,json \
             --reporter-json-export newman-results.json
 
