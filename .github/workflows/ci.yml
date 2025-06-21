@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, frontend-rewrite-v3 ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, frontend-rewrite-v3 ]
   schedule:
     # Run tests daily at 2 AM UTC
     - cron: '0 2 * * *'
