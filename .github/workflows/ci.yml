@@ -17,7 +17,6 @@ permissions:
 env:
   GO_VERSION: '1.23'
   NODE_VERSION: '18'
-  POSTGRES_VERSION: '15'
 
 jobs:
   # Code quality and linting
@@ -69,20 +68,6 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: newsbalancer_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -104,20 +89,10 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Install golang-migrate
-        run: |
-          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/migrate.linux-amd64.tar.gz | tar xvz
-          sudo mv migrate /usr/local/bin/
 
-      - name: Run database migrations
-        env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
-        run: |
-          migrate -path ./migrations -database "$DATABASE_URL" up
 
       - name: Run unit tests
         env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
           NO_AUTO_ANALYZE: "true"
           NO_DOCKER: "true"
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -138,20 +113,6 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: [lint, test]
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: newsbalancer_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -194,7 +155,6 @@ jobs:
 
       - name: Start application
         env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
           NO_AUTO_ANALYZE: "true"
           PORT: 8080
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
@@ -326,20 +286,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     needs: [integration]
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: newsbalancer_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -361,7 +307,6 @@ jobs:
 
       - name: Start application
         env:
-          DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
           NO_AUTO_ANALYZE: "true"
           PORT: 8080
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
