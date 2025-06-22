@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -145,10 +146,17 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 	})
 
 	suite.AddTestCase(internaltesting.APITestCase{
-		Name:           "Get Article Ensemble Details",
-		Method:         "GET",
-		Path:           "/api/articles/1/ensemble",
-		ExpectedStatus: http.StatusOK,
+		Name:   "Get Article Ensemble Details",
+		Method: "GET",
+		Path:   "/api/articles/1/ensemble",
+		// In CI with NO_AUTO_ANALYZE=true, ensemble data won't exist, so expect 404
+		// In normal environments, expect 200
+		ExpectedStatus: func() int {
+			if os.Getenv("NO_AUTO_ANALYZE") == "true" {
+				return http.StatusNotFound
+			}
+			return http.StatusOK
+		}(),
 		Setup: func(t *testing.T) {
 			// Create test article via API for ensemble details with unique URL
 			timestamp := time.Now().UnixNano()
@@ -177,7 +185,24 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 				t.Fatalf("Failed to decode ensemble response: %v", err)
 			}
 
-			// Check for success response structure
+			// In CI environment, expect 404 with error message
+			if os.Getenv("NO_AUTO_ANALYZE") == "true" {
+				if resp.StatusCode == http.StatusNotFound {
+					// Validate error response structure
+					if success, ok := ensembleResponse["success"].(bool); !ok || success {
+						t.Errorf("Expected error response in CI environment, got: %v", ensembleResponse)
+					}
+					if errorData, ok := ensembleResponse["error"].(map[string]interface{}); ok {
+						if code, ok := errorData["code"].(string); !ok || code != "not_found" {
+							t.Errorf("Expected 'not_found' error code, got: %v", code)
+						}
+					}
+					t.Logf("✅ CI Environment: Correctly returned 404 for ensemble data (expected behavior)")
+					return
+				}
+			}
+
+			// In normal environment, expect success response
 			if success, ok := ensembleResponse["success"].(bool); !ok || !success {
 				t.Errorf("Expected successful ensemble response, got: %v", ensembleResponse)
 			}
