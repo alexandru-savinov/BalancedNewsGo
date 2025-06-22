@@ -14,11 +14,14 @@ import (
 
 // TestAPIIntegration demonstrates API testing with test server management
 func TestAPIIntegration(t *testing.T) {
+	t.Logf("🔍 DEBUG: TestAPIIntegration starting")
+
 	// Set test timeout to prevent CI/CD hanging
 	if deadline, ok := t.Deadline(); ok {
 		t.Logf("Test deadline: %v", deadline)
 	}
 
+	t.Logf("🔍 DEBUG: Setting up test database")
 	// Setup test database
 	dbConfig := internaltesting.DatabaseTestConfig{
 		UseSQLite:      true,
@@ -35,18 +38,25 @@ func TestAPIIntegration(t *testing.T) {
 	serverConfig.Environment["DB_CONNECTION"] = testDB.GetConnectionString()
 	serverConfig.Environment["TEST_MODE"] = "true"
 
+	t.Logf("🔍 DEBUG: Creating test server manager")
 	serverManager := internaltesting.NewTestServerManager(serverConfig)
+
+	t.Logf("🔍 DEBUG: Starting test server")
 	if err := serverManager.Start(t); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
+	t.Logf("🔍 DEBUG: Test server started successfully")
 
 	// Ensure explicit cleanup for CI/CD environments
 	defer func() {
+		t.Logf("🔍 DEBUG: Starting server cleanup")
 		if err := serverManager.Stop(); err != nil {
 			t.Logf("Warning: Failed to stop server cleanly: %v", err)
 		}
+		t.Logf("🔍 DEBUG: Server cleanup completed")
 		// Give a moment for cleanup to complete
 		time.Sleep(100 * time.Millisecond)
+		t.Logf("🔍 DEBUG: Final cleanup sleep completed")
 	}()
 
 	// Create API test suite
@@ -248,14 +258,18 @@ func TestAPIIntegration(t *testing.T) {
 	})
 
 	// Run all test cases
+	t.Logf("🔍 DEBUG: About to run test suite with %d test cases", len(suite.TestCases))
 	suite.RunTests(t)
+	t.Logf("🔍 DEBUG: Test suite completed successfully")
 }
 
 // TestAPIPerformance demonstrates performance testing
 func TestAPIPerformance(t *testing.T) {
+	t.Logf("🔍 DEBUG: TestAPIPerformance starting")
 	if testing.Short() {
 		t.Skip("Skipping performance test in short mode")
 	}
+	t.Logf("🔍 DEBUG: Setting up performance test server")
 	// Setup test server
 	serverConfig := internaltesting.DefaultTestServerConfig()
 	serverManager := internaltesting.NewTestServerManager(serverConfig)

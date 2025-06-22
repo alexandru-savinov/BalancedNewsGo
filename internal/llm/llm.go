@@ -190,6 +190,13 @@ func NewLLMClient(dbConn *sqlx.DB) (*LLMClient, error) {
 	restyClient := resty.New()
 	restyClient.SetTimeout(defaultLLMTimeout)
 
+	// Disable keep-alive in test environments to prevent hanging processes
+	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
+		restyClient.SetTransport(&http.Transport{
+			DisableKeepAlives: true,
+		})
+	}
+
 	// Initialize service with OpenRouter configuration
 	service := NewHTTPLLMService(restyClient, primaryKey, backupKey, baseURL)
 

@@ -35,12 +35,31 @@ func DefaultTestServerConfig() TestServerConfig {
 		"LLM_API_KEY_SECONDARY": "test-secondary-key", // Required for LLM client initialization
 		"LLM_BASE_URL":          "https://openrouter.ai/api/v1/chat/completions",
 	}
+	// Use a random port to avoid conflicts with other test runs
+	port := 8080
+	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
+		// Use a different port range for tests to avoid conflicts
+		port = 8090 + (os.Getpid() % 10) // Use PID to get a unique port
+	}
+
+	// Add PORT environment variable to the test environment
+	env["PORT"] = fmt.Sprintf("%d", port)
+
+	// Use compiled binary in test environments to avoid file locking issues
+	serverCommand := []string{"go", "run", "./cmd/server"}
+	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
+		// Check if test-server.exe exists, use it to avoid build conflicts
+		if _, err := os.Stat("test-server.exe"); err == nil {
+			serverCommand = []string{"./test-server.exe"}
+		}
+	}
+
 	return TestServerConfig{
-		Port:            8080,
+		Port:            port,
 		StartupTimeout:  30 * time.Second, // Reduced timeout for faster CI
 		ShutdownTimeout: 5 * time.Second,  // Reduced shutdown timeout
 		HealthEndpoint:  "/healthz",
-		ServerCommand:   []string{"go", "run", "./cmd/server"},
+		ServerCommand:   serverCommand,
 		Environment:     env,
 	}
 }
@@ -143,7 +162,8 @@ func (tsm *TestServerManager) Stop() error {
 			tsm.cmd.Process.Kill()
 			return fmt.Errorf("server shutdown timeout")
 		case err := <-done:
-			if err != nil && err.Error() != "signal: killed" {
+			// Ignore expected exit codes from interrupted processes
+			if err != nil && err.Error() != "signal: killed" && err.Error() != "exit status 1" {
 				return fmt.Errorf("server process error: %w", err)
 			}
 		}
