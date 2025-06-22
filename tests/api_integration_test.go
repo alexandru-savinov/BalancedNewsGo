@@ -84,9 +84,9 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 		Body: map[string]interface{}{
 			"force": true,
 		},
-		// Expect 503 in test environments without valid LLM API keys
-		// In production with working LLM, this would return 200
-		ExpectedStatus: http.StatusServiceUnavailable,
+		// Expect 200 in CI with NO_AUTO_ANALYZE=true (skips LLM analysis)
+		// Expect 503 in local environments without valid API keys
+		ExpectedStatus: http.StatusOK,
 		Setup: func(t *testing.T) {
 			// Create test article via API with unique URL
 			timestamp := time.Now().UnixNano()
@@ -115,7 +115,17 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 				t.Fatalf("Failed to decode reanalyze response: %v", err)
 			}
 
-			// Expect 503 with proper error response structure in test environments
+			// Expect 200 in CI with NO_AUTO_ANALYZE=true (skips LLM analysis but returns success)
+			if resp.StatusCode == http.StatusOK {
+				// Validate success response structure
+				if success, ok := reanalyzeResponse["success"].(bool); !ok || !success {
+					t.Errorf("Expected successful reanalysis response, got: %v", reanalyzeResponse)
+				}
+				t.Logf("✅ CI Environment: Correctly returned 200 for reanalysis with NO_AUTO_ANALYZE=true (expected behavior)")
+				return
+			}
+
+			// Handle 503 case for local environments without API keys
 			if resp.StatusCode == http.StatusServiceUnavailable {
 				// Validate error response structure
 				if success, ok := reanalyzeResponse["success"].(bool); !ok || success {
@@ -126,14 +136,11 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 						t.Errorf("Expected 'llm_service_error' error code, got: %v", code)
 					}
 				}
-				t.Logf("✅ Test Environment: Correctly returned 503 for LLM service unavailable (expected behavior without valid API keys)")
+				t.Logf("✅ Local Environment: Correctly returned 503 for LLM service unavailable (expected behavior without valid API keys)")
 				return
 			}
 
-			// If somehow we get 200 (with working LLM), validate success response
-			if success, ok := reanalyzeResponse["success"].(bool); !ok || !success {
-				t.Errorf("Expected successful reanalysis, got response: %v", reanalyzeResponse)
-			}
+			t.Errorf("Unexpected status code: %d", resp.StatusCode)
 		},
 	})
 
