@@ -115,6 +115,31 @@ func TestManualCleanup(t *testing.T) {
 	assert.NotNil(t, pm.GetProgress(recentID), "Recent in-progress should remain")
 }
 
+// TestProgressManagerStop tests the Stop functionality
+func TestProgressManagerStop(t *testing.T) {
+	pm := NewProgressManager(time.Millisecond * 10) // Very short interval for testing
+
+	// Add some progress
+	pm.SetProgress(1, &models.ProgressState{
+		Step:        "Test",
+		Status:      "InProgress",
+		Percent:     50,
+		LastUpdated: time.Now().Unix(),
+	})
+
+	// Verify progress exists
+	assert.NotNil(t, pm.GetProgress(1), "Progress should exist before stop")
+
+	// Stop the manager
+	pm.Stop()
+
+	// Verify we can still access existing progress after stop
+	assert.NotNil(t, pm.GetProgress(1), "Progress should still be accessible after stop")
+
+	// Calling Stop again should be safe
+	pm.Stop()
+}
+
 func TestProgressManager_UpdateProgressWithLLMError(t *testing.T) {
 	pm := NewProgressManager(time.Minute)
 

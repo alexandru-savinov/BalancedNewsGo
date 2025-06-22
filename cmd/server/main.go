@@ -293,8 +293,12 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	llmAPICache := llm.NewCache() // This is the cache for the LLM service, distinct from the API cache.
 	calculator := &llm.DefaultScoreCalculator{}
 	// ProgressManager handles progress tracking and cleanup for LLM scoring jobs.
-	// Using a 1-minute cleanup interval as a reasonable default.
-	progressManager := llm.NewProgressManager(time.Minute)
+	// Use shorter cleanup interval in test environments for faster cleanup
+	cleanupInterval := time.Minute
+	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
+		cleanupInterval = time.Second * 5 // Much shorter for tests
+	}
+	progressManager := llm.NewProgressManager(cleanupInterval)
 	scoreManager := llm.NewScoreManager(dbConn, llmAPICache, calculator, progressManager)
 
 	// SimpleCache provides in-memory caching for API responses (articles, summaries, etc).

@@ -45,6 +45,8 @@ func TestAPIIntegration(t *testing.T) {
 		if err := serverManager.Stop(); err != nil {
 			t.Logf("Warning: Failed to stop server cleanly: %v", err)
 		}
+		// Give a moment for cleanup to complete
+		time.Sleep(100 * time.Millisecond)
 	}()
 
 	// Create API test suite
@@ -266,6 +268,8 @@ func TestAPIPerformance(t *testing.T) {
 		if err := serverManager.Stop(); err != nil {
 			t.Logf("Warning: Failed to stop server cleanly: %v", err)
 		}
+		// Give a moment for cleanup to complete
+		time.Sleep(100 * time.Millisecond)
 	}()
 	// Performance test configuration
 	perfConfig := internaltesting.PerformanceTestConfig{

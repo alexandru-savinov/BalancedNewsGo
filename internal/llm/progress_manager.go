@@ -28,6 +28,8 @@ type ProgressManager struct {
 	progressMap     map[int64]*models.ProgressState
 	progressMapLock sync.RWMutex
 	cleanupInterval time.Duration
+	stopChan        chan struct{}
+	stopped         bool
 }
 
 // NewProgressManager creates a progress manager with cleanup
@@ -35,6 +37,8 @@ func NewProgressManager(cleanupInterval time.Duration) *ProgressManager {
 	pm := &ProgressManager{
 		progressMap:     make(map[int64]*models.ProgressState),
 		cleanupInterval: cleanupInterval,
+		stopChan:        make(chan struct{}),
+		stopped:         false,
 	}
 	go pm.startCleanupRoutine()
 	return pm
@@ -101,12 +105,29 @@ func (pm *ProgressManager) GetProgress(articleID int64) *models.ProgressState {
 	return pm.progressMap[articleID]
 }
 
+// Stop gracefully shuts down the progress manager
+func (pm *ProgressManager) Stop() {
+	pm.progressMapLock.Lock()
+	defer pm.progressMapLock.Unlock()
+
+	if !pm.stopped {
+		pm.stopped = true
+		close(pm.stopChan)
+	}
+}
+
 // startCleanupRoutine periodically removes stale entries
 func (pm *ProgressManager) startCleanupRoutine() {
 	ticker := time.NewTicker(pm.cleanupInterval)
 	defer ticker.Stop()
-	for range ticker.C {
-		pm.cleanup()
+
+	for {
+		select {
+		case <-ticker.C:
+			pm.cleanup()
+		case <-pm.stopChan:
+			return // Exit the goroutine when stop is signaled
+		}
 	}
 }
 
