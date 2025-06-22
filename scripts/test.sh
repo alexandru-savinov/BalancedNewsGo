@@ -134,7 +134,8 @@ run_all_tests_suite() {
     echo "Server log: $server_log" >> "$all_log_file"
     echo "" >> "$all_log_file"
 
-    echo "===== Running Unified Backend Tests (with retries) =====" >> "$all_log_file"    echo "Running Newman: postman/unified_backend_tests.json with environment postman/newman_environment.json" | tee -a "$all_log_file"
+    echo "===== Running Unified Backend Tests (with retries) =====" >> "$all_log_file"
+    echo "Running Newman: postman/unified_backend_tests.json with environment postman/newman_environment.json" | tee -a "$all_log_file"
     # Retry logic for transient failures
     attempt=1
     max_attempts=3

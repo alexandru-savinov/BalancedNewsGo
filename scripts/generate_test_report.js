@@ -140,7 +140,7 @@ function generateHtmlReport(results) {
 
 // Main function
 function main() {
-  const testResultsDir = path.join(__dirname, 'test-results');
+  const testResultsDir = path.join(__dirname, '..', 'test-results');
   const outputFile = path.join(testResultsDir, 'test_report.html');
 
   // Get all JSON files in the test-results directory
