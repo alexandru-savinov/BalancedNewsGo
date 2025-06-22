@@ -94,6 +94,7 @@ func (tsm *TestServerManager) Start(t *testing.T) error {
 
 	// Setup server command
 	tsm.cmd = exec.CommandContext(ctx, tsm.config.ServerCommand[0], tsm.config.ServerCommand[1:]...)
+	tsm.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // isolate process group
 
 	// Set working directory to project root
 	// Try to detect if we're in tests directory and go up, otherwise use current directory
@@ -140,10 +141,11 @@ func (tsm *TestServerManager) Stop() error {
 		tsm.cancel()
 	}
 	if tsm.cmd != nil && tsm.cmd.Process != nil {
-		// Try graceful shutdown first
-		if err := tsm.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		// Try graceful shutdown of the entire process group first
+		pgid, _ := syscall.Getpgid(tsm.cmd.Process.Pid)
+		if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
 			// Force kill if graceful shutdown fails
-			if killErr := tsm.cmd.Process.Kill(); killErr != nil {
+			if killErr := syscall.Kill(-pgid, syscall.SIGKILL); killErr != nil {
 				return fmt.Errorf("failed to kill server process: %w", killErr)
 			}
 		}
@@ -159,7 +161,8 @@ func (tsm *TestServerManager) Stop() error {
 
 		select {
 		case <-ctx.Done():
-			tsm.cmd.Process.Kill()
+			pgid, _ := syscall.Getpgid(tsm.cmd.Process.Pid)
+			syscall.Kill(-pgid, syscall.SIGKILL)
 			return fmt.Errorf("server shutdown timeout")
 		case err := <-done:
 			// Ignore expected exit codes from interrupted processes
