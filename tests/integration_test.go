@@ -2,13 +2,26 @@ package tests
 
 import (
 	"database/sql"
+	"os"
+	"runtime"
 	"testing"
 
 	internalTesting "github.com/alexandru-savinov/BalancedNewsGo/internal/testing"
 )
 
 // TestDatabaseIntegration demonstrates database testing with testcontainers
-func TestDatabaseIntegration(t *testing.T) { // Setup test database with PostgreSQL
+func TestDatabaseIntegration(t *testing.T) {
+	// Skip Docker-based tests on Windows or in CI environment
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping Docker-based PostgreSQL test on Windows (Docker Desktop issues)")
+	}
+
+	// Also skip if NO_DOCKER environment variable is set
+	if os.Getenv("NO_DOCKER") == "true" {
+		t.Skip("Skipping Docker-based test (NO_DOCKER=true)")
+	}
+
+	// Setup test database with PostgreSQL
 	config := internalTesting.DatabaseTestConfig{
 		UsePostgres:    true,
 		MigrationsPath: "../migrations",

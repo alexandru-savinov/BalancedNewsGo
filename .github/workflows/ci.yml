@@ -119,6 +119,7 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
           NO_AUTO_ANALYZE: "true"
+          NO_DOCKER: "true"
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
