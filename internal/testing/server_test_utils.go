@@ -109,9 +109,16 @@ func (tsm *TestServerManager) Start(t *testing.T) error {
 		tsm.cmd.Env = append(tsm.cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
-	// Capture server output for debugging
-	tsm.cmd.Stdout = os.Stdout
-	tsm.cmd.Stderr = os.Stderr
+	// Capture server output for debugging - use separate pipes to prevent I/O timeout
+	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" || os.Getenv("CI") == "true" {
+		// In test environments, discard output to prevent I/O timeout
+		tsm.cmd.Stdout = nil
+		tsm.cmd.Stderr = nil
+	} else {
+		// In normal environments, show output
+		tsm.cmd.Stdout = os.Stdout
+		tsm.cmd.Stderr = os.Stderr
+	}
 
 	// Start the server
 	if err := tsm.cmd.Start(); err != nil {

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -762,10 +763,17 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Set connection properties
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Hour)
+	// Set connection properties - use shorter timeouts in test environments
+	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" || os.Getenv("CI") == "true" {
+		db.SetMaxOpenConns(2)
+		db.SetMaxIdleConns(1)
+		db.SetConnMaxLifetime(time.Second * 30) // Much shorter for tests
+		db.SetConnMaxIdleTime(time.Second * 10) // Force idle connections to close quickly
+	} else {
+		db.SetMaxOpenConns(10)
+		db.SetMaxIdleConns(5)
+		db.SetConnMaxLifetime(time.Hour)
+	}
 	// Enable WAL mode for improved concurrency
 	_, err = db.Exec("PRAGMA journal_mode=WAL")
 	if err != nil {

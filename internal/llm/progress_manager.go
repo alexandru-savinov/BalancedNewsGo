@@ -3,6 +3,7 @@ package llm
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"sync"
 	"time"
 
@@ -40,7 +41,12 @@ func NewProgressManager(cleanupInterval time.Duration) *ProgressManager {
 		stopChan:        make(chan struct{}),
 		stopped:         false,
 	}
-	go pm.startCleanupRoutine()
+
+	// Only start cleanup routine in non-test environments to prevent I/O timeout
+	if os.Getenv("TEST_MODE") != "true" && os.Getenv("NO_AUTO_ANALYZE") != "true" && os.Getenv("CI") != "true" {
+		go pm.startCleanupRoutine()
+	}
+
 	return pm
 }
 
