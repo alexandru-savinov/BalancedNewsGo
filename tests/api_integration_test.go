@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -49,14 +50,29 @@ func TestAPIIntegration(t *testing.T) {
 
 	// Ensure explicit cleanup for CI/CD environments
 	defer func() {
-		t.Logf("🔍 DEBUG: Starting server cleanup")
+		t.Logf("🔍 DEBUG: Starting comprehensive cleanup")
+
+		// Stop the server first
 		if err := serverManager.Stop(); err != nil {
 			t.Logf("Warning: Failed to stop server cleanly: %v", err)
 		}
-		t.Logf("🔍 DEBUG: Server cleanup completed")
-		// Give a moment for cleanup to complete
-		time.Sleep(100 * time.Millisecond)
-		t.Logf("🔍 DEBUG: Final cleanup sleep completed")
+		t.Logf("🔍 DEBUG: Server stopped")
+
+		// Database cleanup is handled by the server manager
+		t.Logf("🔍 DEBUG: Database cleanup handled by server manager")
+
+		// Force garbage collection to clean up any remaining resources
+		runtime.GC()
+		runtime.GC() // Call twice to ensure cleanup
+		t.Logf("🔍 DEBUG: Garbage collection completed")
+
+		// Give more time for cleanup in CI environments
+		if os.Getenv("CI") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
+			time.Sleep(500 * time.Millisecond)
+		} else {
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Logf("🔍 DEBUG: Final cleanup completed")
 	}()
 
 	// Create API test suite
@@ -279,9 +295,15 @@ func TestAPIPerformance(t *testing.T) {
 
 	// Ensure explicit cleanup for CI/CD environments
 	defer func() {
+		t.Logf("🔍 DEBUG: Starting performance test cleanup")
 		if err := serverManager.Stop(); err != nil {
 			t.Logf("Warning: Failed to stop server cleanly: %v", err)
 		}
+
+		// Force garbage collection
+		runtime.GC()
+		t.Logf("🔍 DEBUG: Performance test cleanup completed")
+
 		// Give a moment for cleanup to complete
 		time.Sleep(100 * time.Millisecond)
 	}()
