@@ -33,18 +33,18 @@ jobs:
     - name: Run Go unit and integration tests (NO_AUTO_ANALYZE=true)
       env:
         NO_AUTO_ANALYZE: "true"
-        LLM_API_KEY: "test-key-ci"
-        LLM_API_KEY_SECONDARY: "test-secondary-key-ci"
-        LLM_BASE_URL: "https://openrouter.ai/api/v1/chat/completions"
+        LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY }}
+        LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
       run: |
         go test -v -coverprofile=coverage.out ./...
 
     - name: Run full API/integration test suite (scripts/test.sh all)
       if: runner.os == 'Linux'
       env:
-        LLM_API_KEY: "test-key-ci"
-        LLM_API_KEY_SECONDARY: "test-secondary-key-ci"
-        LLM_BASE_URL: "https://openrouter.ai/api/v1/chat/completions"
+        LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY }}
+        LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
       run: |
         chmod +x scripts/test.sh
         retries=0

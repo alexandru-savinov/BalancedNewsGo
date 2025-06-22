@@ -13,6 +13,28 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// Duration is a custom type that can unmarshal from JSON string
+type Duration time.Duration
+
+// UnmarshalJSON implements json.Unmarshaler for Duration
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	duration, err := time.ParseDuration(s)
+	if err != nil {
+		return err
+	}
+	*d = Duration(duration)
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler for Duration
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
+}
+
 // BenchmarkResult represents the results of a performance benchmark
 type BenchmarkResult struct {
 	TestName       string        `json:"test_name"`
@@ -32,11 +54,11 @@ type BenchmarkResult struct {
 
 // BenchmarkConfig holds configuration for benchmark tests
 type BenchmarkConfig struct {
-	BaseURL         string
-	ConcurrentUsers int
-	RequestsPerUser int
-	TestDuration    time.Duration
-	Endpoints       []EndpointConfig
+	BaseURL         string           `json:"base_url"`
+	ConcurrentUsers int              `json:"concurrent_users"`
+	RequestsPerUser int              `json:"requests_per_user"`
+	TestDuration    Duration         `json:"test_duration"`
+	Endpoints       []EndpointConfig `json:"endpoints"`
 }
 
 // EndpointConfig defines an endpoint to benchmark

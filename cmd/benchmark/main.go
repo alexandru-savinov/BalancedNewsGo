@@ -106,7 +106,7 @@ func loadConfig(configFile, baseURL string, users, requests int, duration time.D
 		BaseURL:         baseURL,
 		ConcurrentUsers: users,
 		RequestsPerUser: requests,
-		TestDuration:    duration,
+		TestDuration:    benchmark.Duration(duration),
 		Endpoints: []benchmark.EndpointConfig{
 			{
 				Name:    "list-articles",
