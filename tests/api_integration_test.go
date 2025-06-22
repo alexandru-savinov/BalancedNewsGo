@@ -277,6 +277,11 @@ func TestAPIIntegration(t *testing.T) {
 	t.Logf("🔍 DEBUG: About to run test suite with %d test cases", len(suite.TestCases))
 	suite.RunTests(t)
 	t.Logf("🔍 DEBUG: Test suite completed successfully")
+
+	// Force cleanup of HTTP connections
+	t.Logf("🔍 DEBUG: Cleaning up HTTP connections")
+	suite.Cleanup()
+	t.Logf("🔍 DEBUG: HTTP connections cleaned up")
 }
 
 // TestAPIPerformance demonstrates performance testing

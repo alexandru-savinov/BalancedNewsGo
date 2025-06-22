@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -35,10 +36,21 @@ type APITestSuite struct {
 
 // NewAPITestSuite creates a new API test suite
 func NewAPITestSuite(baseURL string) *APITestSuite {
+	// Create HTTP client with disabled keep-alive for test environments
+	transport := &http.Transport{}
+
+	// Disable keep-alive in test environments to prevent hanging processes
+	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" || os.Getenv("CI") == "true" {
+		transport.DisableKeepAlives = true
+		transport.MaxIdleConnsPerHost = 0
+		transport.IdleConnTimeout = 1 * time.Second
+	}
+
 	return &APITestSuite{
 		BaseURL: baseURL,
 		Client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 		},
 		TestCases: make([]APITestCase, 0),
 	}
@@ -47,6 +59,15 @@ func NewAPITestSuite(baseURL string) *APITestSuite {
 // AddTestCase adds a test case to the suite
 func (suite *APITestSuite) AddTestCase(testCase APITestCase) {
 	suite.TestCases = append(suite.TestCases, testCase)
+}
+
+// Cleanup forces cleanup of HTTP connections to prevent I/O timeouts
+func (suite *APITestSuite) Cleanup() {
+	if suite.Client != nil && suite.Client.Transport != nil {
+		if transport, ok := suite.Client.Transport.(*http.Transport); ok {
+			transport.CloseIdleConnections()
+		}
+	}
 }
 
 // RunTests executes all test cases in the suite
