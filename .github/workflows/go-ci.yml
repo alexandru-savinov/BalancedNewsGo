@@ -31,12 +31,20 @@ jobs:
         sqlite3 "$DATABASE_URL" '.schema'
 
     - name: Run Go unit and integration tests (NO_AUTO_ANALYZE=true)
+      env:
+        NO_AUTO_ANALYZE: "true"
+        LLM_API_KEY: "test-key-ci"
+        LLM_API_KEY_SECONDARY: "test-secondary-key-ci"
+        LLM_BASE_URL: "https://openrouter.ai/api/v1/chat/completions"
       run: |
-        export NO_AUTO_ANALYZE=true
         go test -v -coverprofile=coverage.out ./...
 
     - name: Run full API/integration test suite (scripts/test.sh all)
       if: runner.os == 'Linux'
+      env:
+        LLM_API_KEY: "test-key-ci"
+        LLM_API_KEY_SECONDARY: "test-secondary-key-ci"
+        LLM_BASE_URL: "https://openrouter.ai/api/v1/chat/completions"
       run: |
         chmod +x scripts/test.sh
         retries=0

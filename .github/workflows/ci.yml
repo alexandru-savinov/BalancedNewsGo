@@ -119,6 +119,9 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
           NO_AUTO_ANALYZE: "true"
+          LLM_API_KEY: "test-key-ci"
+          LLM_API_KEY_SECONDARY: "test-secondary-key-ci"
+          LLM_BASE_URL: "https://openrouter.ai/api/v1/chat/completions"
         run: |
           go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
@@ -193,6 +196,9 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
           NO_AUTO_ANALYZE: "true"
           PORT: 8080
+          LLM_API_KEY: "test-key-ci"
+          LLM_API_KEY_SECONDARY: "test-secondary-key-ci"
+          LLM_BASE_URL: "https://openrouter.ai/api/v1/chat/completions"
         run: |
           ./newsbalancer &
           APP_PID=$!
@@ -296,7 +302,11 @@ jobs:
 
       - name: Test Docker image
         run: |
-          docker run --rm -d --name newsbalancer-test -p 8080:8080 newsbalancer:test
+          docker run --rm -d --name newsbalancer-test -p 8080:8080 \
+            -e LLM_API_KEY="test-key-ci" \
+            -e LLM_API_KEY_SECONDARY="test-secondary-key-ci" \
+            -e LLM_BASE_URL="https://openrouter.ai/api/v1/chat/completions" \
+            newsbalancer:test
           sleep 10
           
           # Basic health check
@@ -353,6 +363,9 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/newsbalancer_test?sslmode=disable
           NO_AUTO_ANALYZE: "true"
           PORT: 8080
+          LLM_API_KEY: "test-key-ci"
+          LLM_API_KEY_SECONDARY: "test-secondary-key-ci"
+          LLM_BASE_URL: "https://openrouter.ai/api/v1/chat/completions"
         run: |
           ./newsbalancer &
           APP_PID=$!

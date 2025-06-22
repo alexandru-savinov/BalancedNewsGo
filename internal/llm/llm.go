@@ -608,8 +608,8 @@ func (c *LLMClient) ReanalyzeArticle(ctx context.Context, articleID int64, score
 		})
 	}
 	_, updateErr := tx.ExecContext(ctx,
-		"UPDATE articles SET composite_score = ?, confidence = ?, score_source = 'llm', status = 'processed', last_analyzed_at = ? WHERE id = ?",
-		finalScore, confidence, time.Now().UTC(), articleID)
+		"UPDATE articles SET composite_score = ?, confidence = ?, score_source = 'llm', status = 'processed' WHERE id = ?",
+		finalScore, confidence, articleID)
 	if updateErr != nil {
 		err = fmt.Errorf("failed to update article score and status for article %d: %w", articleID, updateErr)
 		if scoreManager != nil {

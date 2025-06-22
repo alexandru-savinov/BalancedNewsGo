@@ -26,11 +26,14 @@ func DefaultTestServerConfig() TestServerConfig {
 	// Use OS-appropriate temp directory
 	logPath := os.TempDir() + "/test_server.log"
 	env := map[string]string{
-		"TEST_MODE":     "true",
-		"LOG_FILE_PATH": logPath,
-		"GIN_MODE":      "test",
-		"DB_CONNECTION": ":memory:", // Use in-memory SQLite for tests
-		"PORT":          "8080",
+		"TEST_MODE":             "true",
+		"LOG_FILE_PATH":         logPath,
+		"GIN_MODE":              "test",
+		"DB_CONNECTION":         ":memory:", // Use in-memory SQLite for tests
+		"PORT":                  "8080",
+		"LLM_API_KEY":           "test-key",           // Required for LLM client initialization
+		"LLM_API_KEY_SECONDARY": "test-secondary-key", // Required for LLM client initialization
+		"LLM_BASE_URL":          "https://openrouter.ai/api/v1/chat/completions",
 	}
 	return TestServerConfig{
 		Port:            8080,

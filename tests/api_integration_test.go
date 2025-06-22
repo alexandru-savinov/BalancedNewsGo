@@ -2,9 +2,11 @@ package tests
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	internaltesting "github.com/alexandru-savinov/BalancedNewsGo/internal/testing"
 )
@@ -84,11 +86,12 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 		},
 		ExpectedStatus: http.StatusOK,
 		Setup: func(t *testing.T) {
-			// Create test article via API
+			// Create test article via API with unique URL
+			timestamp := time.Now().UnixNano()
 			articleData := map[string]interface{}{
 				"title":    "Test Article",
 				"content":  "This is a test article for scoring",
-				"url":      "https://test.com/article1",
+				"url":      fmt.Sprintf("https://test.com/article1-%d", timestamp),
 				"source":   "test-source",
 				"pub_date": "2025-06-21T12:00:00Z",
 			}
@@ -147,11 +150,12 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 		Path:           "/api/articles/1/ensemble",
 		ExpectedStatus: http.StatusOK,
 		Setup: func(t *testing.T) {
-			// Create test article via API for ensemble details
+			// Create test article via API for ensemble details with unique URL
+			timestamp := time.Now().UnixNano()
 			articleData := map[string]interface{}{
 				"title":    "Test Article",
 				"content":  "This is a test article for ensemble",
-				"url":      "https://test.com/article2",
+				"url":      fmt.Sprintf("https://test.com/article2-%d", timestamp),
 				"source":   "test-source",
 				"pub_date": "2025-06-21T12:00:00Z",
 			}
