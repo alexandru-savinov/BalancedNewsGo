@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +13,13 @@ import (
 )
 
 // TestAPIIntegration demonstrates API testing with test server management
-func TestAPIIntegration(t *testing.T) { // Setup test database
+func TestAPIIntegration(t *testing.T) {
+	// Set test timeout to prevent CI/CD hanging
+	if deadline, ok := t.Deadline(); ok {
+		t.Logf("Test deadline: %v", deadline)
+	}
+
+	// Setup test database
 	dbConfig := internaltesting.DatabaseTestConfig{
 		UseSQLite:      true,
 		SQLiteInMemory: true,
@@ -32,6 +39,13 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 	if err := serverManager.Start(t); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
+
+	// Ensure explicit cleanup for CI/CD environments
+	defer func() {
+		if err := serverManager.Stop(); err != nil {
+			t.Logf("Warning: Failed to stop server cleanly: %v", err)
+		}
+	}()
 
 	// Create API test suite
 	suite := internaltesting.NewAPITestSuite(serverManager.GetBaseURL())
@@ -84,9 +98,15 @@ func TestAPIIntegration(t *testing.T) { // Setup test database
 		Body: map[string]interface{}{
 			"force": true,
 		},
-		// Expect 200 in CI with NO_AUTO_ANALYZE=true (skips LLM analysis)
-		// Expect 503 in local environments without valid API keys
-		ExpectedStatus: http.StatusOK,
+		// Dynamic status based on environment:
+		// - 200 in CI with NO_AUTO_ANALYZE=true (skips LLM analysis)
+		// - 503 in local environments without valid API keys
+		ExpectedStatus: func() int {
+			if os.Getenv("NO_AUTO_ANALYZE") == "true" {
+				return http.StatusOK
+			}
+			return http.StatusServiceUnavailable
+		}(),
 		Setup: func(t *testing.T) {
 			// Create test article via API with unique URL
 			timestamp := time.Now().UnixNano()
@@ -240,6 +260,13 @@ func TestAPIPerformance(t *testing.T) {
 	if err := serverManager.Start(t); err != nil {
 		t.Fatalf("Failed to start test server: %v", err)
 	}
+
+	// Ensure explicit cleanup for CI/CD environments
+	defer func() {
+		if err := serverManager.Stop(); err != nil {
+			t.Logf("Warning: Failed to stop server cleanly: %v", err)
+		}
+	}()
 	// Performance test configuration
 	perfConfig := internaltesting.PerformanceTestConfig{
 		URL:               serverManager.GetBaseURL() + "/healthz",

@@ -37,8 +37,8 @@ func DefaultTestServerConfig() TestServerConfig {
 	}
 	return TestServerConfig{
 		Port:            8080,
-		StartupTimeout:  60 * time.Second, // Increased timeout for CI
-		ShutdownTimeout: 10 * time.Second,
+		StartupTimeout:  30 * time.Second, // Reduced timeout for faster CI
+		ShutdownTimeout: 5 * time.Second,  // Reduced shutdown timeout
 		HealthEndpoint:  "/healthz",
 		ServerCommand:   []string{"go", "run", "./cmd/server"},
 		Environment:     env,
