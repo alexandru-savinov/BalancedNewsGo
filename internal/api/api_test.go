@@ -285,7 +285,13 @@ func createArticleHandlerWithDB(dbOps db.DBOperations) gin.HandlerFunc {
 			return
 		}
 		if exists {
-			RespondError(c, ErrDuplicateURL)
+			c.JSON(http.StatusConflict, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "duplicate_url",
+					"message": "Article with this URL already exists",
+				},
+			})
 			return
 		}
 
