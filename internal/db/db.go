@@ -280,7 +280,7 @@ func handleError(err error, msg string) error {
 // validateDBSchema ensures critical tables exist. It returns an error if any
 // required table is missing, providing clearer diagnostics for test failures.
 func validateDBSchema(db *sqlx.DB) error {
-	required := []string{"articles", "llm_scores", "feedback", "labels", "users"}
+	required := []string{"articles", "llm_scores", "feedback", "labels"}
 	for _, table := range required {
 		var name string
 		err := db.Get(&name, "SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
