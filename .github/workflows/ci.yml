@@ -313,7 +313,17 @@ jobs:
 
       - name: Test Docker image
         run: |
-          docker run --rm -d --name newsbalancer-test -p 8080:8080 \
+          # First, inspect what's in the image
+          echo "=== Inspecting Docker image contents ==="
+          docker run --rm newsbalancer:test ls -la /
+          echo "=== Checking configs directory ==="
+          docker run --rm newsbalancer:test ls -la /configs || echo "No configs directory"
+          echo "=== Checking templates directory ==="
+          docker run --rm newsbalancer:test ls -la /templates || echo "No templates directory"
+
+          # Try to run the application and capture any startup errors
+          echo "=== Testing application startup ==="
+          docker run --rm --name newsbalancer-test -p 8080:8080 \
             -e PORT=8080 \
             -e TEST_MODE=true \
             -e DB_CONNECTION=":memory:" \
@@ -321,15 +331,19 @@ jobs:
             -e LLM_API_KEY="${{ secrets.LLM_API_KEY }}" \
             -e LLM_API_KEY_SECONDARY="${{ secrets.LLM_API_KEY_SECONDARY || '' }}" \
             -e LLM_BASE_URL="${{ secrets.LLM_BASE_URL || '' }}" \
-            newsbalancer:test
+            newsbalancer:test &
 
-          # Wait for container to start
-          sleep 15
+          CONTAINER_PID=$!
+          sleep 10
 
           # Check if container is still running
           if ! docker ps | grep newsbalancer-test; then
             echo "Container exited unexpectedly. Checking logs:"
-            docker logs newsbalancer-test || echo "No logs available"
+            docker logs newsbalancer-test 2>&1 || echo "No logs available"
+
+            # Try running with explicit error output
+            echo "=== Attempting to run with explicit error capture ==="
+            docker run --rm newsbalancer:test 2>&1 | head -20 || echo "Failed to capture startup errors"
             exit 1
           fi
 
@@ -338,11 +352,11 @@ jobs:
             echo "Docker image test passed"
           else
             echo "Docker image test failed. Container logs:"
-            docker logs newsbalancer-test
+            docker logs newsbalancer-test 2>&1
             exit 1
           fi
 
-          docker stop newsbalancer-test
+          docker stop newsbalancer-test || true
 
   # Performance benchmarks (only on main branch)
   benchmark:

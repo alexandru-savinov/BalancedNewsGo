@@ -62,6 +62,12 @@ import (
 // @tag.description Operations related to article analysis and summaries
 
 func main() {
+	// Check for health check flag
+	if len(os.Args) > 1 && os.Args[1] == "--health-check" {
+		// Simple health check - just exit with 0 if binary can run
+		os.Exit(0)
+	}
+
 	// --- START: Explicit File Logging Setup ---
 	logPath := os.Getenv("LOG_FILE_PATH")
 	if logPath == "" {
