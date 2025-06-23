@@ -45,10 +45,10 @@ COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 # Copy the binary from builder stage
 COPY --from=builder /app/newsbalancer /newsbalancer
 
-# Copy configuration files
-COPY --from=builder /app/configs /configs
-COPY --from=builder /app/templates /templates
-COPY --from=builder /app/static /static
+# Copy configuration files directly from build context
+COPY configs /configs
+COPY templates /templates
+COPY static /static
 
 # Create a non-root user (using numeric IDs for scratch image)
 USER 65534:65534
@@ -148,10 +148,10 @@ RUN apk add --no-cache \
 # Copy the binary from builder stage
 COPY --from=builder /app/newsbalancer /newsbalancer
 
-# Copy configuration files
-COPY --from=builder /app/configs /configs
-COPY --from=builder /app/templates /templates
-COPY --from=builder /app/static /static
+# Copy configuration files directly from build context
+COPY configs /configs
+COPY templates /templates
+COPY static /static
 
 # Create a non-root user
 RUN addgroup -g 1001 -S newsbalancer && \
