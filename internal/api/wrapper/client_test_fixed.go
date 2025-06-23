@@ -168,7 +168,7 @@ func TestGetArticle(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			if _, err := w.Write([]byte(`{
 				"success": true,
 				"data": {
 					"article_id": 123,
@@ -176,7 +176,9 @@ func TestGetArticle(t *testing.T) {
 					"Content": "Article content",
 					"Source": "test"
 				}
-			}`))
+			}`)); err != nil {
+				t.Errorf("Failed to write response: %v", err)
+			}
 		})
 
 		client, server := newTestClientWithMockServer(handler)
@@ -193,13 +195,15 @@ func TestGetArticle(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{
+			if _, err := w.Write([]byte(`{
 				"success": false,
 				"error": {
 					"code": "not_found",
 					"message": "Article not found"
 				}
-			}`))
+			}`)); err != nil {
+				t.Errorf("Failed to write response: %v", err)
+			}
 		})
 
 		client, server := newTestClientWithMockServer(handler)
@@ -221,10 +225,12 @@ func TestCaching(t *testing.T) {
 			callCount++
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			if _, err := w.Write([]byte(`{
 				"success": true,
 				"data": [{"article_id": 1, "Title": "Cached"}]
-			}`))
+			}`)); err != nil {
+				t.Errorf("Failed to write response: %v", err)
+			}
 		})
 
 		client, server := newTestClientWithMockServer(handler)

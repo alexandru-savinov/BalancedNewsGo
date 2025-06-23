@@ -41,7 +41,11 @@ func main() {
 		if err != nil {
 			log.Printf("Warning: Failed to connect to database: %v", err)
 		} else {
-			defer db.Close()
+			defer func() {
+				if closeErr := db.Close(); closeErr != nil {
+					log.Printf("Warning: Failed to close database: %v", closeErr)
+				}
+			}()
 			if err := createBenchmarkTable(db); err != nil {
 				log.Printf("Warning: Failed to create benchmark table: %v", err)
 			}

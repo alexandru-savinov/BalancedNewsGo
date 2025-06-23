@@ -12,7 +12,9 @@ func main() {
 	fmt.Println("Testing HTMX endpoints...")
 
 	// Set environment variable for API handlers
-	os.Setenv("USE_API_HANDLERS", "true")
+	if err := os.Setenv("USE_API_HANDLERS", "true"); err != nil {
+		fmt.Printf("Warning: Failed to set environment variable: %v\n", err)
+	}
 
 	// Wait for server to start
 	fmt.Println("Waiting for server to start...")

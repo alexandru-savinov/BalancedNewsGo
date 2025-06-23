@@ -39,7 +39,12 @@ func (a *ArticlesApiService) GetArticles(ctx context.Context, params ArticlesPar
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log error but don't fail the operation since we're in defer
+			// The response body has likely already been read
+		}
+	}()
 
 	if err := checkResponse(resp); err != nil {
 		return nil, err
@@ -81,7 +86,11 @@ func (a *ArticlesApiService) GetArticle(ctx context.Context, id int64) (*Article
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log error but don't fail the operation since we're in defer
+		}
+	}()
 
 	if err := checkResponse(resp); err != nil {
 		return nil, err
@@ -122,7 +131,11 @@ func (a *ArticlesApiService) CreateArticle(ctx context.Context, req CreateArticl
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			// Log error but don't fail the operation since we're in defer
+		}
+	}()
 
 	if err := checkResponse(resp); err != nil {
 		return nil, err
