@@ -50,6 +50,9 @@ COPY configs /configs
 COPY templates /templates
 COPY static /static
 
+# Debug: List what we have
+RUN ls -la / && ls -la /configs && ls -la /templates && ls -la /static
+
 # Create a non-root user (using numeric IDs for scratch image)
 USER 65534:65534
 
@@ -152,6 +155,9 @@ COPY --from=builder /app/newsbalancer /newsbalancer
 COPY configs /configs
 COPY templates /templates
 COPY static /static
+
+# Debug: List what we have
+RUN ls -la / && ls -la /configs && ls -la /templates && ls -la /static
 
 # Create a non-root user
 RUN addgroup -g 1001 -S newsbalancer && \
