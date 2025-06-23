@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -232,9 +233,15 @@ func (h *TestTemplateHandlers) TemplateAdminHandler() gin.HandlerFunc {
 	}
 }
 
+var (
+	ginTestModeOnceTemplate sync.Once
+)
+
 // Test helper to setup Gin with templates
 func setupTestRouter() *gin.Engine {
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnceTemplate.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 	router := gin.New()
 
 	// For testing, we'll use a simple template pattern with function map

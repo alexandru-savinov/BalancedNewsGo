@@ -1,5 +1,5 @@
 CREATE TABLE articles (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,
     pub_date TIMESTAMP NOT NULL,
     url TEXT NOT NULL UNIQUE,
@@ -16,7 +16,7 @@ CREATE TABLE articles (
 );
 
 CREATE TABLE llm_scores (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     article_id INTEGER NOT NULL,
     model TEXT NOT NULL,
     score REAL NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE llm_scores (
 );
 
 CREATE TABLE feedback (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     article_id INTEGER NOT NULL,
     user_id TEXT,
     feedback_text TEXT,
@@ -40,7 +40,7 @@ CREATE TABLE feedback (
 );
 
 CREATE TABLE labels (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     data TEXT NOT NULL,
     label TEXT NOT NULL,
     source TEXT NOT NULL,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,10 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+var (
+	ginTestModeOnceHandler sync.Once
+)
+
 // Tests for the handler functions with 0% coverage, focusing on:
 // - summaryHandler
 // - biasHandler
@@ -21,7 +26,9 @@ import (
 
 // Update test cases to use the refactored SummaryHandler
 func TestSummaryHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnceHandler.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 
 	t.Run("Success - Summary exists", func(t *testing.T) {
 		mockDB := &MockDBOperations{}

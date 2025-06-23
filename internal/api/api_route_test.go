@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,6 +18,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+)
+
+var (
+	ginTestModeOnceRoute sync.Once
 )
 
 // Mock RSS Collector
@@ -43,7 +48,9 @@ func (m *MockRSSCollector) CheckFeedHealth() map[string]bool {
 
 // TestRegisterRoutes tests that all routes are registered correctly
 func TestRegisterRoutes(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnceRoute.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 	router := gin.New()
 
 	// Create necessary mocks
@@ -91,7 +98,9 @@ func TestRegisterRoutes(t *testing.T) {
 
 // TestSafeHandler tests that the SafeHandler correctly recovers from panics
 func TestSafeHandler(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnceRoute.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 	router := gin.New()
 
 	// Create a handler that will panic
@@ -128,7 +137,9 @@ func TestSafeHandler(t *testing.T) {
 
 // TestRefreshHandlerFunc tests the refresh handler
 func TestRefreshHandlerFunc(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnceRoute.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 	router := gin.New()
 
 	mockRSS := &MockRSSCollector{}
@@ -189,7 +200,9 @@ func TestRefreshHandlerFunc(t *testing.T) {
 
 // TestFeedHealthHandlerFunc tests the feed health handler
 func TestFeedHealthHandlerFunc(t *testing.T) {
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnceRoute.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 	router := gin.New()
 
 	mockRSS := &MockRSSCollector{}

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+)
+
+var (
+	ginTestModeOnce sync.Once
 )
 
 // Import mock.Anything directly to make it accessible in test methods
@@ -211,7 +216,9 @@ func (m *MockDBOperations) UpdateArticleScoreLLM(ctx context.Context, articleID 
 
 // Test helper functions
 func setupTestRouter(mock db.DBOperations) *gin.Engine {
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnce.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 	router := gin.New()
 
 	// Set up routes with the mock DB

@@ -3,15 +3,22 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
+var (
+	ginTestModeOnceHandlers sync.Once
+)
+
 func TestSafeHandlerExtended(t *testing.T) {
 	// Setup
-	gin.SetMode(gin.TestMode)
+	ginTestModeOnceHandlers.Do(func() {
+		gin.SetMode(gin.TestMode)
+	})
 
 	t.Run("should handle normal execution without panic", func(t *testing.T) {
 		router := gin.New()
