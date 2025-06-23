@@ -303,6 +303,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile.app
+          target: debug
           push: false
           load: true
           tags: newsbalancer:test
