@@ -321,6 +321,15 @@ jobs:
           echo "=== Checking templates directory ==="
           docker run --rm newsbalancer:test ls -la /templates || echo "No templates directory"
 
+          # Test the health check flag first
+          echo "=== Testing health check flag ==="
+          if docker run --rm newsbalancer:test --health-check; then
+            echo "Health check passed - binary is working"
+          else
+            echo "Health check failed - binary has issues"
+            exit 1
+          fi
+
           # Try to run the application and capture any startup errors
           echo "=== Testing application startup ==="
           docker run --rm --name newsbalancer-test -p 8080:8080 \
@@ -328,7 +337,7 @@ jobs:
             -e TEST_MODE=true \
             -e DB_CONNECTION=":memory:" \
             -e NO_AUTO_ANALYZE=true \
-            -e LLM_API_KEY="${{ secrets.LLM_API_KEY }}" \
+            -e LLM_API_KEY="${{ secrets.LLM_API_KEY || 'test-key-for-docker' }}" \
             -e LLM_API_KEY_SECONDARY="${{ secrets.LLM_API_KEY_SECONDARY || '' }}" \
             -e LLM_BASE_URL="${{ secrets.LLM_BASE_URL || '' }}" \
             newsbalancer:test &
