@@ -14,7 +14,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to open DB: %w", err)
 	}
-	defer func() { _ = db.Close() }()
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	res, err := db.Exec(`DELETE FROM llm_scores WHERE article_id=133`)
 	if err != nil {

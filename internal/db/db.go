@@ -541,7 +541,11 @@ func InsertLLMScore(exec sqlx.ExtContext, score *LLMScore) (int64, error) {
 			// If it's an update, LastInsertId might return an error or 0.
 			// We can check RowsAffected to see if an operation occurred.
 			// If LastInsertId fails but rows were affected, we assume success without a new ID.
-			rowsAffected, _ := result.RowsAffected()
+			rowsAffected, rowsErr := result.RowsAffected()
+			if rowsErr != nil {
+				log.Printf("[ERROR] Failed to get rows affected: %v", rowsErr)
+				return insertErr // Return the original LastInsertId error
+			}
 			if rowsAffected > 0 {
 				log.Printf("[INFO] InsertLLMScore (upsert) affected %d rows for article %d model %s. LastInsertId error: %v (may be an update)", rowsAffected, score.ArticleID, score.Model, insertErr)
 				return nil // No new ID, but operation was successful

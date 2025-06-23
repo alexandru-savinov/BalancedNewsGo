@@ -35,14 +35,22 @@ func main() {
 		log.Printf("ERROR: Failed to open DB: %v", err)
 		os.Exit(1)
 	}
-	defer func() { _ = database.Close() }()
+	defer func() {
+		if closeErr := database.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close database: %v", closeErr)
+		}
+	}()
 
 	f, err := os.Open(*filePath)
 	if err != nil {
 		log.Printf("ERROR: Failed to open file: %v", err)
 		os.Exit(1)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close file: %v", closeErr)
+		}
+	}()
 
 	var count int
 	switch *format {
