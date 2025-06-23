@@ -89,7 +89,10 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-
+      - name: Build test server binary for CI
+        run: |
+          go build -o test-server-ci ./cmd/server
+          chmod +x test-server-ci
 
       - name: Run unit tests
         env:
