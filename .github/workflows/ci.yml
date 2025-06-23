@@ -314,20 +314,34 @@ jobs:
       - name: Test Docker image
         run: |
           docker run --rm -d --name newsbalancer-test -p 8080:8080 \
+            -e PORT=8080 \
+            -e TEST_MODE=true \
+            -e DB_CONNECTION=":memory:" \
+            -e NO_AUTO_ANALYZE=true \
             -e LLM_API_KEY="${{ secrets.LLM_API_KEY }}" \
             -e LLM_API_KEY_SECONDARY="${{ secrets.LLM_API_KEY_SECONDARY || '' }}" \
             -e LLM_BASE_URL="${{ secrets.LLM_BASE_URL || '' }}" \
             newsbalancer:test
-          sleep 10
-          
+
+          # Wait for container to start
+          sleep 15
+
+          # Check if container is still running
+          if ! docker ps | grep newsbalancer-test; then
+            echo "Container exited unexpectedly. Checking logs:"
+            docker logs newsbalancer-test || echo "No logs available"
+            exit 1
+          fi
+
           # Basic health check
           if curl -f http://localhost:8080/api/articles; then
             echo "Docker image test passed"
           else
-            echo "Docker image test failed"
+            echo "Docker image test failed. Container logs:"
+            docker logs newsbalancer-test
             exit 1
           fi
-          
+
           docker stop newsbalancer-test
 
   # Performance benchmarks (only on main branch)
