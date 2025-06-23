@@ -994,18 +994,6 @@ func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 	}
 }
 
-// Helper to calculate percent complete
-func percent(step, total int) int {
-	if total == 0 {
-		return 0
-	}
-	p := (step * 100) / total
-	if p > 100 {
-		return 100
-	}
-	return p
-}
-
 // @Summary Get RSS feed health status
 // @Description Returns the health status of all configured RSS feeds
 // @Tags Feeds
@@ -1630,24 +1618,5 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			"article_id": articleID,
 			"score":      scoreVal,
 		})
-	}
-}
-
-// articleToPostmanSchema converts a db.Article to a map used by Postman tests.
-func articleToPostmanSchema(a *db.Article) map[string]interface{} {
-	if a == nil {
-		return nil
-	}
-	return map[string]interface{}{
-		"id":              a.ID,
-		"title":           a.Title,
-		"content":         a.Content,
-		"url":             a.URL,
-		"source":          a.Source,
-		"pub_date":        a.PubDate,
-		"created_at":      a.CreatedAt,
-		"composite_score": a.CompositeScore,
-		"confidence":      a.Confidence,
-		"score_source":    a.ScoreSource,
 	}
 }

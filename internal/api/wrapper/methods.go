@@ -347,8 +347,11 @@ func (c *APIClient) invalidateArticleCache(articleID int64) {
 
 	// Remove article list caches (they might include this article)
 	c.cache.Range(func(key, value interface{}) bool {
-		keyStr := key.(string)
-		if keyStr[:8] == "articles" {
+		keyStr, ok := key.(string)
+		if !ok {
+			return true // Skip non-string keys
+		}
+		if len(keyStr) >= 8 && keyStr[:8] == "articles" {
 			c.cache.Delete(key)
 		}
 		return true

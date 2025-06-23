@@ -17,6 +17,7 @@ permissions:
 env:
   GO_VERSION: '1.23'
   NODE_VERSION: '18'
+  GOLANGCI_LINT_VERSION: 'v1.61.0'
 
 jobs:
   # Code quality and linting
@@ -42,7 +43,7 @@ jobs:
 
       - name: Install golangci-lint
         run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${{ env.GOLANGCI_LINT_VERSION }}
 
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m
@@ -91,8 +92,8 @@ jobs:
 
       - name: Install additional testing tools
         run: |
-          # Install golangci-lint for static analysis
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          # Install golangci-lint for static analysis (same version as lint job)
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin ${{ env.GOLANGCI_LINT_VERSION }}
           # Install staticcheck for advanced static analysis
           go install honnef.co/go/tools/cmd/staticcheck@latest
           # Install goleak for goroutine leak detection
@@ -105,8 +106,8 @@ jobs:
           go vet -composites=false ./...
           # Run staticcheck for advanced concurrency analysis
           staticcheck ./...
-          # Run golangci-lint with concurrency-focused linters
-          golangci-lint run --enable=govet,staticcheck,gosec,errcheck,ineffassign,misspell ./...
+          # Run golangci-lint with concurrency-focused linters on test files specifically
+          golangci-lint run --enable=govet,staticcheck,gosec,errcheck,ineffassign,misspell --skip-files="" --tests=true ./...
 
       - name: Build test server binary for CI
         run: |

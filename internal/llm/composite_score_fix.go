@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"sort"
 	"strings"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -136,70 +135,6 @@ func checkForAllZeroResponses(scores []db.LLMScore) (bool, error) {
 	}
 
 	return false, nil
-}
-
-// processScoresByPerspective processes scores and updates maps based on the provided configuration
-func processScoresByPerspective(perspectiveModels map[string][]db.LLMScore, cfg *CompositeScoreConfig, scoreMap map[string]float64, validCount *int, validModels map[string]bool) {
-	// Use the best score from each perspective
-	for perspective, models := range perspectiveModels {
-		if len(models) == 0 {
-			log.Printf("No models found for perspective %s", perspective)
-			continue
-		}
-
-		log.Printf("Candidates for %s: ", perspective)
-		for _, m := range models {
-			log.Printf("  Model: %s, Score: %.2f, Metadata: %s", m.Model, m.Score, m.Metadata)
-		}
-
-		// Sort models by confidence (highest first) and then by created_at
-		sort.Slice(models, func(i, j int) bool {
-			// Extract confidence from metadata
-			var iConf, jConf float64
-			if models[i].Metadata != "" {
-				var metadata map[string]interface{}
-				if err := json.Unmarshal([]byte(models[i].Metadata), &metadata); err == nil {
-					if conf, ok := metadata["confidence"].(float64); ok {
-						iConf = conf
-					}
-				}
-			}
-			if models[j].Metadata != "" {
-				var metadata map[string]interface{}
-				if err := json.Unmarshal([]byte(models[j].Metadata), &metadata); err == nil {
-					if conf, ok := metadata["confidence"].(float64); ok {
-						jConf = conf
-					}
-				}
-			}
-
-			// First sort by confidence (highest first)
-			if iConf != jConf {
-				return iConf > jConf
-			}
-			// If confidence is equal, sort by created_at (newest first)
-			return models[i].CreatedAt.After(models[j].CreatedAt)
-		})
-
-		// Select the first (highest confidence) valid score for this perspective
-		for _, s := range models {
-			if isInvalid(s.Score, cfg) {
-				if cfg.HandleInvalid == "ignore" {
-					continue
-				} else { // Default to default value
-					scoreMap[perspective] = cfg.DefaultMissing
-					(*validCount)++                 // Count this perspective as valid because we are using a default
-					validModels[perspective] = true // Mark as valid for averaging
-					break                           // Use default, don't look further for this perspective
-				}
-			} else {
-				scoreMap[perspective] = s.Score
-				(*validCount)++
-				validModels[perspective] = true // Mark perspective as valid
-				break                           // Use this score, don't look further
-			}
-		}
-	}
 }
 
 // mapModelsToPerspectives groups scores by perspective based on the configuration

@@ -27,14 +27,19 @@ export OPENAI_API_KEY=…
    ```
 
    The linter is driven by `.golangci.yml` which enables `govet`, `staticcheck`, `funlen`, `gocyclo`, etc.
-3. **Unit tests with race detector**
+3. **Unit tests with intelligent concurrency detection**
 
    ```bash
-   make unit           # ≈ go test ./... -race
+   make unit           # Automatically detects CGO availability
    ```
 
-   Race detection is on by default; disable if you lack a C compiler:
-   `make unit ENABLE_RACE_DETECTION=false`
+   For comprehensive concurrency testing without CGO:
+   ```bash
+   make concurrency    # Uses static analysis, goleak, and stress testing
+   ```
+
+   Race detection is automatically enabled if CGO is available, otherwise falls back to stress testing.
+   To force disable race detection: `make unit ENABLE_RACE_DETECTION=false`
 
 Hook them with **pre-commit**:
 

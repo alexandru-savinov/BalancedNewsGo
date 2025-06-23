@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -28,7 +28,7 @@ type cannedRoundTripper struct{}
 func (c *cannedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp := &http.Response{
 		StatusCode: 200,
-		Body: ioutil.NopCloser(strings.NewReader(`{
+		Body: io.NopCloser(strings.NewReader(`{
 			"choices": [
 				{"message": {"content": "{\"score\": 0.5, \"explanation\": \"ok\", \"confidence\": 0.8}"}}
 			]
@@ -484,7 +484,7 @@ func TestAnalyzeAndStore(t *testing.T) {
 	// Backup the original config if it exists
 	var origConfig []byte
 	if _, err := os.Stat(configPath); err == nil {
-		origConfig, _ = ioutil.ReadFile(configPath)
+		origConfig, _ = os.ReadFile(configPath)
 	}
 
 	// Write the test config
@@ -505,10 +505,10 @@ func TestAnalyzeAndStore(t *testing.T) {
 		"weights": {"left": 1.0, "center": 1.0, "right": 1.0}
 	}`
 	_ = os.MkdirAll("configs", 0755)
-	ioutil.WriteFile(configPath, []byte(testConfig), 0644)
+	os.WriteFile(configPath, []byte(testConfig), 0644)
 	defer func() {
 		if origConfig != nil {
-			ioutil.WriteFile(configPath, origConfig, 0644)
+			os.WriteFile(configPath, origConfig, 0644)
 		} else {
 			os.Remove(configPath)
 		}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -218,7 +219,11 @@ func (bs *BenchmarkSuite) makeRequest(ctx context.Context, endpoint EndpointConf
 	defer resp.Body.Close()
 
 	// Read response body to ensure complete request
-	_, _ = io.ReadAll(resp.Body)
+	if _, err := io.ReadAll(resp.Body); err != nil {
+		// Log the error but don't fail the request since we got a response
+		// This is just to ensure the full response is read
+		log.Printf("Warning: Failed to read response body: %v", err)
+	}
 
 	success := resp.StatusCode >= 200 && resp.StatusCode < 400
 

@@ -62,7 +62,7 @@ func TestGetArticles(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			if _, err := w.Write([]byte(`{
 				"success": true,
 				"data": [
 					{
@@ -72,7 +72,9 @@ func TestGetArticles(t *testing.T) {
 						"Source": "cnn"
 					}
 				]
-			}`))
+			}`)); err != nil {
+				t.Errorf("Failed to write response: %v", err)
+			}
 		})
 
 		client, server := newTestClientWithMockServer(handler)
@@ -97,13 +99,15 @@ func TestGetArticles(t *testing.T) {
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{
+			if _, err := w.Write([]byte(`{
 				"success": false,
 				"error": {
 					"code": "internal_error",
 					"message": "Database connection failed"
 				}
-			}`))
+			}`)); err != nil {
+				t.Errorf("Failed to write response: %v", err)
+			}
 		})
 
 		client, server := newTestClientWithMockServer(handler)
@@ -132,10 +136,12 @@ func TestGetArticles(t *testing.T) {
 			// Success on third try
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{
+			if _, err := w.Write([]byte(`{
 				"success": true,
 				"data": [{"article_id": 1, "Title": "Success"}]
-			}`))
+			}`)); err != nil {
+				t.Errorf("Failed to write response: %v", err)
+			}
 		})
 
 		client, server := newTestClientWithMockServer(handler)

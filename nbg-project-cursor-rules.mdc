@@ -78,7 +78,8 @@ alwaysApply: true
 - Mock LLM service: `tools/mock_llm_service/mock_llm_service.go` for testing without real LLM costs.
 - Batch/utility tools in `cmd/` (import, clear, score, fetch, validate, report, query, test).
 - Test suites:
-  - Go unit tests: `go test ./...`
+  - Go unit tests: `make unit` (intelligent race detection)
+  - Concurrency tests: `make concurrency` (CGO-free race detection)
   - Backend integration tests: `scripts/test.cmd backend`
   - API tests: `scripts/test.cmd api`
   - Essential tests: `scripts/test.cmd essential`

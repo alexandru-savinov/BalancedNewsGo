@@ -21,7 +21,11 @@ func run() error {
 		return fmt.Errorf("failed to delete mock scores: %w", err)
 	}
 
-	count, _ := res.RowsAffected()
+	count, err := res.RowsAffected()
+	if err != nil {
+		log.Printf("Warning: Could not get rows affected count: %v", err)
+		count = 0
+	}
 	log.Printf("Deleted %d mock scores.", count)
 	return nil
 }

@@ -146,7 +146,12 @@ func (e *cacheEntry) isExpired() bool {
 // getCached retrieves a value from cache if it exists and hasn't expired
 func (c *APIClient) getCached(key string) (interface{}, bool) {
 	if entry, exists := c.cache.Load(key); exists {
-		cacheEntry := entry.(*cacheEntry)
+		cacheEntry, ok := entry.(*cacheEntry)
+		if !ok {
+			// Invalid cache entry type, clean it up
+			c.cache.Delete(key)
+			return nil, false
+		}
 		if !cacheEntry.isExpired() {
 			return cacheEntry.value, true
 		}

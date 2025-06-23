@@ -79,11 +79,6 @@ func TestSSEProgressConcurrentClients(t *testing.T) {
 
 // --- Helpers for panic recovery test ---
 
-// mockProgressManager provides a mock implementation of ProgressManager
-type mockProgressManager struct {
-	mock.Mock // Embed mock.Mock
-}
-
 // --- Use the existing MockDBOperations from api_test.go ---
 // --- Minimal MockScoreManager for this test ---
 type MockScoreManager struct{ mock.Mock }

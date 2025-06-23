@@ -108,7 +108,11 @@ func main() {
 
 	for _, rate := range rates {
 		day := rate["day"]
-		val, _ := rate["low_confidence_ratio"].(float64)
+		val, ok := rate["low_confidence_ratio"].(float64)
+		if !ok {
+			fmt.Printf("Warning: Could not parse low_confidence_ratio for day %v\n", day)
+			continue
+		}
 		if val > 0.3 { // example threshold
 			fmt.Printf("ALERT: High uncertainty (%.2f) on %s\n", val, day)
 		}

@@ -22,13 +22,6 @@ func createScoreWithConfidenceForModelTest(model string, score float64, confiden
 	}
 }
 
-// Model name constants to avoid duplication
-const (
-	modelLeft   = "meta-llama/llama-4-maverick"
-	modelCenter = "google/gemini-2.0-flash-001"
-	modelRight  = "openai/gpt-4.1-nano"
-)
-
 // ArticleScore represents a single score for an article from a specific model
 type ArticleScore struct {
 	Score      float64 `json:"score"`

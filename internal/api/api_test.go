@@ -50,10 +50,6 @@ const (
 // MockLLMClient is a mock implementation of the llm.Client interface
 type MockLLMClient struct {
 	mock.Mock
-	scoreWithModelFunc    func(*db.Article, string) (float64, error)
-	getConfigFunc         func() *llm.CompositeScoreConfig
-	getHTTPLLMTimeoutFunc func() time.Duration
-	setHTTPLLMTimeoutFunc func(time.Duration)
 }
 
 // AnalyzeArticle mocks the llm.Client.AnalyzeArticle method

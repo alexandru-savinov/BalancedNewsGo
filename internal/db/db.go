@@ -446,7 +446,9 @@ func insertArticleTransaction(db *sqlx.DB, article *Article, resultID *int64) er
 	// Ensure transaction is properly closed
 	defer func() {
 		if p := recover(); p != nil {
-			_ = tx.Rollback()
+			if rollbackErr := tx.Rollback(); rollbackErr != nil {
+				log.Printf("[ERROR] Failed to rollback transaction during panic recovery: %v", rollbackErr)
+			}
 			panic(p)
 		}
 	}()
@@ -455,11 +457,15 @@ func insertArticleTransaction(db *sqlx.DB, article *Article, resultID *int64) er
 	var exists bool
 	err = tx.Get(&exists, "SELECT EXISTS(SELECT 1 FROM articles WHERE url = ?)", article.URL)
 	if err != nil && err != sql.ErrNoRows {
-		_ = tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
 		return handleError(err, "failed to check article URL existence in transaction")
 	}
 	if exists {
-		_ = tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
 		return ErrDuplicateURL
 	}
 
@@ -471,14 +477,18 @@ func insertArticleTransaction(db *sqlx.DB, article *Article, resultID *int64) er
                 :status, :fail_count, :last_attempt, :escalated)`,
 		article)
 	if err != nil {
-		_ = tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
 		log.Printf("[ERROR] Failed to insert article in transaction: %v", err)
 		return handleError(err, "failed to insert article")
 	}
 
 	id, err := result.LastInsertId()
 	if err != nil {
-		_ = tx.Rollback()
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
 		log.Printf("[ERROR] Failed to retrieve last insert ID: %v", err)
 		return handleError(err, "failed to get inserted article ID")
 	}
