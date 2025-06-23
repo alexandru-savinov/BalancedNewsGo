@@ -17,7 +17,7 @@ func TestArticlesAPI(t *testing.T) {
 	}
 
 	testDB := testingutils.SetupTestDatabase(t, config)
-	defer testDB.Cleanup()
+	defer func() { _ = testDB.Cleanup() }()
 
 	t.Run("GET /api/articles", func(t *testing.T) {
 		// Create a test request
@@ -68,7 +68,11 @@ func TestMockAPIHandlers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to make request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", resp.StatusCode)

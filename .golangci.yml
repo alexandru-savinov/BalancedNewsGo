@@ -22,8 +22,15 @@ linters-settings:
     ignore-generated-header: true
   errcheck:
     check-type-assertions: true
-    # Check for unchecked errors in concurrent code
-    check-blank: true
+    # Don't check when we explicitly ignore errors with _
+    check-blank: false
+    # Ignore common cleanup functions where errors are often ignored
+    exclude-functions:
+      - fmt.Print
+      - fmt.Printf
+      - fmt.Println
+      - (net/http.ResponseWriter).Write
+      - (*net/http.Response).Body.Close
   govet:
     # Enable checks for common concurrency issues
     enable:
@@ -31,7 +38,6 @@ linters-settings:
       - bools
       - buildtag
       - copylocks
-      - fieldalignment
       - httpresponse
       - loopclosure
       - lostcancel

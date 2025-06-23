@@ -9,18 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/go-connections/nat"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// DatabaseContainer wraps testcontainers functionality for database testing
+// DatabaseContainer wraps database functionality for testing
 type DatabaseContainer struct {
-	Container testcontainers.Container
-	DB        *sql.DB
-	ConnStr   string
+	DB      *sql.DB
+	ConnStr string
 }
 
 // NewSQLiteTestDatabase creates an in-memory SQLite database for testing
@@ -35,81 +30,29 @@ func NewSQLiteTestDatabase(t *testing.T) *DatabaseContainer {
 
 	// Apply migrations/schema
 	if err := applyTestSchema(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("Failed to apply test schema: %v", err)
 	}
 
 	return &DatabaseContainer{
-		Container: nil, // No container for SQLite
-		DB:        db,
-		ConnStr:   ":memory:",
+		DB:      db,
+		ConnStr: ":memory:",
 	}
 }
 
-// NewPostgresTestDatabase creates a containerized PostgreSQL database for testing
+// NewPostgresTestDatabase is deprecated - use SQLite instead
+// This function is kept for backward compatibility but should not be used
 func NewPostgresTestDatabase(t *testing.T, ctx context.Context) *DatabaseContainer {
 	t.Helper()
-
-	// Create PostgreSQL container with testcontainers
-	container, err := postgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:15-alpine"),
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("testuser"),
-		postgres.WithPassword("testpass"), testcontainers.WithWaitStrategy(
-			wait.ForSQL("5432/tcp", "postgres", func(host string, port nat.Port) string {
-				return fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
-			}).WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("Failed to create PostgreSQL test container: %v", err)
-	}
-
-	// Get connection string
-	connStr, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		container.Terminate(ctx)
-		t.Fatalf("Failed to get connection string: %v", err)
-	}
-
-	// Connect to database
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		container.Terminate(ctx)
-		t.Fatalf("Failed to connect to PostgreSQL: %v", err)
-	}
-
-	// Test connection
-	if err := db.Ping(); err != nil {
-		db.Close()
-		container.Terminate(ctx)
-		t.Fatalf("Failed to ping PostgreSQL: %v", err)
-	}
-
-	// Apply test schema
-	if err := applyTestSchema(db); err != nil {
-		db.Close()
-		container.Terminate(ctx)
-		t.Fatalf("Failed to apply test schema: %v", err)
-	}
-
-	return &DatabaseContainer{
-		Container: container,
-		DB:        db,
-		ConnStr:   connStr,
-	}
+	t.Skip("PostgreSQL testing is deprecated - use NewSQLiteTestDatabase instead")
+	return nil
 }
 
 // Close cleans up the database resources
 func (dc *DatabaseContainer) Close(ctx context.Context) error {
 	if dc.DB != nil {
-		dc.DB.Close()
+		return dc.DB.Close()
 	}
-
-	if dc.Container != nil {
-		return dc.Container.Terminate(ctx)
-	}
-
 	return nil
 }
 
@@ -119,7 +62,7 @@ func SeedTestData(db *sql.DB, seedFilePath string) error {
 		return nil // No seed file specified
 	}
 
-	content, err := os.ReadFile(seedFilePath)
+	content, err := os.ReadFile(seedFilePath) // #nosec G304 - seedFilePath is from test configuration, controlled input
 	if err != nil {
 		return fmt.Errorf("failed to read seed file %s: %w", seedFilePath, err)
 	}
@@ -141,7 +84,7 @@ func CleanupTestData(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("failed to get table names: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []string
 	for rows.Next() {

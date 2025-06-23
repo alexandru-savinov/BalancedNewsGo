@@ -127,8 +127,8 @@ func scoreProgressHandler(pm *llm.ProgressManager) gin.HandlerFunc {
 		}
 
 		// Send initial progress event
-		fmt.Fprintf(c.Writer, "event: progress\n")
-		fmt.Fprintf(c.Writer, "data: %s\n\n", formatProgressData(*initialState))
+		_, _ = fmt.Fprintf(c.Writer, "event: progress\n")
+		_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", formatProgressData(*initialState))
 		flusher.Flush()
 
 		// Set up ticker for periodic updates
@@ -147,8 +147,8 @@ func scoreProgressHandler(pm *llm.ProgressManager) gin.HandlerFunc {
 				// Check for progress updates
 				if pm != nil {
 					if currentState := pm.GetProgress(articleID); currentState != nil {
-						fmt.Fprintf(c.Writer, "event: progress\n")
-						fmt.Fprintf(c.Writer, "data: %s\n\n", formatProgressData(*currentState))
+						_, _ = fmt.Fprintf(c.Writer, "event: progress\n")
+						_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", formatProgressData(*currentState))
 						flusher.Flush()
 
 						// Stop if completed
@@ -164,13 +164,16 @@ func scoreProgressHandler(pm *llm.ProgressManager) gin.HandlerFunc {
 
 // Helper function to format progress data as JSON
 func formatProgressData(state models.ProgressState) string {
-	data, _ := json.Marshal(map[string]interface{}{
+	data, err := json.Marshal(map[string]interface{}{
 		"step":         state.Status,
 		"message":      state.Message,
 		"percent":      state.Percent,
 		"status":       "Connected",
 		"last_updated": state.LastUpdated,
 	})
+	if err != nil {
+		return `{"error": "failed to marshal progress data"}`
+	}
 	return string(data)
 }
 

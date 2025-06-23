@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 )
 
 // LLMApiService handles LLM-related API calls
@@ -23,7 +24,11 @@ func (l *LLMApiService) ReanalyzeArticle(ctx context.Context, id int64, req *Man
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	if err := checkResponse(resp); err != nil {
 		return "", err
@@ -62,7 +67,11 @@ func (l *LLMApiService) GetScoreProgress(ctx context.Context, id int64) (*Progre
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	if err := checkResponse(resp); err != nil {
 		return nil, err

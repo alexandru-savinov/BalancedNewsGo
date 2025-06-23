@@ -42,7 +42,11 @@ func main() {
 		log.Printf("ERROR: Failed to open file: %v", err)
 		os.Exit(1)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close file: %v", closeErr)
+		}
+	}()
 
 	var count int
 	switch *format {

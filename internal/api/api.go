@@ -987,7 +987,8 @@ func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 						return
 					}
 				} else {
-					// log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Progress unchanged: %s", articleID, currentProgressJSON)
+					// Progress unchanged - no action needed
+					log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Progress unchanged: %s", articleID, currentProgressJSON)
 				}
 			}
 		}
@@ -1331,7 +1332,10 @@ func ensembleDetailsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		// Add debug logging to help troubleshoot
 		log.Printf("[ensembleDetailsHandler] Found %d ensemble records for article %d", len(details), id)
 		for i, detail := range details {
-			subResults, _ := detail["sub_results"].([]map[string]interface{})
+			subResults, ok := detail["sub_results"].([]map[string]interface{})
+			if !ok {
+				subResults = nil
+			}
 			numResults := 0
 			if subResults != nil {
 				numResults = len(subResults)
@@ -1374,7 +1378,10 @@ func processEnsembleScores(scores []db.LLMScore) []map[string]interface{} {
 		}
 
 		// Process sub-results to make sure they're properly formatted
-		subResults, _ := meta["sub_results"].([]interface{})
+		subResults, ok := meta["sub_results"].([]interface{})
+		if !ok {
+			subResults = []interface{}{}
+		}
 		processedResults := make([]map[string]interface{}, 0, len(subResults))
 
 		// Process each sub-result individually to ensure proper format

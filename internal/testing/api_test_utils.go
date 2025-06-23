@@ -3,6 +3,8 @@ package testing
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -115,7 +117,11 @@ func (suite *APITestSuite) executeTestCase(t *testing.T, testCase APITestCase) {
 	if err != nil {
 		t.Fatalf("Failed to execute request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	// Validate status code
 	if resp.StatusCode != testCase.ExpectedStatus {
@@ -187,8 +193,12 @@ func (mh *MockHandler) AddResponse(path string, statusCode int, body interface{}
 	recorder.WriteHeader(statusCode)
 
 	if body != nil {
-		bodyBytes, _ := json.Marshal(body)
-		recorder.Write(bodyBytes)
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			recorder.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = recorder.Write(bodyBytes)
 	}
 
 	mh.responses[path] = recorder.Result()
@@ -213,15 +223,19 @@ func (mh *MockHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Copy body
 		if resp.Body != nil {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			bodyBytes := make([]byte, 1024)
-			n, _ := resp.Body.Read(bodyBytes)
-			w.Write(bodyBytes[:n])
+			n, err := resp.Body.Read(bodyBytes)
+			if err != nil && err != io.EOF {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write(bodyBytes[:n])
 		}
 	} else {
 		// Default 404 response
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("Not Found"))
+		_, _ = w.Write([]byte("Not Found"))
 	}
 }
 

@@ -67,7 +67,7 @@ func main() {
 	if logPath == "" {
 		logPath = "server_app.log"
 	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) // #nosec G304 - logPath is from configuration, controlled input
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
 	}

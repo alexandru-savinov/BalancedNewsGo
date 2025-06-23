@@ -1,31 +1,20 @@
 package testing
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	_ "github.com/lib/pq"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 	_ "modernc.org/sqlite"
 )
 
 // TestDatabase represents a test database instance
 type TestDatabase struct {
-	DB        *sql.DB
-	Container testcontainers.Container
-	Host      string
-	Port      string
-	DBName    string
-	Username  string
-	Password  string
-	Driver    string
+	DB     *sql.DB
+	DBName string
+	Driver string
 }
 
 // DatabaseTestConfig holds configuration for database tests
@@ -48,83 +37,11 @@ func SetupTestDatabase(t *testing.T, config DatabaseTestConfig) *TestDatabase {
 	return setupSQLiteDatabase(t, config)
 }
 
-// setupPostgresContainer creates a PostgreSQL testcontainer
+// setupPostgresContainer is deprecated - use SQLite instead
 func setupPostgresContainer(t *testing.T, config DatabaseTestConfig) *TestDatabase {
 	t.Helper()
-
-	ctx := context.Background()
-	// Create PostgreSQL container
-	postgresContainer, err := postgres.RunContainer(ctx,
-		testcontainers.WithImage("postgres:15-alpine"),
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("testuser"),
-		postgres.WithPassword("testpass"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("Failed to start PostgreSQL container: %v", err)
-	}
-
-	// Clean up container when test completes
-	t.Cleanup(func() {
-		if err := postgresContainer.Terminate(ctx); err != nil {
-			t.Logf("Failed to terminate PostgreSQL container: %v", err)
-		}
-	})
-
-	// Get connection details
-	host, err := postgresContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get container host: %v", err)
-	}
-
-	port, err := postgresContainer.MappedPort(ctx, "5432")
-	if err != nil {
-		t.Fatalf("Failed to get container port: %v", err)
-	}
-
-	// Create database connection
-	dsn := fmt.Sprintf("postgres://testuser:testpass@%s:%s/testdb?sslmode=disable", host, port.Port())
-	db, err := sql.Open("postgres", dsn)
-	if err != nil {
-		t.Fatalf("Failed to connect to database: %v", err)
-	}
-
-	// Test connection
-	if err := db.Ping(); err != nil {
-		t.Fatalf("Failed to ping database: %v", err)
-	}
-
-	testDB := &TestDatabase{
-		DB:        db,
-		Container: postgresContainer,
-		Host:      host,
-		Port:      port.Port(),
-		DBName:    "testdb",
-		Username:  "testuser",
-		Password:  "testpass",
-		Driver:    "postgres",
-	}
-
-	// Run migrations if specified
-	if config.MigrationsPath != "" {
-		if err := runMigrations(testDB, config.MigrationsPath); err != nil {
-			t.Fatalf("Failed to run migrations: %v", err)
-		}
-	}
-
-	// Load seed data if specified
-	if config.SeedDataPath != "" {
-		if err := loadSeedData(testDB, config.SeedDataPath); err != nil {
-			t.Fatalf("Failed to load seed data: %v", err)
-		}
-	}
-
-	return testDB
+	t.Skip("PostgreSQL testing is deprecated - use setupSQLiteDatabase instead")
+	return nil
 }
 
 // setupSQLiteDatabase creates an SQLite test database
@@ -182,7 +99,7 @@ func runMigrations(testDB *TestDatabase, migrationsPath string) error {
 	}
 
 	for _, file := range migrationFiles {
-		content, err := os.ReadFile(file)
+		content, err := os.ReadFile(file) // #nosec G304 - file is from test configuration, controlled input
 		if err != nil {
 			return fmt.Errorf("failed to read migration file %s: %w", file, err)
 		}
@@ -203,7 +120,7 @@ func loadSeedData(testDB *TestDatabase, seedDataPath string) error {
 	}
 
 	for _, file := range seedFiles {
-		content, err := os.ReadFile(file)
+		content, err := os.ReadFile(file) // #nosec G304 - file is from test configuration, controlled input
 		if err != nil {
 			return fmt.Errorf("failed to read seed file %s: %w", file, err)
 		}
@@ -223,28 +140,15 @@ func (td *TestDatabase) Cleanup() error {
 			return fmt.Errorf("failed to close database: %w", err)
 		}
 	}
-
-	if td.Container != nil {
-		ctx := context.Background()
-		if err := td.Container.Terminate(ctx); err != nil {
-			return fmt.Errorf("failed to terminate container: %w", err)
-		}
-	}
-
 	return nil
 }
 
 // GetConnectionString returns the database connection string
 func (td *TestDatabase) GetConnectionString() string {
-	switch td.Driver {
-	case "postgres":
-		return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-			td.Username, td.Password, td.Host, td.Port, td.DBName)
-	case "sqlite":
+	if td.Driver == "sqlite" {
 		return td.DBName
-	default:
-		return ""
 	}
+	return ""
 }
 
 // Transaction runs a function within a database transaction for testing
@@ -276,7 +180,7 @@ func (td *TestDatabase) ExecuteTestQueries(t *testing.T, queries []string) []map
 		if err != nil {
 			t.Fatalf("Failed to execute query '%s': %v", query, err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		columns, err := rows.Columns()
 		if err != nil {

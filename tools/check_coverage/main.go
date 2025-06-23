@@ -23,7 +23,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	file, err := os.Open(coverageFile)
+	file, err := os.Open(coverageFile) // #nosec G304 - coverageFile is from command line argument, controlled input
 	if err != nil {
 		fmt.Printf("Cannot open coverage file %s: %v\n", coverageFile, err)
 		os.Exit(1)

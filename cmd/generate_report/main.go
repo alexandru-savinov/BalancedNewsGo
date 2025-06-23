@@ -31,7 +31,7 @@ func fetchAndSave(endpoint, filename string) error {
 		return nil
 	}
 
-	file, err := os.Create(filename)
+	file, err := os.Create(filename) // #nosec G304 - filename is from command line argument, controlled input
 	if err != nil {
 		return err
 	}

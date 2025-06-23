@@ -216,7 +216,7 @@ func (bs *BenchmarkSuite) makeRequest(ctx context.Context, endpoint EndpointConf
 			Timestamp: startTime,
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body to ensure complete request
 	if _, err := io.ReadAll(resp.Body); err != nil {

@@ -15,7 +15,7 @@ func main() {
 	sourcePath := os.Args[1]
 	destPath := os.Args[2]
 
-	sourceFile, err := os.Open(sourcePath)
+	sourceFile, err := os.Open(sourcePath) // #nosec G304 - sourcePath is from command line argument, controlled input
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening source file %s: %v\n", sourcePath, err)
 		os.Exit(1)
@@ -26,7 +26,7 @@ func main() {
 		}
 	}()
 
-	destFile, err := os.Create(destPath)
+	destFile, err := os.Create(destPath) // #nosec G304 - destPath is from command line argument, controlled input
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating destination file %s: %v\n", destPath, err)
 		os.Exit(1)

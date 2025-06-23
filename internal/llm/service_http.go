@@ -206,7 +206,7 @@ func formatHTTPError(resp *resty.Response) error {
 	// Initialize default values
 	errorType := ErrTypeUnknown
 	retryAfter := 0
-	message := "Unknown LLM API error"
+	var message string
 
 	// Try to parse the error response
 	var openRouterError struct {
@@ -229,7 +229,11 @@ func formatHTTPError(resp *resty.Response) error {
 	case 429:
 		errorType = ErrTypeRateLimit
 		if retryHeader := resp.Header().Get("Retry-After"); retryHeader != "" {
-			retryAfter, _ = strconv.Atoi(retryHeader)
+			if parsed, err := strconv.Atoi(retryHeader); err == nil {
+				retryAfter = parsed
+			} else {
+				log.Printf("Warning: Failed to parse Retry-After header '%s': %v", retryHeader, err)
+			}
 		}
 		metrics.IncLLMFailure("openrouter", "", "rate_limit")
 	case 402:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"strconv"
 )
@@ -41,8 +42,7 @@ func (a *ArticlesApiService) GetArticles(ctx context.Context, params ArticlesPar
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log error but don't fail the operation since we're in defer
-			// The response body has likely already been read
+			log.Printf("Warning: failed to close response body: %v", closeErr)
 		}
 	}()
 
@@ -88,7 +88,7 @@ func (a *ArticlesApiService) GetArticle(ctx context.Context, id int64) (*Article
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log error but don't fail the operation since we're in defer
+			log.Printf("Warning: failed to close response body: %v", closeErr)
 		}
 	}()
 
@@ -133,7 +133,7 @@ func (a *ArticlesApiService) CreateArticle(ctx context.Context, req CreateArticl
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log error but don't fail the operation since we're in defer
+			log.Printf("Warning: failed to close response body: %v", closeErr)
 		}
 	}()
 
@@ -176,7 +176,7 @@ func (a *ArticlesApiService) GetArticleSummary(ctx context.Context, id int64) (s
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := checkResponse(resp); err != nil {
 		return "", err
@@ -211,7 +211,11 @@ func (a *ArticlesApiService) GetArticleBias(ctx context.Context, id int64) (*Sco
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	if err := checkResponse(resp); err != nil {
 		return nil, err
@@ -252,7 +256,11 @@ func (a *ArticlesApiService) GetArticleEnsemble(ctx context.Context, id int64) (
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	if err := checkResponse(resp); err != nil {
 		return nil, err

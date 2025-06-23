@@ -92,7 +92,7 @@ func main() {
 func loadConfig(configFile, baseURL string, users, requests int, duration time.Duration) (*benchmark.BenchmarkConfig, error) {
 	// Try to load from file first
 	if _, err := os.Stat(configFile); err == nil {
-		data, err := os.ReadFile(configFile)
+		data, err := os.ReadFile(configFile) // #nosec G304 - configFile is from command line flag, controlled input
 		if err != nil {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}

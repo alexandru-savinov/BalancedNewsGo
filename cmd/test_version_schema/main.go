@@ -53,8 +53,16 @@ func main() {
 		log.Fatalf("Failed to insert test score: %v", err)
 	}
 
-	rowsAffected, _ := result.RowsAffected()
-	lastID, _ := result.LastInsertId()
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Warning: Failed to get rows affected: %v", err)
+		rowsAffected = 0
+	}
+	lastID, err := result.LastInsertId()
+	if err != nil {
+		log.Printf("Warning: Failed to get last insert ID: %v", err)
+		lastID = 0
+	}
 	fmt.Printf("Insert successful: ID=%d, Rows affected=%d\n", lastID, rowsAffected)
 
 	// Query to verify what was inserted
@@ -91,7 +99,15 @@ func main() {
 		log.Fatalf("Failed to insert ensemble score: %v", err)
 	}
 
-	rowsAffected, _ = result.RowsAffected()
-	lastID, _ = result.LastInsertId()
+	rowsAffected, err = result.RowsAffected()
+	if err != nil {
+		log.Printf("Warning: Failed to get rows affected: %v", err)
+		rowsAffected = 0
+	}
+	lastID, err = result.LastInsertId()
+	if err != nil {
+		log.Printf("Warning: Failed to get last insert ID: %v", err)
+		lastID = 0
+	}
 	fmt.Printf("Ensemble insert successful: ID=%d, Rows affected=%d\n", lastID, rowsAffected)
 }

@@ -798,7 +798,11 @@ func (c *LLMClient) StoreEnsembleScore(article *db.Article) (float64, error) {
 			"confidence":    confidence,
 		},
 	}
-	metaBytes, _ := json.Marshal(meta)
+	metaBytes, err := json.Marshal(meta)
+	if err != nil {
+		log.Printf("Warning: Failed to marshal metadata: %v", err)
+		metaBytes = []byte("{}")
+	}
 	ensembleScore := &db.LLMScore{
 		ArticleID: article.ID,
 		Model:     "ensemble",

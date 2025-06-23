@@ -91,7 +91,7 @@ func main() {
 	}
 	// fmt.Fprintf(os.Stderr, "DEBUG: Using oasdiff executable at: %s\n", oasdiffExecutable) // Optional debug line
 
-	cmd := exec.Command(oasdiffExecutable, "breaking", baselineSpecPath, currentSpecPath)
+	cmd := exec.Command(oasdiffExecutable, "breaking", baselineSpecPath, currentSpecPath) // #nosec G204 - controlled input from command line
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

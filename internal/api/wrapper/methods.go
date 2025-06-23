@@ -237,7 +237,6 @@ func (c *APIClient) CreateArticle(ctx context.Context, req CreateArticleRequest)
 			ArticleID: rawResp.ArticleID,
 			Status:    rawResp.Status,
 		}
-		lastErr = nil // Clear the error on success
 		return resp, nil
 	}
 
@@ -268,7 +267,6 @@ func (c *APIClient) ReanalyzeArticle(ctx context.Context, id int64, req *ManualS
 
 		// Invalidate related caches
 		c.invalidateArticleCache(id)
-		lastErr = nil // Clear the error on success
 		return result, nil
 	}
 
@@ -330,7 +328,6 @@ func (c *APIClient) TriggerRefresh(ctx context.Context) (string, error) {
 			continue
 		}
 
-		lastErr = nil // Clear the error on success
 		return result, nil
 	}
 

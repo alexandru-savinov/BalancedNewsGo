@@ -19,7 +19,11 @@ func (ts TestScore) ToLLMScore() db.LLMScore {
 	metadata := map[string]interface{}{
 		"confidence": ts.Confidence,
 	}
-	metadataBytes, _ := json.Marshal(metadata)
+	metadataBytes, err := json.Marshal(metadata)
+	if err != nil {
+		// In test utilities, we can panic on marshal errors since they indicate programming errors
+		panic(fmt.Sprintf("failed to marshal metadata: %v", err))
+	}
 
 	return db.LLMScore{
 		Model:    ts.Model,

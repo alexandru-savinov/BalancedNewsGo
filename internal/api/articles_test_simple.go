@@ -17,7 +17,7 @@ func TestArticlesAPISimple(t *testing.T) {
 		SQLiteInMemory: true,
 	}
 	testDB := testingutils.SetupTestDatabase(t, config)
-	defer testDB.Cleanup()
+	defer func() { _ = testDB.Cleanup() }()
 
 	t.Run("Database Connection", func(t *testing.T) {
 		// Test that database connection works

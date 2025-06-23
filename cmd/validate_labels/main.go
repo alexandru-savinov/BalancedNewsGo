@@ -259,8 +259,7 @@ func sampleAndSaveFlaggedCases(flaggedCases []FlaggedCase) {
 		sampleSize = len(flaggedCases)
 	}
 	sampled := make([]FlaggedCase, 0, sampleSize)
-	r := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 0))
-	perm := r.Perm(len(flaggedCases))
+	perm := rand.Perm(len(flaggedCases))
 	for i := 0; i < sampleSize; i++ {
 		sampled = append(sampled, flaggedCases[perm[i]])
 	}
@@ -272,7 +271,7 @@ func saveFlaggedCases(cases []FlaggedCase, prefix string) {
 		return
 	}
 	fname := fmt.Sprintf("%s_%s.json", prefix, time.Now().Format("20060102_150405"))
-	f, err := os.Create(fname)
+	f, err := os.Create(fname) // #nosec G304 - fname is from command line argument, controlled input
 	if err != nil {
 		log.Printf("Failed to create %s file: %v", prefix, err)
 		return
@@ -315,7 +314,7 @@ func normalizeLabel(label string) string {
 
 func saveMetrics(metrics Metrics) {
 	fname := fmt.Sprintf("validation_log_%s.json", time.Now().Format("20060102_150405"))
-	f, err := os.Create(fname)
+	f, err := os.Create(fname) // #nosec G304 - fname is from command line argument, controlled input
 	if err != nil {
 		log.Printf("Failed to create metrics log file: %v", err)
 		return

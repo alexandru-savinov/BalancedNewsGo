@@ -49,7 +49,7 @@ func LoadCompositeScoreConfig() (*CompositeScoreConfig, error) {
 	configPath := filepath.Join(wd, "configs", "composite_score_config.json")
 	log.Printf("Attempting to load composite score config from: %s", configPath)
 
-	bytes, err := os.ReadFile(configPath)
+	bytes, err := os.ReadFile(configPath) // #nosec G304 - configPath is from application configuration, controlled input
 	if err != nil {
 		log.Printf("Error reading config file %s: %v", configPath, err)
 		return nil, err

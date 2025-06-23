@@ -257,7 +257,7 @@ func TestCaching(t *testing.T) {
 			callCount++
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(fmt.Sprintf(`{
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
 				"success": true,
 				"data": [{"article_id": %d, "Title": "Call %d"}]
 			}`, callCount, callCount)))
@@ -304,7 +304,7 @@ func TestConcurrency(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(fmt.Sprintf(`{
+			_, _ = w.Write([]byte(fmt.Sprintf(`{
 				"success": true,
 				"data": [{"article_id": %d, "Title": "Concurrent %d"}]
 			}`, currentCall, currentCall)))
@@ -359,7 +359,7 @@ func TestContextCancellation(t *testing.T) {
 			// Simulate slow response
 			time.Sleep(200 * time.Millisecond)
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"success": true, "data": []}`))
+			_, _ = w.Write([]byte(`{"success": true, "data": []}`))
 		})
 
 		client, server := newTestClientWithMockServer(handler)
@@ -407,7 +407,7 @@ func TestErrorTranslation(t *testing.T) {
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.responseBody))
+				_, _ = w.Write([]byte(tt.responseBody))
 			})
 
 			client, server := newTestClientWithMockServer(handler)
@@ -471,7 +471,7 @@ func BenchmarkGetArticles(b *testing.B) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"success": true,
 			"data": [
 				{"article_id": 1, "Title": "Benchmark Article 1"},
@@ -499,7 +499,7 @@ func BenchmarkGetArticlesWithCache(b *testing.B) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
 			"success": true,
 			"data": [
 				{"article_id": 1, "Title": "Cached Article 1"},

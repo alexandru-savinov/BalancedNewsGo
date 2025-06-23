@@ -85,7 +85,10 @@ func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant Pro
 		if errUnmarshal := json.Unmarshal([]byte(rawResp), &genericResponse); errUnmarshal == nil {
 			if errorField, ok := genericResponse["error"].(map[string]interface{}); ok {
 				if message, msgOK := errorField["message"].(string); msgOK && message != "" {
-					errType, _ := errorField["type"].(string)
+					errType, ok := errorField["type"].(string)
+					if !ok {
+						errType = "unknown"
+					}
 					codeVal := errorField["code"]
 					isRateLimit := strings.Contains(strings.ToLower(message), "rate limit exceeded") || fmt.Sprintf("%v", codeVal) == "429"
 

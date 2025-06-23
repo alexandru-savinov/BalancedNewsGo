@@ -68,7 +68,7 @@ func (tc *TestCoordinator) RunTests() error {
 func (tc *TestCoordinator) runSuite(suite TestSuite) error {
 	log.Printf("Running test suite: %s\n", suite.Name)
 
-	cmd := exec.Command(suite.Command, suite.Args...)
+	cmd := exec.Command(suite.Command, suite.Args...) // #nosec G204 - controlled test environment
 	out, err := cmd.CombinedOutput()
 
 	outputFile := filepath.Join(tc.outputDir, fmt.Sprintf("%s.log", suite.Name))

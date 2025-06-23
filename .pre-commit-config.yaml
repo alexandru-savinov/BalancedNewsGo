@@ -29,6 +29,13 @@ repos:
         files: "^(cmd|internal)/.*\\.go$"
         args: ["./..."]
         pass_filenames: false
+      - id: golangci-lint
+        name: golangci-lint
+        entry: C:\Users\Alexander.Savinov\go\bin\golangci-lint.exe
+        language: system
+        files: "^(cmd|internal)/.*\\.go$"
+        args: ["run", "--timeout=5m"]
+        pass_filenames: false
       - id: go-unit-tests
         name: go unit tests
         entry: make unit ENABLE_RACE_DETECTION=false

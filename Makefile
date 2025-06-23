@@ -77,7 +77,8 @@ SHORT           := -short
 
 .PHONY: help build run clean \
         tidy lint unit integ e2e test coverage-core coverage coverage-html \
-        mock-llm-go mock-llm-py docker-up docker-down integration benchmark
+        mock-llm-go mock-llm-py docker-up docker-down integration benchmark \
+        precommit-check
 
 .DEFAULT_GOAL := help
 
@@ -117,7 +118,7 @@ tidy: ## go mod tidy
 	$(GO) mod tidy
 
 lint: ## Run golangci-lint
-	$(GOLANGCI) run ./...
+	$(GOLANGCI) run --timeout=5m
 
 # Testing Matrix
 # ===============
@@ -242,3 +243,41 @@ else
 	@echo "Running performance benchmarks (Unix)..."
 	bash scripts/run-benchmarks.sh
 endif
+
+# Pre-commit Checks (matching CI/CD pipeline)
+# ============================================
+
+precommit-check: ## Run the same checks as CI/CD pipeline (for local verification)
+	@echo "🔍 Running pre-commit checks (matching CI/CD pipeline)..."
+	@echo ""
+	@echo "🧹 Step 1: Code formatting and tidying..."
+	@echo "✓ Running go mod tidy..."
+	@$(GO) mod tidy
+	@echo "✓ Running go fmt..."
+	@$(GO) fmt ./...
+	@echo ""
+	@echo "🔍 Step 2: Linting and static analysis (matching CI)..."
+	@echo "✓ Running golangci-lint..."
+	@$(MAKE) lint
+	@echo "✓ Running go vet..."
+	@$(GO) vet -composites=false ./...
+	@echo "✓ Running staticcheck..."
+	@if command -v staticcheck >/dev/null 2>&1; then \
+		staticcheck ./...; \
+	else \
+		echo "⚠ staticcheck not found, skipping (install with: go install honnef.co/go/tools/cmd/staticcheck@latest)"; \
+	fi
+	@echo ""
+	@echo "🏗️ Step 3: Build verification..."
+	@echo "✓ Building application..."
+	@$(GO) build -o test-server-precommit$(if $(filter Windows_NT,$(OS)),.exe,) ./cmd/server
+	@rm -f test-server-precommit$(if $(filter Windows_NT,$(OS)),.exe,)
+	@echo ""
+	@echo "🧪 Step 4: Running unit tests..."
+	@echo "✓ Running unit tests..."
+	@NO_AUTO_ANALYZE=true NO_DOCKER=true $(MAKE) unit ENABLE_RACE_DETECTION=false
+	@echo ""
+	@echo "🎉 All pre-commit checks passed! Your changes are ready to commit."
+	@echo ""
+	@echo "Note: This runs the same checks as the CI/CD pipeline."
+	@echo "If this passes, your CI build should also pass."

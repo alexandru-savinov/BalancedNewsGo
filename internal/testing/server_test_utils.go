@@ -3,6 +3,7 @@ package testing
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -104,7 +105,7 @@ func (tsm *TestServerManager) Start(t *testing.T) error {
 
 	// Setup server command
 	t.Logf("🔧 [%v] Setting up server command: %v", time.Now().Format("15:04:05.000"), tsm.config.ServerCommand)
-	tsm.cmd = exec.CommandContext(ctx, tsm.config.ServerCommand[0], tsm.config.ServerCommand[1:]...)
+	tsm.cmd = exec.CommandContext(ctx, tsm.config.ServerCommand[0], tsm.config.ServerCommand[1:]...) // #nosec G204 - controlled test environment
 
 	// Set working directory to project root
 	// Try to detect if we're in tests directory and go up, otherwise use current directory
@@ -158,7 +159,7 @@ func (tsm *TestServerManager) Start(t *testing.T) error {
 	t.Logf("⏳ [%v] Waiting for server to become healthy (timeout: %v)", time.Now().Format("15:04:05.000"), tsm.config.StartupTimeout)
 	if err := tsm.waitForHealth(); err != nil {
 		t.Logf("❌ [%v] Server failed to become healthy: %v", time.Now().Format("15:04:05.000"), err)
-		tsm.Stop()
+		_ = tsm.Stop()
 		return fmt.Errorf("server failed to become healthy: %w", err)
 	}
 	t.Logf("✅ [%v] Server is healthy!", time.Now().Format("15:04:05.000"))
@@ -166,7 +167,7 @@ func (tsm *TestServerManager) Start(t *testing.T) error {
 	// Setup cleanup
 	t.Cleanup(func() {
 		t.Logf("🧹 [%v] Cleanup: Stopping test server", time.Now().Format("15:04:05.000"))
-		tsm.Stop()
+		_ = tsm.Stop()
 	})
 
 	totalTime := time.Since(startTime)
@@ -216,7 +217,7 @@ func (tsm *TestServerManager) Stop() error {
 		select {
 		case <-ctx.Done():
 			// Force kill on timeout
-			tsm.cmd.Process.Kill()
+			_ = tsm.cmd.Process.Kill()
 			return nil // Don't return error for timeout in tests
 		case err := <-done:
 			// Ignore expected exit codes from interrupted processes
@@ -242,7 +243,11 @@ func (tsm *TestServerManager) IsHealthy() bool {
 		// Don't log every health check failure to avoid spam, but provide info for debugging
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	return resp.StatusCode == http.StatusOK
 }
@@ -269,7 +274,7 @@ func (tsm *TestServerManager) waitForHealth() error {
 				statusInfo = fmt.Sprintf("connection error: %v", err)
 			} else {
 				statusInfo = fmt.Sprintf("HTTP %d", resp.StatusCode)
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 
 			// Check if server process is still running

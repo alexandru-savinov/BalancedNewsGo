@@ -42,7 +42,7 @@ func main() {
 			fmt.Printf("❌ Error: %v\n", err)
 			continue
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		fmt.Printf("Status: %s\n", resp.Status)
 
