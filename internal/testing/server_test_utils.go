@@ -199,7 +199,7 @@ func (tsm *TestServerManager) Stop() error {
 
 		// In local environments, wait briefly but don't block
 		go func() {
-			tsm.cmd.Wait() // Clean up process in background
+			_ = tsm.cmd.Wait() // Clean up process in background
 		}()
 	}
 
