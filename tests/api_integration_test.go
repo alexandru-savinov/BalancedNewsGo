@@ -62,20 +62,12 @@ func TestAPIIntegration(t *testing.T) {
 		}
 		t.Logf("🔍 DEBUG: Server stopped")
 
-		// Database cleanup is handled by the server manager
-		t.Logf("🔍 DEBUG: Database cleanup handled by server manager")
-
 		// Force garbage collection to clean up any remaining resources
 		runtime.GC()
-		runtime.GC() // Call twice to ensure cleanup
 		t.Logf("🔍 DEBUG: Garbage collection completed")
 
-		// Give more time for cleanup in CI environments
-		if os.Getenv("CI") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
-			time.Sleep(500 * time.Millisecond)
-		} else {
-			time.Sleep(100 * time.Millisecond)
-		}
+		// Minimal sleep to allow cleanup
+		time.Sleep(50 * time.Millisecond)
 		t.Logf("🔍 DEBUG: Final cleanup completed")
 	}()
 
@@ -316,13 +308,8 @@ func TestAPIPerformance(t *testing.T) {
 		if err := serverManager.Stop(); err != nil {
 			t.Logf("Warning: Failed to stop server cleanly: %v", err)
 		}
-
-		// Force garbage collection
 		runtime.GC()
 		t.Logf("🔍 DEBUG: Performance test cleanup completed")
-
-		// Give a moment for cleanup to complete
-		time.Sleep(100 * time.Millisecond)
 	}()
 	// Performance test configuration
 	perfConfig := internaltesting.PerformanceTestConfig{

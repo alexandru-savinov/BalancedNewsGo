@@ -197,35 +197,10 @@ func (tsm *TestServerManager) Stop() error {
 			return nil
 		}
 
-		// In local environments, try graceful shutdown first
-		if err := tsm.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-			// Force kill if graceful shutdown fails
-			if killErr := tsm.cmd.Process.Kill(); killErr != nil {
-				return fmt.Errorf("failed to kill server process %d: %w", pid, killErr)
-			}
-		}
-
-		// Wait for process to finish with shorter timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second) // Reduced from 5s
-		defer cancel()
-
-		done := make(chan error, 1)
+		// In local environments, wait briefly but don't block
 		go func() {
-			done <- tsm.cmd.Wait()
+			tsm.cmd.Wait() // Clean up process in background
 		}()
-
-		select {
-		case <-ctx.Done():
-			// Force kill on timeout
-			_ = tsm.cmd.Process.Kill()
-			return nil // Don't return error for timeout in tests
-		case err := <-done:
-			// Ignore expected exit codes from interrupted processes
-			if err != nil && err.Error() != "signal: killed" && err.Error() != "exit status 1" {
-				// Don't return error for expected process termination
-				return nil
-			}
-		}
 	}
 
 	return nil
