@@ -17,13 +17,54 @@ linters-settings:
     ignore-generated-header: true
   errcheck:
     check-type-assertions: true
+    # Check for unchecked errors in concurrent code
+    check-blank: true
+  govet:
+    # Enable checks for common concurrency issues
+    enable:
+      - atomic
+      - bools
+      - buildtag
+      - copylocks
+      - fieldalignment
+      - httpresponse
+      - loopclosure
+      - lostcancel
+      - nilfunc
+      - printf
+      - shift
+      - stdmethods
+      - structtag
+      - tests
+      - unmarshal
+      - unreachable
+      - unsafeptr
+      - unusedresult
+  staticcheck:
+    # Enable all staticcheck rules including concurrency checks
+    checks: ["all"]
+  gosec:
+    # Enable security checks that can catch concurrency issues
+    includes:
+      - G104  # Audit errors not checked
+      - G204  # Audit use of command execution
+      - G304  # File path provided as taint input
 
 linters:
   enable:
+    # Core linters
     - govet
     - revive
     - gosimple
     - misspell
+    # Concurrency and race condition detection
+    - staticcheck  # Excellent for detecting concurrency issues
+    - errcheck     # Important for checking error handling in concurrent code
+    - ineffassign  # Can catch issues with concurrent assignments
+    - gosec        # Security issues including some concurrency problems
+    # Additional useful linters
+    - typecheck
+    - unused
   disable:
     - depguard
     - forbidigo
@@ -32,10 +73,5 @@ linters:
     - gocritic
     - goconst
     - unparam
-    - unused
-    - ineffassign
-    - errcheck
-    - staticcheck
     - gofmt
     - goimports
-    - typecheck

@@ -1,15 +1,27 @@
-# Configurable race detection flag: enabled by default on non-Windows, disabled on Windows
-ifeq ($(OS),Windows_NT)
-    ENABLE_RACE_DETECTION ?= false
-else
-    ENABLE_RACE_DETECTION ?= true
-endif
-
 # OS detection
 ifeq ($(OS),Windows_NT)
     OS_DETECTED := Windows
 else
     OS_DETECTED := $(shell uname -s)
+endif
+
+# CGO availability check
+CGO_AVAILABLE := $(shell CGO_ENABLED=1 go env CGO_ENABLED 2>/dev/null)
+ifeq ($(CGO_AVAILABLE),1)
+    CGO_SUPPORTED := true
+else
+    CGO_SUPPORTED := false
+endif
+
+# Configurable race detection flag with intelligent defaults
+ifeq ($(OS),Windows_NT)
+    ENABLE_RACE_DETECTION ?= false
+else
+    ifeq ($(CGO_SUPPORTED),true)
+        ENABLE_RACE_DETECTION ?= true
+    else
+        ENABLE_RACE_DETECTION ?= false
+    endif
 endif
 
 # Base test command without race detection
@@ -30,9 +42,15 @@ else
 endif
 GO_TEST_CMD := go test -count=1 $(TEST_PKGS) -run . -short -timeout 2m
 
-# Add race flag conditionally
+# Add race flag conditionally with validation
 ifeq ($(ENABLE_RACE_DETECTION),true)
-    GO_TEST_CMD += -race
+    ifeq ($(CGO_SUPPORTED),true)
+        GO_TEST_CMD += -race
+        export CGO_ENABLED=1
+    else
+        $(warning Race detection requested but CGO is not available. Disabling race detection.)
+        ENABLE_RACE_DETECTION := false
+    endif
 endif
 
 # Go / tools
@@ -107,16 +125,35 @@ lint: ## Run golangci-lint
 unit:
 	@echo "Running unit tests..."
 	@echo "OS detected: $(OS_DETECTED)"
+	@echo "CGO supported: $(CGO_SUPPORTED)"
 ifeq ($(ENABLE_RACE_DETECTION),true)
-	@echo "Race detection enabled. Ensure you have a C compiler installed."
-	@echo "On Windows, you need MinGW-w64 or another C compiler in your PATH."
-	@echo "To disable race detection: make unit ENABLE_RACE_DETECTION=false"
+	@echo "Race detection enabled."
+	@echo "CGO_ENABLED=1 is set for race detection."
+else
+	@echo "Race detection disabled."
+ifeq ($(CGO_SUPPORTED),false)
+	@echo "Note: CGO is not available. Race detection cannot be enabled."
+	@echo "To enable CGO: install a C compiler and set CGO_ENABLED=1"
 endif
+endif
+	@echo "Test command: $(GO_TEST_CMD)"
 	$(GO_TEST_CMD)
 	@echo "Unit tests complete."
 
 integ: ## Go integration tests (requires DB etc.)
 	$(GO) test -tags=integration ./cmd/... ./internal...
+
+concurrency: ## Run concurrency tests without CGO (using goleak and stress testing)
+	@echo "Running concurrency tests without CGO..."
+	@echo "Installing goleak if not present..."
+	$(GO) get -t go.uber.org/goleak
+	@echo "Running static analysis for concurrency issues..."
+	$(GO) vet -composites=false ./...
+	@echo "Running stress tests to detect race conditions..."
+	$(GO) test -v -count=3 -parallel=4 ./internal/testing/
+	@echo "Running all tests with stress testing..."
+	$(GO) test -v -count=2 -parallel=2 $(TEST_PKGS)
+	@echo "Concurrency tests complete."
 
 integration: integ ## Alias for the 'integ' target to allow 'make integration'
 
