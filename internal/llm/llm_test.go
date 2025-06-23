@@ -550,8 +550,11 @@ func TestAnalyzeAndStore(t *testing.T) {
 	err = client.AnalyzeAndStore(article)
 	assert.NoError(t, err, "AnalyzeAndStore should succeed with valid mocks")
 
-	// DB error case: fail on the first insert
+	// DB error case: fail on the first insert, but expect all 3 models to be attempted
+	// (AnalyzeAndStore continues processing even when one model fails)
 	mock.ExpectExec("INSERT INTO llm_scores").WillReturnError(fmt.Errorf("db error"))
+	mock.ExpectExec("INSERT INTO llm_scores").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO llm_scores").WillReturnResult(sqlmock.NewResult(1, 1))
 	client2 := &LLMClient{
 		db:         sqlxDB,
 		llmService: service,

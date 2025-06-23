@@ -236,8 +236,8 @@ func setupIntegrationTest(t *testing.T) (*sqlx.DB, *ScoreManager, *ProgressManag
 }
 
 func TestScoreManagerIntegrationUpdateArticleScoreZeroConfidenceError(t *testing.T) {
-	mockDB, scoreManager, _, _ := setupIntegrationTest(t) // Assign sqlMock to _
-	defer func() { _ = mockDB.Close() }()                 // Close the sqlxDB wrapper
+	mockDB, scoreManager, _, sqlMock := setupIntegrationTest(t) // Get sqlMock
+	defer func() { _ = mockDB.Close() }()                       // Close the sqlxDB wrapper
 
 	// Prepare mock calculator to return zero confidence
 	// (This mock setup might need adjustment based on how MockRealCalculator is implemented)
@@ -256,11 +256,21 @@ func TestScoreManagerIntegrationUpdateArticleScoreZeroConfidenceError(t *testing
 
 	// Expect UpdateArticleScoreLLM NOT to be called
 
+	// BUT we DO expect UpdateArticleStatus to be called for failed_zero_confidence
+	sqlMock.ExpectExec("UPDATE articles SET status = \\? WHERE id = \\?").
+		WithArgs(models.ArticleStatusFailedZeroConf, articleID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
 	cfg := &CompositeScoreConfig{ /* ... fill if needed ... */ }
 	_, _, err := scoreManager.UpdateArticleScore(articleID, zeroScores, cfg) // Pass cfg
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "all LLMs returned zero confidence")
+
+	// Verify that all database expectations were met
+	if err := sqlMock.ExpectationsWereMet(); err != nil {
+		t.Errorf("Database expectations were not met: %v", err)
+	}
 }
 
 func TestScoreManagerIntegrationCalculateScoreError(t *testing.T) {
