@@ -34,7 +34,7 @@ func TestAPIClient_HTTPIntegration(t *testing.T) {
 					"Content":    "Test content 2",
 				},
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": articles,
 			})
 		case "/api/articles/1":
@@ -45,7 +45,7 @@ func TestAPIClient_HTTPIntegration(t *testing.T) {
 				"Title":      "Test Article 1",
 				"Content":    "Test content 1",
 			}
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"data": article,
 			})
 		default:
@@ -93,7 +93,7 @@ func TestAPIClient_RetryWithHTTP(t *testing.T) {
 		articles := []map[string]interface{}{
 			{"article_id": 1, "Title": "Success After Retry"},
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": articles,
 		})
 	}))
@@ -121,7 +121,7 @@ func TestAPIClient_CachingWithHTTP(t *testing.T) {
 		articles := []map[string]interface{}{
 			{"article_id": 1, "Title": fmt.Sprintf("Request %d", requestCount)},
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": articles,
 		})
 	}))
@@ -169,7 +169,7 @@ func TestAPIClient_ConcurrencyWithHTTP(t *testing.T) {
 		articles := []map[string]interface{}{
 			{"article_id": reqNum, "Title": fmt.Sprintf("Concurrent Request %d", reqNum)},
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": articles,
 		})
 	}))
@@ -215,7 +215,7 @@ func BenchmarkAPIClient_HTTPPerformance(b *testing.B) {
 		articles := []map[string]interface{}{
 			{"article_id": 1, "Title": "Benchmark Article"},
 		}
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": articles,
 		})
 	}))

@@ -16,7 +16,11 @@ func TestBasicFunctionality(t *testing.T) {
 		if testDB == nil {
 			t.Fatal("SetupTestDatabase returned nil")
 		}
-		defer testDB.Cleanup()
+		defer func() {
+			if err := testDB.Cleanup(); err != nil {
+				t.Logf("Failed to cleanup test database: %v", err)
+			}
+		}()
 
 		// Test basic connection
 		if testDB.DB == nil {

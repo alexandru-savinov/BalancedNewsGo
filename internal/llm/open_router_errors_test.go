@@ -101,7 +101,10 @@ func TestOpenRouterErrorTypes(t *testing.T) {
 			require.IsType(t, LLMAPIError{}, llmErr, "Expected error to be of type LLMAPIError")
 
 			// Type assertion
-			typedErr := llmErr.(LLMAPIError)
+			typedErr, ok := llmErr.(LLMAPIError)
+			if !ok {
+				t.Fatalf("Expected LLMAPIError, got %T", llmErr)
+			}
 
 			// Verify expected fields
 			assert.Equal(t, tc.expectedType, typedErr.ErrorType, "Error type mismatch")

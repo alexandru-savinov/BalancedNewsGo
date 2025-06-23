@@ -44,7 +44,8 @@ func (m *MockTx) Exec(query string, args ...interface{}) (sql.Result, error) {
 	if arguments.Get(0) == nil {
 		return nil, arguments.Error(1)
 	}
-	return arguments.Get(0).(sql.Result), arguments.Error(1)
+	result := arguments.Get(0).(sql.Result)
+	return result, arguments.Error(1)
 }
 
 // Commit mocks the Commit method
@@ -265,14 +266,14 @@ func (sm *TestableScoreManager) UpdateArticleScore(articleID int64, scores []db.
 			compositeScore, confidence, articleID)
 		if execErr != nil {
 			dbUpdateErr = fmt.Errorf("failed during DB exec: %w", execErr)
-			sm.mockTx.Rollback() // Attempt rollback
+			_ = sm.mockTx.Rollback() // Attempt rollback, ignore error in test
 		} else {
 			// If there were other DB operations (e.g., inserting to llm_scores), they would be here.
 			// For now, assume only one Exec and then Commit.
 			commitErr := sm.mockTx.Commit()
 			if commitErr != nil {
 				dbUpdateErr = fmt.Errorf("failed during DB commit: %w", commitErr)
-				sm.mockTx.Rollback() // Attempt rollback
+				_ = sm.mockTx.Rollback() // Attempt rollback, ignore error in test
 			}
 		}
 	}

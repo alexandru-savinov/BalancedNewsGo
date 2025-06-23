@@ -303,27 +303,3 @@ func TestFormatHTTPError(t *testing.T) {
 		})
 	}
 }
-
-// Mock response for testing formatHTTPError
-type mockRestyResponse struct {
-	statusCode int
-	body       string
-	headers    http.Header
-	status     string
-}
-
-func (r *mockRestyResponse) StatusCode() int {
-	return r.statusCode
-}
-
-func (r *mockRestyResponse) String() string {
-	return r.body
-}
-
-func (r *mockRestyResponse) Header() http.Header {
-	return r.headers
-}
-
-func (r *mockRestyResponse) Status() string {
-	return r.status
-}

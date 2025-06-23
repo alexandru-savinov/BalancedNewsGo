@@ -21,7 +21,7 @@ func applyMigrations(t *testing.T, db *sqlx.DB) {
 	assert.NoError(t, err)
 	sort.Strings(files)
 	for _, f := range files {
-		b, err := os.ReadFile(f)
+		b, err := os.ReadFile(f) // #nosec G304 - test file path is controlled
 		assert.NoError(t, err)
 		_, err = db.Exec(string(b))
 		assert.NoError(t, err)

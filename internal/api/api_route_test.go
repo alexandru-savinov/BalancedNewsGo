@@ -313,7 +313,11 @@ func TestScoreProgressSSE_RealHandler(t *testing.T) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	assert.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Logf("Warning: failed to close response body: %v", closeErr)
+		}
+	}()
 
 	// Verify headers
 	assert.Equal(t, "text/event-stream", resp.Header.Get("Content-Type"))

@@ -35,7 +35,8 @@ func (m *MockInternalAPIClient) GetArticles(ctx context.Context, params api.Inte
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]api.InternalArticle), args.Error(1)
+	articles := args.Get(0).([]api.InternalArticle)
+	return articles, args.Error(1)
 }
 
 func (m *MockInternalAPIClient) GetArticle(ctx context.Context, id int64) (*api.InternalArticle, error) {
@@ -43,7 +44,8 @@ func (m *MockInternalAPIClient) GetArticle(ctx context.Context, id int64) (*api.
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*api.InternalArticle), args.Error(1)
+	article := args.Get(0).(*api.InternalArticle)
+	return article, args.Error(1)
 }
 
 func (m *MockInternalAPIClient) GetCacheStats(ctx context.Context) (map[string]interface{}, error) {
@@ -51,7 +53,8 @@ func (m *MockInternalAPIClient) GetCacheStats(ctx context.Context) (map[string]i
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(map[string]interface{}), args.Error(1)
+	stats := args.Get(0).(map[string]interface{})
+	return stats, args.Error(1)
 }
 
 func (m *MockInternalAPIClient) GetFeedHealth(ctx context.Context, feedName string) (map[string]bool, error) {

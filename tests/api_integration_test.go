@@ -32,7 +32,11 @@ func TestAPIIntegration(t *testing.T) {
 	}
 
 	testDB := internaltesting.SetupTestDatabase(t, dbConfig)
-	defer testDB.Cleanup()
+	defer func() {
+		if err := testDB.Cleanup(); err != nil {
+			t.Logf("Failed to cleanup test database: %v", err)
+		}
+	}()
 
 	// Setup test server
 	serverConfig := internaltesting.DefaultTestServerConfig()
@@ -151,7 +155,11 @@ func TestAPIIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create test article: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					t.Logf("Warning: failed to close response body: %v", closeErr)
+				}
+			}()
 
 			if resp.StatusCode != http.StatusCreated {
 				t.Fatalf("Failed to create test article, status: %d", resp.StatusCode)
@@ -239,7 +247,11 @@ func TestAPIIntegration(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create test article: %v", err)
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					t.Logf("Warning: failed to close response body: %v", closeErr)
+				}
+			}()
 
 			if resp.StatusCode != http.StatusCreated {
 				t.Fatalf("Failed to create test article, status: %d", resp.StatusCode)

@@ -758,8 +758,14 @@ func TestReanalyzeHandlerFallbackMechanismIntegration(t *testing.T) {
 	mockLLMClient.ExpectedCalls = nil
 
 	// Ensure background reanalysis runs during this test
-	os.Setenv("NO_AUTO_ANALYZE", "false")
-	defer os.Unsetenv("NO_AUTO_ANALYZE")
+	if err := os.Setenv("NO_AUTO_ANALYZE", "false"); err != nil {
+		t.Fatalf("Failed to set environment variable: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("NO_AUTO_ANALYZE"); err != nil {
+			t.Logf("Failed to unset environment variable: %v", err)
+		}
+	}()
 
 	// Test article ID
 	articleID := int64(42)

@@ -28,7 +28,11 @@ func TestDatabaseIntegration(t *testing.T) {
 		SeedDataPath:   "../testdata/seed",
 	}
 	testDB := internalTesting.SetupTestDatabase(t, config)
-	defer testDB.Cleanup()
+	defer func() {
+		if err := testDB.Cleanup(); err != nil {
+			t.Logf("Failed to cleanup test database: %v", err)
+		}
+	}()
 
 	t.Run("TestArticleStorage", func(t *testing.T) {
 		testArticleStorage(t, testDB)
@@ -51,7 +55,11 @@ func TestSQLiteIntegration(t *testing.T) { // Setup test database with SQLite
 		MigrationsPath: "../migrations",
 	}
 	testDB := internalTesting.SetupTestDatabase(t, config)
-	defer testDB.Cleanup()
+	defer func() {
+		if err := testDB.Cleanup(); err != nil {
+			t.Logf("Failed to cleanup test database: %v", err)
+		}
+	}()
 
 	t.Run("TestBasicOperations", func(t *testing.T) {
 		testBasicDatabaseOperations(t, testDB)

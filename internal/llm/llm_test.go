@@ -505,12 +505,18 @@ func TestAnalyzeAndStore(t *testing.T) {
 		"weights": {"left": 1.0, "center": 1.0, "right": 1.0}
 	}`
 	_ = os.MkdirAll("configs", 0755)
-	os.WriteFile(configPath, []byte(testConfig), 0644)
+	if err := os.WriteFile(configPath, []byte(testConfig), 0644); err != nil {
+		t.Fatalf("Failed to write test config: %v", err)
+	}
 	defer func() {
 		if origConfig != nil {
-			os.WriteFile(configPath, origConfig, 0644)
+			if err := os.WriteFile(configPath, origConfig, 0644); err != nil {
+				t.Logf("Failed to restore original config: %v", err)
+			}
 		} else {
-			os.Remove(configPath)
+			if err := os.Remove(configPath); err != nil {
+				t.Logf("Failed to remove test config: %v", err)
+			}
 		}
 	}()
 

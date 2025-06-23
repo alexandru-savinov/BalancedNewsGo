@@ -61,7 +61,7 @@ func findOasdiff() (string, error) {
 	return "", fmt.Errorf("'%s' command not found. Checked locations: %s. "+
 		"Please ensure oasdiff is installed (go install github.com/oasdiff/oasdiff@latest) "+
 		"and your PATH, GOBIN, or GOPATH/bin is configured correctly. "+
-		"Refer to README.md for details.", exeName, strings.Join(checkedPaths, ", "))
+		"Refer to README.md for details", exeName, strings.Join(checkedPaths, ", "))
 }
 
 func main() {

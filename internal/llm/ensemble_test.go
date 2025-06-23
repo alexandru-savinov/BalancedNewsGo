@@ -202,7 +202,8 @@ func (m *MockLLMService) ScoreContent(ctx context.Context, content, systemPrompt
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*db.LLMScore), args.Error(1)
+	score := args.Get(0).(*db.LLMScore)
+	return score, args.Error(1)
 }
 
 func TestLLMClient_StreamingErrorDetection(t *testing.T) {

@@ -33,7 +33,7 @@ func TestSSEProgressConcurrentClients(t *testing.T) {
 		progressMgr := llm.NewProgressManager(5 * time.Minute)
 
 		// Create a minimal score manager with the progress manager
-		scoreManager := &llm.ScoreManager{}
+		var scoreManager *llm.ScoreManager
 		// Use reflection to set the progressMgr field since it's private
 		// Or alternatively, create it using the constructor with nil for other fields
 

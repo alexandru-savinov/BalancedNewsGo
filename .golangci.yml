@@ -1,18 +1,16 @@
 run:
-  # Skip tests by default, but allow override with --tests=true flag
+  # Skip test files for cleaner linting (test files often have acceptable loose error handling)
   skip-tests: true
   timeout: 5m
 
 issues:
-  # Exclude test files by default, but allow override
-  exclude-files:
-    - "_test\\.go$"
-  exclude-rules:
-    - path: "_test\\.go$"
-      linters:
-        - "*"
   # Don't exclude issues in vendor or generated files
   exclude-use-default: false
+  exclude-rules:
+    # Allow unchecked errors in test files for common test operations
+    - path: "_test\\.go$"
+      linters:
+        - errcheck
 
 linters-settings:
   gocritic:
