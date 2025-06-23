@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NewsBalancer - Articles</title>
+
+    <!-- Modern CSS Framework -->
+    <link rel="stylesheet" href="/static/assets/css/main.css" />
+
+    <!-- HTMX for dynamic functionality -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom NewsBalancer styles -->
+    <style>
+        /* Custom bias indicators using design system colors */
+        .bias-indicator {
+            display: inline-block;
+            padding: 0.25em 0.65em;
+            border-radius: 0.375em;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .bias-left {
+            background-color: rgba(245, 106, 106, 0.1);
+            color: #f56a6a;
+            border: 1px solid rgba(245, 106, 106, 0.25);
+        }
+
+        .bias-center {
+            background-color: rgba(127, 136, 143, 0.1);
+            color: #7f888f;
+            border: 1px solid rgba(127, 136, 143, 0.25);
+        }
+
+        .bias-right {
+            background-color: rgba(61, 68, 73, 0.1);
+            color: #3d4449;
+            border: 1px solid rgba(61, 68, 73, 0.25);
+        }
+
+        /* Article cards using design system */
+        .article-card {
+            background: #ffffff;
+            border: 1px solid rgba(210, 215, 217, 0.75);
+            border-radius: 0.375em;
+            padding: 1.5em;
+            transition: all 0.2s ease-in-out;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .article-card:hover {
+            transform: translateY(-0.25em);
+            box-shadow: 0 0.5em 1.5em rgba(0, 0, 0, 0.1);
+            border-color: rgba(245, 106, 106, 0.5);
+        }
+
+        .article-card h3 {
+            margin: 0 0 0.5em 0;
+            font-size: 1.1em;
+            line-height: 1.4;
+        }
+
+        .article-card h3 a {
+            color: #3d4449;
+            border-bottom: none;
+        }
+
+        .article-card h3 a:hover {
+            color: #f56a6a;
+        }
+
+        .article-meta {
+            color: #9fa3a6;
+            font-size: 0.9em;
+            margin: 0.5em 0;
+            flex-grow: 1;
+        }
+
+        .article-actions {
+            margin-top: auto;
+            padding-top: 1em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Filter form using design system */
+        .filter-section {
+            background: #f5f6f7;
+            border: 1px solid rgba(210, 215, 217, 0.75);
+            border-radius: 0.375em;
+            padding: 1.5em;
+            margin-bottom: 2em;
+        }
+
+        /* Results summary */
+        .results-summary {
+            color: #9fa3a6;
+            font-size: 0.9em;
+            margin: 1em 0 2em 0;
+            padding: 0.75em 1em;
+            background: rgba(245, 246, 247, 0.5);
+            border-radius: 0.375em;
+            border-left: 3px solid #f56a6a;
+        }
+
+        /* Loading states */
+        .htmx-indicator {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .htmx-request .htmx-indicator {
+            opacity: 1;
+        }
+        .htmx-request.htmx-indicator {
+            opacity: 1;
+        }
+
+        /* Responsive article grid */
+        .articles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5em;
+        }
+
+        @media screen and (max-width: 736px) {
+            .articles-grid {
+                grid-template-columns: 1fr;
+                gap: 1em;
+            }
+
+            .filter-section {
+                padding: 1em;
+            }
+        }
+    </style>
+</head>
+<body>    <header>
+    <div class="container">
+        <h1>NewsBalancer</h1>        <nav role="navigation" aria-label="Main navigation">
+            <a href="/articles" 
+               hx-get="/articles" 
+               hx-target="body"
+               hx-push-url="true">Articles</a> |
+            <a href="/admin">Admin</a>
+        </nav>
+    </div>
+    </header>
+
+    <main class="container">
+        <h2>Latest News Articles</h2>          <form class="filter-form" 
+              role="search" 
+              aria-label="Filter articles"
+              hx-get="/htmx/articles"
+              hx-target="#articles-container"
+              hx-trigger="submit, change from:select"
+              hx-indicator="#loading-indicator">
+            <label for="source-select" class="sr-only">Filter by source:</label>
+            <select name="source" id="source-select" aria-label="Source filter">
+                <option value="">All Sources</option>
+                {{range .Sources}}
+                <option value="{{.}}" {{if eq . $.SelectedSource}}selected{{end}}>{{.}}</option>
+                {{end}}
+            </select>
+            
+            <label for="bias-select" class="sr-only">Filter by bias:</label>
+            <select name="bias" id="bias-select" aria-label="Bias filter">
+                <option value="">All Bias Levels</option>
+                <option value="left" {{if eq .SelectedBias "left"}}selected{{end}}>Left Leaning</option>
+                <option value="center" {{if eq .SelectedBias "center"}}selected{{end}}>Center</option>                <option value="right" {{if eq .SelectedBias "right"}}selected{{end}}>Right Leaning</option>
+            </select>
+              <label for="search-input" class="sr-only">Search articles:</label>
+            <input type="text" name="query" id="search-input" data-testid="search-input" placeholder="Search..." value="{{.SearchQuery}}" aria-label="Search articles">
+              <button type="submit">Filter</button>
+            
+            <!-- HTMX Loading indicator -->
+            <div id="loading-indicator" class="htmx-indicator" style="display: none; margin-left: 10px;">
+                Loading...
+            </div>
+        </form>
+        
+                
+        <div class="results-summary" style="margin: 15px 0; color: #6c757d; font-size: 14px;">
+            {{if .Articles}}
+            <span>Showing {{len .Articles}} of {{.TotalResults}} articles</span>
+            {{if or .SearchQuery .SelectedSource .SelectedBias}}
+            <span style="margin-left: 10px;">
+                (filtered{{if .SearchQuery}} for "{{.SearchQuery}}"{{end}}{{if .SelectedSource}} from {{.SelectedSource}}{{end}}{{if .SelectedBias}} with {{.SelectedBias}} bias{{end}})
+            </span>
+            {{end}}
+            {{else}}
+            <span>No articles found matching your criteria.</span>
+            {{end}}
+        </div>
+<div class="article-list" id="articles-container" data-testid="articles-container">
+            {{range .Articles}}
+            <div class="article-item" data-testid="article-card-{{.ID}}" data-article-id="{{.ID}}">
+                <div class="article-title">
+                    <a href="/article/{{.ID}}" data-testid="article-link-{{.ID}}">{{.Title}}</a>
+                </div><div class="article-meta">
+                    <div>Source: {{.Source}}</div>
+                    <div>Published: {{.PubDate.Format "2006-01-02 15:04"}}</div>
+                </div>
+                <div>
+                    {{if eq .Bias "left"}}
+                    <span class="bias-indicator bias-left">Left Leaning</span>
+                    {{else if eq .Bias "center"}}
+                    <span class="bias-indicator bias-center">Center</span>
+                    {{else if eq .Bias "right"}}
+                    <span class="bias-indicator bias-right">Right Leaning</span>
+                    {{end}}
+                </div>
+            </div>            {{else}}
+            <p data-testid="no-results">No articles found. Try adjusting your filters.</p>
+            {{end}}
+        </div>
+        
+        <!-- Load more button for dynamic loading -->
+        <div id="load-more-container" data-testid="load-more-container" style="margin: 20px 0; text-align: center;">
+            {{if .HasMore}}            <button id="load-more-btn" 
+                    data-testid="load-more-articles"                    class="filter-form button" 
+                    hx-get="/htmx/articles/load-more"
+                    hx-target="#articles-container"
+                    hx-swap="beforeend"
+                    hx-vals='{"page": "{{.NextPage}}"}'
+                    hx-indicator="#loading-indicator"
+                    style="padding: 10px 20px; background-color: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Load More Articles
+            </button>
+            {{else}}            <button data-testid="load-more-articles" 
+                    class="filter-form button" 
+                    hx-get="/htmx/articles/load-more"
+                    hx-target="#articles-container"
+                    hx-swap="beforeend"
+                    hx-vals='{"page": "2"}'
+                    hx-indicator="#loading-indicator"
+                    style="padding: 10px 20px; background-color: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                Load More Articles
+            </button>
+            {{end}}
+        </div>
+        
+        <div class="pagination">
+            {{if gt .CurrentPage 1}}
+            <a href="?page={{.PrevPage}}{{if .SearchQuery}}&query={{.SearchQuery}}{{end}}{{if .SelectedSource}}&source={{.SelectedSource}}{{end}}{{if .SelectedBias}}&bias={{.SelectedBias}}{{end}}">&laquo; Previous</a>
+            {{end}}
+            
+            {{range .Pages}}
+            <a href="?page={{.}}{{if $.SearchQuery}}&query={{$.SearchQuery}}{{end}}{{if $.SelectedSource}}&source={{$.SelectedSource}}{{end}}{{if $.SelectedBias}}&bias={{$.SelectedBias}}{{end}}" {{if eq . $.CurrentPage}}class="active"{{end}}>{{.}}</a>
+            {{end}}
+            
+            {{if lt .CurrentPage .TotalPages}}
+            <a href="?page={{.NextPage}}{{if .SearchQuery}}&query={{.SearchQuery}}{{end}}{{if .SelectedSource}}&source={{.SelectedSource}}{{end}}{{if .SelectedBias}}&bias={{.SelectedBias}}{{end}}">Next &raquo;</a>
+            {{end}}        </div>
+    </main>
+
+<script>
+// Enhanced filtering and search functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const filterForm = document.querySelector('.filter-form');
+    const searchInput = document.querySelector('input[name="query"]');
+    const sourceSelect = document.querySelector('select[name="source"]');
+    const biasSelect = document.querySelector('select[name="bias"]');
+    let searchTimeout;
+    
+    // Auto-submit on filter changes
+    if (sourceSelect) {
+        sourceSelect.addEventListener('change', function() {
+            filterForm.submit();
+        });
+    }
+    
+    if (biasSelect) {
+        biasSelect.addEventListener('change', function() {
+            filterForm.submit();
+        });
+    }
+    
+    // Debounced search
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(function() {
+                filterForm.submit();
+            }, 500); // 500ms delay
+        });
+    }
+    
+    // Clear filters functionality
+    const clearButton = document.getElementById('clear-filters');
+    if (clearButton) {
+        clearButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Reset all form fields
+            if (sourceSelect) sourceSelect.selectedIndex = 0;
+            if (biasSelect) biasSelect.selectedIndex = 0;
+            if (searchInput) searchInput.value = '';
+            
+            // Submit the cleared form
+            filterForm.submit();
+        });
+    }
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        // Ctrl+/ or Cmd+/ to focus search
+        if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+            e.preventDefault();
+            if (searchInput) {
+                searchInput.focus();
+                searchInput.select();
+            }
+        }
+        
+        // Escape to clear search
+        if (e.key === 'Escape' && document.activeElement === searchInput) {
+            searchInput.value = '';
+            filterForm.submit();
+        }
+    });
+});
+</script>
+</body>
+</html>
+

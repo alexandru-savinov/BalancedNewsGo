@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - NewsBalancer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        header {
+            background-color: #f8f9fa;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #e3e3e3;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 15px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .admin-dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .dashboard-card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 1px solid #e3e3e3;
+        }
+        .dashboard-card h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #e3e3e3;
+            padding-bottom: 10px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .stat-value {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .admin-controls {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 1px solid #e3e3e3;
+            margin-bottom: 30px;
+        }
+        .control-section {
+            margin-bottom: 30px;
+        }
+        .control-section h3 {
+            margin-bottom: 15px;
+            color: #495057;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0069d9;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn-danger:hover {
+            background-color: #c82333;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-success:hover {
+            background-color: #218838;
+        }
+        .system-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .status-item {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            border: 1px solid #e3e3e3;
+        }
+        .status-good {
+            border-left: 4px solid #28a745;
+        }
+        .status-warning {
+            border-left: 4px solid #ffc107;
+        }
+        .status-error {
+            border-left: 4px solid #dc3545;
+        }
+        .recent-activity {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 1px solid #e3e3e3;
+        }
+        .activity-item {
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .activity-time {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .bias-distribution {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+        }
+        .bias-stat {
+            text-align: center;
+            padding: 10px;
+        }
+        .bias-stat .label {
+            font-size: 12px;
+            color: #6c757d;
+        }
+        .bias-stat .value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .bias-left .value {
+            color: #0c5460;
+        }
+        .bias-center .value {
+            color: #155724;
+        }
+        .bias-right .value {
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>    <header role="banner">
+        <div class="container">
+            <h1>NewsBalancer Admin</h1>
+            <nav role="navigation" aria-label="Main navigation">
+                <a href="/articles">Articles</a> |
+                <a href="/admin" aria-current="page">Admin</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container">
+        <h2>Dashboard Overview</h2>
+        
+        <!-- System Status -->
+        <div class="system-status">
+            <div class="status-item {{if .SystemStatus.DatabaseOK}}status-good{{else}}status-error{{end}}">
+                <h4>Database</h4>
+                <p>{{if .SystemStatus.DatabaseOK}}✅ Connected{{else}}❌ Error{{end}}</p>
+            </div>
+            <div class="status-item {{if .SystemStatus.LLMServiceOK}}status-good{{else}}status-warning{{end}}">
+                <h4>LLM Service</h4>
+                <p>{{if .SystemStatus.LLMServiceOK}}✅ Available{{else}}⚠️ Unavailable{{end}}</p>
+            </div>
+            <div class="status-item {{if .SystemStatus.RSSServiceOK}}status-good{{else}}status-warning{{end}}">
+                <h4>RSS Feeds</h4>
+                <p>{{if .SystemStatus.RSSServiceOK}}✅ Active{{else}}⚠️ Issues{{end}}</p>
+            </div>
+            <div class="status-item status-good">
+                <h4>Server</h4>
+                <p>✅ Running</p>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div class="admin-dashboard">
+            <!-- Statistics Card -->
+            <div class="dashboard-card">
+                <h3>System Statistics</h3>
+                <div class="stat-item">
+                    <span>Total Articles:</span>
+                    <span class="stat-value">{{.Stats.TotalArticles}}</span>
+                </div>
+                <div class="stat-item">
+                    <span>Articles Today:</span>
+                    <span class="stat-value">{{.Stats.ArticlesToday}}</span>
+                </div>
+                <div class="stat-item">
+                    <span>Pending Analysis:</span>
+                    <span class="stat-value">{{.Stats.PendingAnalysis}}</span>
+                </div>
+                <div class="stat-item">
+                    <span>Active Sources:</span>
+                    <span class="stat-value">{{.Stats.ActiveSources}}</span>
+                </div>
+                <div class="stat-item">
+                    <span>Database Size:</span>
+                    <span class="stat-value">{{.Stats.DatabaseSize}}</span>
+                </div>
+            </div>
+
+            <!-- Bias Distribution Card -->
+            <div class="dashboard-card">
+                <h3>Bias Distribution</h3>
+                <div class="bias-distribution">
+                    <div class="bias-stat bias-left">
+                        <div class="value">{{.Stats.LeftCount}}</div>
+                        <div class="label">Left Leaning</div>
+                        <div class="label">({{.Stats.LeftPercentage}}%)</div>
+                    </div>
+                    <div class="bias-stat bias-center">
+                        <div class="value">{{.Stats.CenterCount}}</div>
+                        <div class="label">Center</div>
+                        <div class="label">({{.Stats.CenterPercentage}}%)</div>
+                    </div>
+                    <div class="bias-stat bias-right">
+                        <div class="value">{{.Stats.RightCount}}</div>
+                        <div class="label">Right Leaning</div>
+                        <div class="label">({{.Stats.RightPercentage}}%)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Controls -->
+        <div class="admin-controls">
+            <h3>System Controls</h3>
+            
+            <div class="control-section">
+                <h3>Feed Management</h3>
+                <button class="btn btn-primary" onclick="refreshFeeds()">Refresh All Feeds</button>
+                <button class="btn btn-warning" onclick="resetFeedErrors()">Reset Feed Errors</button>
+                <a href="/api/admin/sources" class="btn btn-primary">View Sources Status</a>
+            </div>
+
+            <div class="control-section">
+                <h3>Analysis Control</h3>
+                <button class="btn btn-primary" onclick="reanalyzeArticles()">Reanalyze Recent Articles</button>
+                <button class="btn btn-warning" onclick="clearAnalysisErrors()">Clear Analysis Errors</button>
+                <button class="btn btn-success" onclick="validateBiasScores()">Validate Bias Scores</button>
+            </div>
+
+            <div class="control-section">
+                <h3>Database Management</h3>
+                <button class="btn btn-warning" onclick="optimizeDatabase()">Optimize Database</button>
+                <button class="btn btn-primary" onclick="exportData()">Export Data</button>
+                <button class="btn btn-danger" onclick="confirmCleanupOldArticles()" title="Remove articles older than 30 days">Cleanup Old Articles</button>
+            </div>
+
+            <div class="control-section">
+                <h3>Monitoring</h3>
+                <a href="/api/admin/metrics" class="btn btn-primary">View Metrics</a>
+                <a href="/api/admin/logs" class="btn btn-primary">View Logs</a>
+                <button class="btn btn-success" onclick="runHealthCheck()">Run Health Check</button>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="recent-activity">
+            <h3>Recent Activity</h3>
+            {{range .RecentActivity}}
+            <div class="activity-item">
+                <div>{{.Message}}</div>
+                <div class="activity-time">{{.Timestamp}}</div>
+            </div>
+            {{else}}
+            <p>No recent activity recorded.</p>
+            {{end}}
+        </div>
+    </div>
+
+    <script>
+        // Admin control functions
+        function refreshFeeds() {
+            if (confirm('Refresh all RSS feeds? This may take a few minutes.')) {
+                fetch('/api/admin/refresh-feeds', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Feed refresh initiated. Check logs for progress.');
+                        location.reload();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error initiating feed refresh');
+                    });
+            }
+        }
+
+        function reanalyzeArticles() {
+            if (confirm('Reanalyze recent articles? This will use LLM credits.')) {
+                fetch('/api/admin/reanalyze-recent', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Reanalysis initiated. Check logs for progress.');
+                        location.reload();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error initiating reanalysis');
+                    });
+            }
+        }
+
+        function optimizeDatabase() {
+            if (confirm('Optimize database? This may take a few minutes.')) {
+                fetch('/api/admin/optimize-db', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert('Database optimization completed.');
+                        location.reload();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error optimizing database');
+                    });
+            }
+        }
+
+        function confirmCleanupOldArticles() {
+            if (confirm('Delete articles older than 30 days? This action cannot be undone.')) {
+                if (confirm('Are you absolutely sure? This will permanently delete old articles.')) {
+                    fetch('/api/admin/cleanup-old', { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(data => {
+                            alert(`Cleanup completed. Removed ${data.deletedCount} articles.`);
+                            location.reload();
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('Error during cleanup');
+                        });
+                }
+            }
+        }
+
+        function resetFeedErrors() {
+            fetch('/api/admin/reset-feed-errors', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert('Feed errors reset.');
+                    location.reload();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error resetting feed errors');
+                });
+        }
+
+        function clearAnalysisErrors() {
+            fetch('/api/admin/clear-analysis-errors', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert('Analysis errors cleared.');
+                    location.reload();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error clearing analysis errors');
+                });
+        }
+
+        function validateBiasScores() {
+            fetch('/api/admin/validate-scores', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert('Score validation completed. Check logs for details.');
+                    location.reload();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error validating scores');
+                });
+        }
+
+        function exportData() {
+            window.location.href = '/api/admin/export';
+        }
+
+        function runHealthCheck() {
+            fetch('/api/admin/health-check', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert('Health check completed. All systems operational.');
+                    location.reload();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Health check failed');
+                });
+        }
+    </script>
+</body>
+</html>

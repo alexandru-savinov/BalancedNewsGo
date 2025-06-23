@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Article.Title}} - NewsBalancer</title>
+    <!-- HTMX CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        header {
+            background-color: #fff;
+            padding: 15px 0;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e3e3e3;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 15px;
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 30px;
+        }
+        h1 {
+            color: #333;
+            margin: 0;
+        }
+        nav a {
+            color: #007bff;
+            text-decoration: none;
+            margin-right: 15px;
+            font-weight: 500;
+        }
+        nav a:hover {
+            text-decoration: underline;
+        }
+        .article-header {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            border: 1px solid #e3e3e3;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .article-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+            line-height: 1.3;
+        }
+        .article-meta {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .article-content {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            border: 1px solid #e3e3e3;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+            line-height: 1.8;
+            font-size: 16px;
+        }
+        .article-content img {
+            max-width: 100%;
+            height: auto;
+            margin: 15px 0;
+            border-radius: 6px;
+        }
+        .bias-analysis {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #e3e3e3;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .bias-analysis h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 20px;
+        }
+        .bias-score {
+            font-size: 24px;
+            font-weight: 700;
+            padding: 10px 20px;
+            border-radius: 25px;
+            display: inline-block;
+            margin: 10px 0;
+        }
+        .bias-left {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        .bias-center {
+            background-color: #f3e5f5;
+            color: #7b1fa2;
+        }
+        .bias-right {
+            background-color: #ffebee;
+            color: #d32f2f;
+        }
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .widget {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #e3e3e3;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .widget h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 18px;
+        }
+        .recent-articles {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .recent-articles li {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e3e3e3;
+        }
+        .recent-articles li:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .recent-articles a {
+            color: #333;
+            text-decoration: none;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+        .recent-articles a:hover {
+            color: #007bff;
+        }
+        .recent-articles .source {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .action-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #0069d9;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .htmx-indicator {
+            display: none;
+        }
+        .htmx-request .htmx-indicator {
+            display: inline;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            .article-header, .article-content, .bias-analysis {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>NewsBalancer</h1>
+            <nav>
+                <a href="/articles" hx-get="/articles" hx-target="body" hx-push-url="true">Articles</a> |
+                <a href="/admin" hx-get="/admin" hx-target="body" hx-push-url="true">Admin</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container">
+        <a href="/articles" class="back-link" 
+           hx-get="/articles" hx-target="body" hx-push-url="true">&larr; Back to Articles</a>
+          <div class="main-content">
+            <div class="article-section">
+                {{template "article-detail-fragment" .}}
+            </div>
+            
+            <div class="sidebar">
+                {{template "article-sidebar-fragment" .}}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // HTMX event listeners
+        document.addEventListener('htmx:beforeRequest', function(evt) {
+            console.log('Loading content...');
+        });
+        
+        document.addEventListener('htmx:afterRequest', function(evt) {
+            console.log('Content loaded');
+        });
+        
+        document.addEventListener('htmx:responseError', function(evt) {
+            console.error('Error loading content:', evt.detail.xhr.status);
+        });
+    </script>
+</body>
+</html>

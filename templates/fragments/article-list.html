@@ -1,0 +1,82 @@
+{{define "article-list-fragment"}}
+<div class="results-summary" role="status" aria-live="polite">
+    {{if .Articles}}
+    <span>Showing {{len .Articles}} articles</span>
+    {{if or .SearchQuery .SelectedSource .SelectedBias}}
+    <span style="margin-left: 10px;">
+        (filtered{{if .SearchQuery}} for "{{.SearchQuery}}"{{end}}{{if .SelectedSource}} from {{.SelectedSource}}{{end}}{{if .SelectedBias}} with {{.SelectedBias}} bias{{end}})
+    </span>
+    {{end}}
+    {{else}}
+    <span>No articles found matching your criteria.</span>
+    {{end}}
+</div>
+
+<div class="article-list" role="feed" aria-label="News articles" data-testid="articles-container">
+    {{range .Articles}}    <article class="article-item" 
+             role="article" 
+             aria-labelledby="article-{{.ID}}-title"
+             data-testid="article-card-{{.ID}}"
+             data-article-id="{{.ID}}">
+        <div class="article-title">
+            <a id="article-{{.ID}}-title"
+               href="/article/{{.ID}}" 
+               hx-get="/api/fragments/article/{{.ID}}" 
+               hx-target="body" 
+               hx-push-url="/article/{{.ID}}"
+               aria-describedby="article-{{.ID}}-meta"
+               data-testid="article-link-{{.ID}}">{{.Title}}</a>
+        </div>
+        <div id="article-{{.ID}}-meta" class="article-meta">
+            <div>Source: {{.Source}}</div>
+            <div>Published: {{.PubDate.Format "2006-01-02 15:04"}}</div>
+            {{if .CompositeScore}}
+            <div>Score: {{printf "%.2f" .CompositeScore}}</div>
+            {{end}}
+        </div>
+        <div>
+            {{if lt .CompositeScore -0.1}}
+            <span class="bias-indicator bias-left" role="img" aria-label="Political bias: Left leaning">Left Leaning</span>
+            {{else if gt .CompositeScore 0.1}}
+            <span class="bias-indicator bias-right" role="img" aria-label="Political bias: Right leaning">Right Leaning</span>
+            {{else}}
+            <span class="bias-indicator bias-center" role="img" aria-label="Political bias: Center">Center</span>
+            {{end}}
+        </div>
+    </article>    {{else}}
+    <div style="padding: 40px; text-align: center; color: #6c757d;" role="status" data-testid="no-results">
+        <p>No articles found. Try adjusting your filters.</p>
+    </div>
+    {{end}}
+</div>
+
+{{if .Articles}}
+<div class="pagination">
+    {{if gt .CurrentPage 1}}
+    <a href="#" 
+       hx-get="/api/fragments/articles?page={{.PrevPage}}{{if .SearchQuery}}&query={{.SearchQuery}}{{end}}{{if .SelectedSource}}&source={{.SelectedSource}}{{end}}{{if .SelectedBias}}&bias={{.SelectedBias}}{{end}}"
+       hx-target="#content-area"
+       hx-indicator="#loading-indicator">&laquo; Previous</a>
+    {{else}}
+    <span class="pagination disabled">&laquo; Previous</span>
+    {{end}}
+    
+    {{range .Pages}}
+    <a href="#" 
+       hx-get="/api/fragments/articles?page={{.}}{{if $.SearchQuery}}&query={{$.SearchQuery}}{{end}}{{if $.SelectedSource}}&source={{$.SelectedSource}}{{end}}{{if $.SelectedBias}}&bias={{$.SelectedBias}}{{end}}"
+       hx-target="#content-area"
+       hx-indicator="#loading-indicator"
+       {{if eq . $.CurrentPage}}class="active"{{end}}>{{.}}</a>
+    {{end}}
+    
+    {{if lt .CurrentPage .TotalPages}}
+    <a href="#" 
+       hx-get="/api/fragments/articles?page={{.NextPage}}{{if .SearchQuery}}&query={{.SearchQuery}}{{end}}{{if .SelectedSource}}&source={{.SelectedSource}}{{end}}{{if .SelectedBias}}&bias={{.SelectedBias}}{{end}}"
+       hx-target="#content-area"
+       hx-indicator="#loading-indicator">Next &raquo;</a>
+    {{else}}
+    <span class="pagination disabled">Next &raquo;</span>
+    {{end}}
+</div>
+{{end}}
+{{end}}

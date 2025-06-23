@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Article.Title}} - NewsBalancer</title>
+    <style>        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        header {
+            background-color: #f8f9fa;
+            padding: 10px 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #e3e3e3;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 15px;
+        }
+        .main-content {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .article-meta {
+            font-size: 14px;
+            color: #6c757d;
+            margin-bottom: 20px;
+        }
+        .article-content {
+            margin-bottom: 30px;
+            line-height: 1.8;
+        }
+        .article-content img {
+            max-width: 100%;
+            height: auto;
+            margin: 15px 0;
+        }
+        .bias-analysis {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 30px;
+            border: 1px solid #e3e3e3;
+        }
+        .bias-score {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .bias-label {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        .bias-left {
+            background-color: #d1ecf1;
+            color: #0c5460;
+        }
+        .bias-center {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .bias-right {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .analysis-details {
+            margin-top: 15px;
+        }        .reanalyze-btn {
+            padding: 8px 15px;
+            background-color: #0056b3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .reanalyze-btn:hover {
+            background-color: #0069d9;
+        }
+        .sidebar {
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #e3e3e3;
+        }
+        .recent-articles {
+            margin-bottom: 30px;
+        }
+        .recent-articles h3, .stats h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #e3e3e3;
+            padding-bottom: 10px;
+        }
+        .recent-article-item {
+            margin-bottom: 15px;
+        }        .recent-article-item a {
+            color: #0056b3;
+            text-decoration: none;
+        }
+        .recent-article-item a:hover {
+            text-decoration: underline;
+        }
+        .stats-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }        .article-summary {
+            font-style: italic;
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-left: 3px solid #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>NewsBalancer</h1>
+            <nav>
+                <a href="/articles">Articles</a> |
+                <a href="/admin">Admin</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="main-content">
+            <div>
+                <h1>{{.Article.Title}}</h1>
+                <div class="article-meta">
+                    <div><strong>Source:</strong> {{.Article.Source}}</div>
+                    <div><strong>Published:</strong> {{.Article.PubDate.Format "2006-01-02 15:04"}}</div>
+                    <div><strong>Bias Score:</strong> {{if .Article.CompositeScore}}{{.Article.CompositeScore}}{{else}}N/A{{end}} (confidence: {{if .Article.Confidence}}{{.Article.Confidence}}{{else}}N/A{{end}}%)</div>
+                </div>
+
+                {{if .Article.Summary}}
+                <div class="article-summary">
+                    <strong>Summary:</strong> {{.Article.Summary}}
+                </div>
+                {{end}}
+                
+                <div class="bias-analysis">
+                    <h2>Bias Analysis</h2>
+                    <div class="bias-score" id="bias-score">Bias Analysis</div>                    <div id="bias-label-container">
+                        <!-- Bias label section - currently not available in database -->
+                        <div class="bias-label bias-unknown">Bias analysis pending</div>
+                    </div>                      <div class="analysis-details" id="analysis-details">
+                        <p>Detailed Confidence: <span id="confidence-value">{{if .Article.Confidence}}{{.Article.Confidence}}{{else}}N/A{{end}}</span>%</p>
+                    </div>
+                    
+                    <!-- Progress Indicator for real-time updates -->
+                    <progress-indicator 
+                        id="reanalysis-progress" 
+                        article-id="{{.Article.ID}}" 
+                        show-details="true"
+                        style="display: none; margin: 15px 0;">
+                    </progress-indicator>
+                    
+                    <button class="reanalyze-btn" id="reanalyze-btn" data-article-id="{{.Article.ID}}">
+                        <span id="btn-text">Request Reanalysis</span>
+                        <span id="btn-loading" style="display: none;">Processing...</span>
+                    </button>
+                </div>
+
+                <div class="article-content">
+                    {{.Article.Content}}
+                </div>
+                
+                <div class="article-meta">
+                    <div>Publication Date: {{.Article.PubDate.Format "2006-01-02 15:04"}}</div>
+                    <div>Source: {{.Article.Source}}</div>
+                    <div>Bias Score: {{if .Article.CompositeScore}}{{.Article.CompositeScore}}{{else}}N/A{{end}} (confidence: {{if .Article.Confidence}}{{.Article.Confidence}}{{else}}N/A{{end}}%)</div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="recent-articles">
+                    <h3>Recent Articles</h3>                    {{range .RecentArticles}}
+                    <div class="recent-article-item">
+                        <a href="/article/{{.ID}}">{{.Title}}</a>
+                        <div>
+                            <!-- Bias labels not available from database -->
+                            <small class="bias-unknown">Analysis pending</small>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+
+                <div class="stats">
+                    <h3>Statistics</h3>
+                    <div class="stats-item">
+                        <span>Total Articles:</span>
+                        <span>{{.Stats.TotalArticles}}</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>Left Leaning:</span>
+                        <span>{{.Stats.LeftCount}} ({{.Stats.LeftPercentage}}%)</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>Center:</span>
+                        <span>{{.Stats.CenterCount}} ({{.Stats.CenterPercentage}}%)</span>
+                    </div>
+                    <div class="stats-item">
+                        <span>Right Leaning:</span>
+                        <span>{{.Stats.RightCount}} ({{.Stats.RightPercentage}}%)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>    <!-- Import ProgressIndicator component and SSEClient utility -->
+    <script type="module" src="/web/static/js/components/ProgressIndicator.js"></script>
+    <script type="module" src="/web/static/js/utils/SSEClient.js"></script>
+    
+    <script>
+        // Enhanced article detail page with real-time SSE progress tracking
+        document.addEventListener('DOMContentLoaded', function() {
+            const reanalyzeBtn = document.getElementById('reanalyze-btn');
+            const btnText = document.getElementById('btn-text');
+            const btnLoading = document.getElementById('btn-loading');
+            const progressIndicator = document.getElementById('reanalysis-progress');            // Elements for updating bias analysis results
+            const biasScoreElement = document.getElementById('bias-score');
+            const confidenceValue = document.getElementById('confidence-value');
+            
+            if (reanalyzeBtn) {
+                reanalyzeBtn.addEventListener('click', async function() {
+                    const articleId = this.getAttribute('data-article-id');
+                    
+                    // Disable button and show loading state
+                    this.disabled = true;
+                    btnText.style.display = 'none';
+                    btnLoading.style.display = 'inline';
+                    
+                    try {
+                        // Trigger reanalysis
+                        const response = await fetch(`/api/llm/reanalyze/${articleId}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        // Show progress indicator
+                        progressIndicator.style.display = 'block';
+                        
+                        // Set up progress indicator event listeners
+                        progressIndicator.addEventListener('completed', async (event) => {
+                            console.log('Analysis completed:', event.detail);
+                            
+                            // Hide progress indicator
+                            progressIndicator.style.display = 'none';
+                            
+                            // Reset button state
+                            btnText.style.display = 'inline';
+                            btnLoading.style.display = 'none';
+                            this.disabled = false;
+                            
+                            // Fetch updated bias data
+                            await updateBiasAnalysis(articleId);
+                        });
+                        
+                        progressIndicator.addEventListener('error', (event) => {
+                            console.error('Analysis error:', event.detail);
+                            
+                            // Hide progress indicator
+                            progressIndicator.style.display = 'none';
+                            
+                            // Reset button state with error message
+                            btnText.textContent = 'Error - Try Again';
+                            btnText.style.display = 'inline';
+                            btnLoading.style.display = 'none';
+                            this.disabled = false;
+                            
+                            // Reset button text after a few seconds
+                            setTimeout(() => {
+                                btnText.textContent = 'Request Reanalysis';
+                            }, 3000);
+                        });
+                        
+                        progressIndicator.addEventListener('connectionerror', (event) => {
+                            console.error('Connection error:', event.detail);
+                            
+                            // Hide progress indicator
+                            progressIndicator.style.display = 'none';
+                            
+                            // Reset button state
+                            btnText.textContent = 'Connection Error - Try Again';
+                            btnText.style.display = 'inline';
+                            btnLoading.style.display = 'none';
+                            this.disabled = false;
+                            
+                            // Reset button text after a few seconds
+                            setTimeout(() => {
+                                btnText.textContent = 'Request Reanalysis';
+                            }, 3000);
+                        });
+                        
+                        // Start SSE connection to track progress
+                        // The ProgressIndicator component will automatically connect due to article-id attribute
+                        if (progressIndicator.connect) {
+                            progressIndicator.connect(articleId);
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error requesting reanalysis:', error);
+                        
+                        // Hide progress indicator
+                        progressIndicator.style.display = 'none';
+                        
+                        // Reset button state with error message
+                        btnText.textContent = 'Request Failed - Try Again';
+                        btnText.style.display = 'inline';
+                        btnLoading.style.display = 'none';
+                        this.disabled = false;
+                        
+                        // Reset button text after a few seconds
+                        setTimeout(() => {
+                            btnText.textContent = 'Request Reanalysis';
+                        }, 3000);
+                    }
+                });
+            }
+            
+            // Function to update bias analysis UI with fresh data
+            async function updateBiasAnalysis(articleId) {
+                try {
+                    const response = await fetch(`/api/articles/${articleId}/bias`);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch bias data: ${response.statusText}`);
+                    }
+                    
+                    const biasData = await response.json();
+                      // Update bias score with the composite score
+                    if (biasScoreElement && biasData.composite_score !== null) {
+                        biasScoreElement.textContent = `Bias Score: ${biasData.composite_score.toFixed(3)}`;
+                    } else if (biasScoreElement) {
+                        biasScoreElement.textContent = 'Bias Score: Analysis pending';
+                    }
+                      console.log('Bias analysis updated with fresh data');
+                    
+                } catch (error) {
+                    console.error('Error updating bias analysis:', error);
+                    
+                    // Show a subtle notification that data couldn't be updated
+                    if (biasScoreElement) {
+                        const originalText = biasScoreElement.textContent;
+                        biasScoreElement.textContent = 'Analysis complete - refresh page for updated results';
+                        biasScoreElement.style.fontStyle = 'italic';
+                        
+                        setTimeout(() => {
+                            biasScoreElement.textContent = originalText;
+                            biasScoreElement.style.fontStyle = 'normal';
+                        }, 5000);
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

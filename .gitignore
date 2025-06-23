@@ -65,6 +65,7 @@ news.db-wal
 # Coverage & Test Reports (extending existing)
 # *.out is already covered above
 *.html
+!templates/**/*.html
 # /test-results/ is already covered above
 # /playwright-report/ is already covered above
 

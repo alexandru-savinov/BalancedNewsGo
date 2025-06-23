@@ -19,9 +19,6 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Debug: List what we have in the builder stage
-RUN ls -la /app && ls -la /app/templates || echo "templates directory not found"
-
 # Build the application with optimizations
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags='-w -s -extldflags "-static"' \

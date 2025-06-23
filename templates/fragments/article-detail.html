@@ -1,0 +1,94 @@
+{{define "article-detail-fragment"}}
+<div class="article-header">
+    <h2 class="article-title">{{.Article.Title}}</h2>
+    <div class="article-meta">
+        <div>Source: <strong>{{.Article.Source}}</strong></div>
+        <div>Published: {{.Article.PubDate.Format "2006-01-02 15:04"}}</div>
+        <div>URL: <a href="{{.Article.URL}}" target="_blank" rel="noopener">Original Article</a></div>
+    </div>
+</div>
+
+<div class="article-content">
+    {{.Article.Content}}
+</div>
+
+{{if .Article.CompositeScore}}
+<div class="bias-analysis">
+    <h3>Bias Analysis</h3>
+    <div>
+        {{if lt .Article.CompositeScore -0.1}}
+        <span class="bias-score bias-left">Left Leaning ({{printf "%.2f" .Article.CompositeScore}})</span>
+        {{else if gt .Article.CompositeScore 0.1}}
+        <span class="bias-score bias-right">Right Leaning ({{printf "%.2f" .Article.CompositeScore}})</span>
+        {{else}}
+        <span class="bias-score bias-center">Center ({{printf "%.2f" .Article.CompositeScore}})</span>
+        {{end}}
+    </div>      {{if .Article.Confidence}}
+    <p><strong>Confidence:</strong> {{printf "%.1f" .Article.Confidence}}</p>
+    {{end}}
+    
+    {{if .Article.ScoreSource}}
+    <p><strong>Analysis Source:</strong> {{.Article.ScoreSource}}</p>
+    {{end}}
+    
+    {{if .Article.AnalysisNotes}}
+    <div>
+        <h4>Analysis Notes:</h4>
+        <p>{{.Article.AnalysisNotes}}</p>
+    </div>
+    {{end}}
+    
+    <div class="action-buttons">
+        <button class="btn btn-primary" 
+                hx-post="/api/articles/{{.Article.ArticleID}}/reanalyze"
+                hx-target="#analysis-result"
+                hx-indicator="#reanalyze-spinner">
+            <span class="htmx-indicator" id="reanalyze-spinner">Reanalyzing...</span>
+            <span>Reanalyze Article</span>
+        </button>
+        <a href="/api/articles/{{.Article.ArticleID}}/summary" 
+           class="btn btn-secondary"
+           hx-get="/api/fragments/article/{{.Article.ArticleID}}/summary"
+           hx-target="#summary-content"
+           hx-indicator="#summary-spinner">
+            <span class="htmx-indicator" id="summary-spinner">Loading...</span>
+            <span>Get Summary</span>
+        </a>
+    </div>
+    
+    <div id="analysis-result"></div>
+    <div id="summary-content"></div>
+</div>
+{{end}}
+{{end}}
+
+{{define "article-sidebar-fragment"}}
+<div class="widget">
+    <h3>Recent Articles</h3>
+    <ul class="recent-articles">
+        {{range .RecentArticles}}
+        <li>
+            <a href="/article/{{.ArticleID}}" 
+               hx-get="/api/fragments/article/{{.ArticleID}}" 
+               hx-target="body" 
+               hx-push-url="/article/{{.ArticleID}}">{{.Title}}</a>
+            <div class="source">{{.Source}}</div>
+        </li>
+        {{else}}
+        <li>No recent articles available</li>
+        {{end}}
+    </ul>
+</div>
+
+<div class="widget">
+    <h3>Site Statistics</h3>
+    {{if .Stats}}
+    <p><strong>Total Articles:</strong> {{.Stats.TotalArticles}}</p>
+    <p><strong>Left Leaning:</strong> {{.Stats.LeftCount}} ({{.Stats.LeftPercentage}}%)</p>
+    <p><strong>Center:</strong> {{.Stats.CenterCount}} ({{.Stats.CenterPercentage}}%)</p>
+    <p><strong>Right Leaning:</strong> {{.Stats.RightCount}} ({{.Stats.RightPercentage}}%)</p>
+    {{else}}
+    <p>Statistics unavailable</p>
+    {{end}}
+</div>
+{{end}}

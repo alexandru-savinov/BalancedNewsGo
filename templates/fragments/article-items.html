@@ -1,0 +1,29 @@
+{{define "article-items-fragment"}}
+{{range .Articles}}
+<div class="article-item" data-testid="article-card-{{.ID}}" data-article-id="{{.ID}}">
+    <div class="article-title">
+        <a href="/article/{{.ID}}" data-testid="article-link-{{.ID}}">{{.Title}}</a>
+    </div>
+    <div class="article-meta">
+        <div>Source: {{.Source}}</div>
+        <div>Published: {{.PubDate.Format "2006-01-02 15:04"}}</div>
+        {{if .CompositeScore}}
+        <div>Score: {{printf "%.2f" .CompositeScore}}</div>
+        {{end}}
+    </div>
+    <div>
+        {{if lt .CompositeScore -0.1}}
+        <span class="bias-indicator bias-left" role="img" aria-label="Political bias: Left leaning">Left Leaning</span>
+        {{else if gt .CompositeScore 0.1}}
+        <span class="bias-indicator bias-right" role="img" aria-label="Political bias: Right leaning">Right Leaning</span>
+        {{else}}
+        <span class="bias-indicator bias-center" role="img" aria-label="Political bias: Center">Center</span>
+        {{end}}
+    </div>
+</div>
+{{else}}
+{{if eq (len .Articles) 0}}
+<!-- Empty result for append operation -->
+{{end}}
+{{end}}
+{{end}}
