@@ -45,10 +45,10 @@ COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 # Copy the binary from builder stage
 COPY --from=builder /app/newsbalancer /newsbalancer
 
-# Copy configuration files directly from build context
-COPY configs /configs
-COPY templates /templates
-COPY static /static
+# Copy configuration files from builder stage
+COPY --from=builder /app/configs /configs
+COPY --from=builder /app/templates /templates
+COPY --from=builder /app/static /static
 
 # Debug: List what we have
 RUN ls -la / && ls -la /configs && ls -la /templates && ls -la /static
@@ -151,10 +151,10 @@ RUN apk add --no-cache \
 # Copy the binary from builder stage
 COPY --from=builder /app/newsbalancer /newsbalancer
 
-# Copy configuration files directly from build context
-COPY configs /configs
-COPY templates /templates
-COPY static /static
+# Copy configuration files from builder stage
+COPY --from=builder /app/configs /configs
+COPY --from=builder /app/templates /templates
+COPY --from=builder /app/static /static
 
 # Debug: List what we have
 RUN ls -la / && ls -la /configs && ls -la /templates && ls -la /static
