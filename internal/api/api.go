@@ -236,6 +236,7 @@ func toArticleResponse(a *db.Article) ArticleResponse {
 	return ArticleResponse{
 		ArticleID:   a.ID,
 		Source:      a.Source,
+		URL:         a.URL,
 		Title:       a.Title,
 		Content:     a.Content,
 		PublishedAt: a.PubDate.Format(time.RFC3339),
@@ -489,10 +490,6 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.Header("X-Total-Count", strconv.Itoa(totalCount))
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    out,
-		})
 		log.Printf("[DEBUG] getArticlesHandler: Preparing to send response. Number of articles: %d", len(out)) // Added log
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,

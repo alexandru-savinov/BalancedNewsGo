@@ -97,6 +97,7 @@ type ManualScoreRequest struct {
 type ArticleResponse struct {
 	ArticleID   int64   `json:"article_id"`
 	Source      string  `json:"source"`
+	URL         string  `json:"url"`
 	Title       string  `json:"title"`
 	Content     string  `json:"content"`
 	PublishedAt string  `json:"published_at"`

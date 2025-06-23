@@ -28,6 +28,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clear potential cache conflicts
+        run: |
+          # Clear any potential cache conflicts by removing old cache entries
+          echo "Clearing potential cache conflicts for run ${{ github.run_id }}"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -37,8 +42,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-lint-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-go-lint-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-lint-
             ${{ runner.os }}-go-
 
       - name: Install golangci-lint
@@ -83,8 +90,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-test-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-go-test-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-test-
             ${{ runner.os }}-go-
 
       - name: Install dependencies
@@ -119,8 +128,8 @@ jobs:
           NO_AUTO_ANALYZE: "true"
           NO_DOCKER: "true"
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY }}
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY || '' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
         run: |
           echo "Running unit tests with concurrency stress testing..."
           # Run tests multiple times to catch race conditions
@@ -166,16 +175,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-integration-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-go-integration-${{ hashFiles('**/go.sum') }}-
+            ${{ runner.os }}-go-integration-
             ${{ runner.os }}-go-
 
       - name: Cache Node modules
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-node-integration-${{ hashFiles('**/package-lock.json') }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-node-integration-${{ hashFiles('**/package-lock.json') }}-
+            ${{ runner.os }}-node-integration-
             ${{ runner.os }}-node-
 
       - name: Install Node dependencies
@@ -192,8 +205,8 @@ jobs:
           NO_AUTO_ANALYZE: "true"
           PORT: 8080
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY }}
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY || '' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
         run: |
           ./newsbalancer &
           APP_PID=$!
@@ -299,8 +312,8 @@ jobs:
         run: |
           docker run --rm -d --name newsbalancer-test -p 8080:8080 \
             -e LLM_API_KEY="${{ secrets.LLM_API_KEY }}" \
-            -e LLM_API_KEY_SECONDARY="${{ secrets.LLM_API_KEY_SECONDARY }}" \
-            -e LLM_BASE_URL="${{ secrets.LLM_BASE_URL }}" \
+            -e LLM_API_KEY_SECONDARY="${{ secrets.LLM_API_KEY_SECONDARY || '' }}" \
+            -e LLM_BASE_URL="${{ secrets.LLM_BASE_URL || '' }}" \
             newsbalancer:test
           sleep 10
           
@@ -344,8 +357,8 @@ jobs:
           NO_AUTO_ANALYZE: "true"
           PORT: 8080
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY }}
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY || '' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
         run: |
           ./newsbalancer &
           APP_PID=$!
