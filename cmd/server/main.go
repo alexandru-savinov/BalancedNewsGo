@@ -74,12 +74,16 @@ func main() {
 	logPath := os.Getenv("LOG_FILE_PATH")
 	if logPath == "" {
 		// In Docker/container environments, use /tmp for logs
-		if os.Getenv("TEST_MODE") == "true" || os.Getenv("DOCKER") == "true" {
+		testMode := os.Getenv("TEST_MODE")
+		dockerMode := os.Getenv("DOCKER")
+		log.Printf("DEBUG: TEST_MODE=%s, DOCKER=%s", testMode, dockerMode)
+		if testMode == "true" || dockerMode == "true" {
 			logPath = "/tmp/server_app.log"
 		} else {
 			logPath = "server_app.log"
 		}
 	}
+	log.Printf("DEBUG: Using log path: %s", logPath)
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) // #nosec G304 - logPath is from configuration, controlled input
 	if err != nil {
 		// In test mode or if log file creation fails, just use stdout
@@ -104,7 +108,7 @@ func main() {
 	gin.DefaultWriter = multiWriter
 	gin.DefaultErrorWriter = multiWriter // Also capture Gin's errors
 
-	log.Println("<<<<< APPLICATION STARTED - LOGGING TO server_app.log >>>>>")
+	log.Printf("<<<<< APPLICATION STARTED - LOGGING TO %s >>>>>", logPath)
 	// --- END: Explicit File Logging Setup ---
 
 	err = godotenv.Load()
