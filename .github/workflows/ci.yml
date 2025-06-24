@@ -313,13 +313,8 @@ jobs:
 
       - name: Test Docker image
         run: |
-          # First, inspect what's in the image
-          echo "=== Inspecting Docker image contents ==="
-          docker run --rm newsbalancer:test ls -la /
-          echo "=== Checking configs directory ==="
-          docker run --rm newsbalancer:test ls -la /configs || echo "No configs directory"
-          echo "=== Checking templates directory ==="
-          docker run --rm newsbalancer:test ls -la /templates || echo "No templates directory"
+          # Skip inspection commands as they trigger the application due to ENTRYPOINT
+          echo "=== Starting Docker container tests ==="
 
           # Test the health check flag first
           echo "=== Testing health check flag ==="
