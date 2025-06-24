@@ -376,7 +376,7 @@ func loadFeedSourcesConfig() ([]byte, error) {
 		configPath = filepath.Join(wd, "configs", "feed_sources.json")
 		if _, err := os.Stat(configPath); err == nil {
 			log.Printf("Found feed sources config at: %s", configPath)
-			return os.ReadFile(configPath)
+			return os.ReadFile(configPath) // #nosec G304 - configPath is from application configuration, controlled input
 		}
 	}
 
@@ -384,14 +384,14 @@ func loadFeedSourcesConfig() ([]byte, error) {
 	configPath = "/configs/feed_sources.json"
 	if _, err := os.Stat(configPath); err == nil {
 		log.Printf("Found feed sources config at: %s", configPath)
-		return os.ReadFile(configPath)
+		return os.ReadFile(configPath) // #nosec G304 - configPath is from application configuration, controlled input
 	}
 
 	// Third try: relative to executable
 	configPath = "configs/feed_sources.json"
 	if _, err := os.Stat(configPath); err == nil {
 		log.Printf("Found feed sources config at: %s", configPath)
-		return os.ReadFile(configPath)
+		return os.ReadFile(configPath) // #nosec G304 - configPath is from application configuration, controlled input
 	}
 
 	log.Printf("Could not find feed sources config file in any of the expected locations")
