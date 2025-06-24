@@ -53,6 +53,11 @@ jobs:
           go mod download
           npm install
 
+      - name: Build test server binary for CI
+        run: |
+          go build -o test-server-ci ./cmd/server
+          chmod +x test-server-ci
+
       - name: Run Go tests with coverage
         env:
           NO_AUTO_ANALYZE: "true"
