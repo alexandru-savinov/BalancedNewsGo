@@ -100,7 +100,8 @@
 					if (typeof config.target === 'string') {
 						config.target = $(document).find(config.target);
 					} else {
-						config.target = $(config.target);
+						// For non-string targets, use jQuery.find() to prevent XSS
+						config.target = $(document).find(config.target);
 					}
 				}
 

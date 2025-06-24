@@ -72,7 +72,7 @@ func (tc *TestCoordinator) runSuite(suite TestSuite) error {
 	out, err := cmd.CombinedOutput()
 
 	outputFile := filepath.Join(tc.outputDir, fmt.Sprintf("%s.log", suite.Name))
-	if err := os.WriteFile(outputFile, out, 0644); err != nil {
+	if err := os.WriteFile(outputFile, out, 0600); err != nil { // Use secure file permissions
 		log.Printf("Failed to write output for %s: %v", suite.Name, err)
 	}
 

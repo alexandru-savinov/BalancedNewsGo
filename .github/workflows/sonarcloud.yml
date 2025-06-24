@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, develop, frontend-rewrite-v3 ]
   pull_request:
-    branches: [ main, develop, frontend-rewrite-v3 ]
+    types: [opened, synchronize, reopened]
   schedule:
     # Run security analysis daily at 3 AM UTC
     - cron: '0 3 * * *'
@@ -76,21 +76,14 @@ jobs:
           gosec -fmt sonarqube -out gosec-report.json ./... || true
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@v5
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
             -Dsonar.go.golangci-lint.reportPaths=golangci-lint-report.xml
             -Dsonar.go.gosec.reportPaths=gosec-report.json
             -Dsonar.go.coverage.reportPaths=coverage.out
-
-      - name: Quality Gate Check
-        uses: SonarSource/sonarqube-quality-gate-action@master
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4

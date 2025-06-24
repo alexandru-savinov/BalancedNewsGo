@@ -12,7 +12,7 @@ func main() {
 		os.Exit(1)
 	}
 	dirToCreate := os.Args[1]
-	err := os.MkdirAll(dirToCreate, os.ModePerm)
+	err := os.MkdirAll(dirToCreate, 0750) // Use secure directory permissions
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating directory %s: %v\n", dirToCreate, err)
 		os.Exit(1)

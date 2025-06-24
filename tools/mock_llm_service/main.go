@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 const (
@@ -57,7 +58,17 @@ func main() {
 
 	log.Printf("Starting mock LLM service for %s on port %s...", label, port)
 
-	err := http.ListenAndServe(":"+port, nil)
+	// Create HTTP server with security timeouts
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           nil,               // Use default mux
+		ReadHeaderTimeout: 30 * time.Second,  // Prevent Slowloris attacks
+		ReadTimeout:       60 * time.Second,  // Maximum time to read request
+		WriteTimeout:      60 * time.Second,  // Maximum time to write response
+		IdleTimeout:       120 * time.Second, // Maximum time for idle connections
+	}
+
+	err := srv.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

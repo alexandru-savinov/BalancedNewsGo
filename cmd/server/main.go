@@ -241,10 +241,14 @@ func main() {
 	// Start server with graceful shutdown
 	log.Printf("Server running on :%s", port)
 
-	// Create HTTP server
+	// Create HTTP server with security timeouts to prevent Slowloris attacks
 	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: router,
+		Addr:              ":" + port,
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,  // Prevent Slowloris attacks
+		ReadTimeout:       60 * time.Second,  // Maximum time to read request
+		WriteTimeout:      60 * time.Second,  // Maximum time to write response
+		IdleTimeout:       120 * time.Second, // Maximum time for idle connections
 	}
 
 	// Start server in a goroutine
