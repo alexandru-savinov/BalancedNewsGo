@@ -323,7 +323,10 @@ jobs:
 
           # Test the health check flag first
           echo "=== Testing health check flag ==="
-          if docker run --rm newsbalancer:test --health-check; then
+          if docker run --rm \
+            -e TEST_MODE=true \
+            -e DOCKER=true \
+            newsbalancer:test --health-check; then
             echo "Health check passed - binary is working"
           else
             echo "Health check failed - binary has issues"
@@ -353,7 +356,10 @@ jobs:
 
             # Try running with explicit error output
             echo "=== Attempting to run with explicit error capture ==="
-            docker run --rm newsbalancer:test 2>&1 | head -20 || echo "Failed to capture startup errors"
+            docker run --rm \
+              -e TEST_MODE=true \
+              -e DOCKER=true \
+              newsbalancer:test 2>&1 | head -20 || echo "Failed to capture startup errors"
             exit 1
           fi
 
