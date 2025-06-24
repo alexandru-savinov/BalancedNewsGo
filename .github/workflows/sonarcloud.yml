@@ -1,0 +1,98 @@
+name: SonarCloud Security Analysis
+
+on:
+  push:
+    branches: [ main, develop, frontend-rewrite-v3 ]
+  pull_request:
+    branches: [ main, develop, frontend-rewrite-v3 ]
+  schedule:
+    # Run security analysis daily at 3 AM UTC
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  GO_VERSION: '1.23'
+  NODE_VERSION: '18'
+
+jobs:
+  sonarcloud:
+    name: SonarCloud Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for better analysis
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-sonar-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-sonar-
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: |
+          go mod download
+          npm install
+
+      - name: Run Go tests with coverage
+        env:
+          NO_AUTO_ANALYZE: "true"
+          NO_DOCKER: "true"
+        run: |
+          go test -v -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Run golangci-lint for additional security checks
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
+          $(go env GOPATH)/bin/golangci-lint run --out-format=checkstyle:golangci-lint-report.xml
+
+      - name: Run gosec security scanner
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -fmt sonarqube -out gosec-report.json ./...
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.go.golangci-lint.reportPaths=golangci-lint-report.xml
+            -Dsonar.go.gosec.reportPaths=gosec-report.json
+            -Dsonar.go.coverage.reportPaths=coverage.out
+
+      - name: Quality Gate Check
+        uses: sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          scanMetadataReportFile: .scannerwork/report-task.txt
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
