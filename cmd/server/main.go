@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json" // Added for json marshalling
+	"fmt"
 	"html/template"
 	"io" // Added for io.MultiWriter
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -297,15 +299,14 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 
 	// Initialize RSS collector from external config
 	// Load feed URLs from config file first
-	feedSourcesPath := "configs/feed_sources.json"
-	feedConfigData, err := os.ReadFile(feedSourcesPath)
+	feedConfigData, err := loadFeedSourcesConfig()
 	if err != nil {
 		// In test mode, create minimal config if file doesn't exist
 		if os.Getenv("TEST_MODE") == "true" {
 			log.Printf("WARNING: Feed sources config not found in test mode, using empty config")
 			feedConfigData = []byte(`{"sources": []}`)
 		} else {
-			log.Printf("ERROR: Failed to read feed sources config '%s': %v", feedSourcesPath, err)
+			log.Printf("ERROR: Failed to read feed sources config: %v", err)
 			os.Exit(1)
 		}
 	}
@@ -315,7 +316,7 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 		} `json:"sources"`
 	}
 	if err := json.Unmarshal(feedConfigData, &feedConfig); err != nil {
-		log.Printf("ERROR: Failed to parse feed sources config '%s': %v", feedSourcesPath, err)
+		log.Printf("ERROR: Failed to parse feed sources config: %v", err)
 		os.Exit(1)
 	}
 	feedURLs := make([]string, 0, len(feedConfig.Sources))
@@ -359,4 +360,40 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	simpleAPICache := api.NewSimpleCache()
 
 	return dbConn, llmClient, collector, scoreManager, progressManager, simpleAPICache
+}
+
+// loadFeedSourcesConfig loads the feed sources configuration from multiple possible locations
+func loadFeedSourcesConfig() ([]byte, error) {
+	// Try multiple possible locations for the config file
+	var configPath string
+	var err error
+
+	// First try: relative to current working directory
+	wd, err := os.Getwd()
+	if err != nil {
+		log.Printf("Error getting working directory: %v", err)
+	} else {
+		configPath = filepath.Join(wd, "configs", "feed_sources.json")
+		if _, err := os.Stat(configPath); err == nil {
+			log.Printf("Found feed sources config at: %s", configPath)
+			return os.ReadFile(configPath)
+		}
+	}
+
+	// Second try: absolute path (for Docker containers)
+	configPath = "/configs/feed_sources.json"
+	if _, err := os.Stat(configPath); err == nil {
+		log.Printf("Found feed sources config at: %s", configPath)
+		return os.ReadFile(configPath)
+	}
+
+	// Third try: relative to executable
+	configPath = "configs/feed_sources.json"
+	if _, err := os.Stat(configPath); err == nil {
+		log.Printf("Found feed sources config at: %s", configPath)
+		return os.ReadFile(configPath)
+	}
+
+	log.Printf("Could not find feed sources config file in any of the expected locations")
+	return nil, fmt.Errorf("feed sources config file not found")
 }
