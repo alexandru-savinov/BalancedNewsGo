@@ -335,6 +335,7 @@ jobs:
           docker run --rm --name newsbalancer-test -p 8080:8080 \
             -e PORT=8080 \
             -e TEST_MODE=true \
+            -e DOCKER=true \
             -e DB_CONNECTION=":memory:" \
             -e NO_AUTO_ANALYZE=true \
             -e LLM_API_KEY="${{ secrets.LLM_API_KEY || 'test-key-for-docker' }}" \

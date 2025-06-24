@@ -71,11 +71,22 @@ func main() {
 	// --- START: Explicit File Logging Setup ---
 	logPath := os.Getenv("LOG_FILE_PATH")
 	if logPath == "" {
-		logPath = "server_app.log"
+		// In Docker/container environments, use /tmp for logs
+		if os.Getenv("TEST_MODE") == "true" || os.Getenv("DOCKER") == "true" {
+			logPath = "/tmp/server_app.log"
+		} else {
+			logPath = "server_app.log"
+		}
 	}
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600) // #nosec G304 - logPath is from configuration, controlled input
 	if err != nil {
-		log.Fatalf("Failed to open log file: %v", err)
+		// In test mode or if log file creation fails, just use stdout
+		if os.Getenv("TEST_MODE") == "true" {
+			log.Printf("Warning: Failed to open log file %s, using stdout only: %v", logPath, err)
+			logFile = os.Stdout
+		} else {
+			log.Fatalf("Failed to open log file: %v", err)
+		}
 	}
 	// Defer closing the log file, though for a long-running server, it might only close on exit.
 	// For critical logs before this point, they might go to stdout/stderr if not captured.
@@ -269,7 +280,11 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 	}
 	dbConn, err := db.InitDB(dbPath)
 	if err != nil {
-		log.Printf("ERROR: Failed to initialize database: %v", err)
+		log.Printf("ERROR: Failed to initialize database with path '%s': %v", dbPath, err)
+		// In test mode, provide more helpful error information
+		if os.Getenv("TEST_MODE") == "true" {
+			log.Printf("TEST_MODE: Database initialization failed. This might be due to file permissions or SQLite driver issues.")
+		}
 		os.Exit(1)
 	}
 
