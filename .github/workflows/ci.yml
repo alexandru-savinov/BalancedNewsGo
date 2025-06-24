@@ -369,12 +369,12 @@ jobs:
 
           docker stop newsbalancer-test || true
 
-  # Performance benchmarks (only on main branch)
+  # Performance benchmarks (on main branch and frontend-rewrite-v3 for testing)
   benchmark:
     name: Performance Benchmarks
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    needs: [integration]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/frontend-rewrite-v3'
+    needs: [integration, docker]
 
     steps:
       - name: Checkout code
