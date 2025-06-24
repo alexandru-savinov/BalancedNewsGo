@@ -82,12 +82,10 @@ jobs:
             -Dsonar.go.coverage.reportPaths=coverage.out
 
       - name: Quality Gate Check
-        uses: sonarqube-quality-gate-action@master
+        uses: SonarSource/sonarqube-quality-gate-action@master
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          scanMetadataReportFile: .scannerwork/report-task.txt
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4
