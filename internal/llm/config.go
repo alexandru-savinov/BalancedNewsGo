@@ -2,6 +2,7 @@ package llm
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -40,13 +41,41 @@ type ModelConfig struct {
 
 // LoadCompositeScoreConfig loads the configuration from a JSON file
 func LoadCompositeScoreConfig() (*CompositeScoreConfig, error) {
+	// Try multiple possible locations for the config file
+	var configPath string
+	var err error
+
+	// First try: relative to current working directory
 	wd, err := os.Getwd()
 	if err != nil {
 		log.Printf("Error getting working directory: %v", err)
-		return nil, err
+	} else {
+		configPath = filepath.Join(wd, "configs", "composite_score_config.json")
+		if _, err := os.Stat(configPath); err == nil {
+			log.Printf("Found composite score config at: %s", configPath)
+			return loadConfigFromPath(configPath)
+		}
 	}
-	// Construct the full path to the config file relative to the current working directory
-	configPath := filepath.Join(wd, "configs", "composite_score_config.json")
+
+	// Second try: absolute path (for Docker containers)
+	configPath = "/configs/composite_score_config.json"
+	if _, err := os.Stat(configPath); err == nil {
+		log.Printf("Found composite score config at: %s", configPath)
+		return loadConfigFromPath(configPath)
+	}
+
+	// Third try: relative to executable
+	configPath = "configs/composite_score_config.json"
+	if _, err := os.Stat(configPath); err == nil {
+		log.Printf("Found composite score config at: %s", configPath)
+		return loadConfigFromPath(configPath)
+	}
+
+	log.Printf("Could not find composite score config file in any of the expected locations")
+	return nil, fmt.Errorf("composite score config file not found")
+}
+
+func loadConfigFromPath(configPath string) (*CompositeScoreConfig, error) {
 	log.Printf("Attempting to load composite score config from: %s", configPath)
 
 	bytes, err := os.ReadFile(configPath) // #nosec G304 - configPath is from application configuration, controlled input
