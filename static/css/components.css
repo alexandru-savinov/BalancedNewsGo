@@ -1,2 +1,77 @@
 /* Reusable UI Components */
-/* This file will contain styles for buttons, cards, navbars, forms, badges */
+/* Styles for buttons, cards, navbars, forms, badges */
+
+/* Navigation Bar Component */
+.navbar {
+  background-color: var(--color-bg, #fff);
+  border-bottom: 1px solid var(--color-gray-300, #dee2e6);
+  padding: var(--space-4, 1rem) 0;
+  position: relative;
+  z-index: 100;
+}
+
+.navbar .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4, 1rem);
+}
+
+.navbar-brand {
+  font-size: var(--font-size-xl, 1.25rem);
+  font-weight: var(--font-weight-bold, 700);
+  color: var(--color-text, #333);
+  text-decoration: none;
+  margin: 0;
+}
+
+.navbar-brand:hover {
+  color: var(--color-primary, #007bff);
+  text-decoration: none;
+}
+
+.navbar-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6, 1.5rem);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navbar-nav a {
+  color: var(--color-text, #333);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium, 500);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border-radius: var(--border-radius, 0.25rem);
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+}
+
+.navbar-nav a:hover,
+.navbar-nav a:focus {
+  color: var(--color-primary, #007bff);
+  background-color: var(--color-gray-100, #f8f9fa);
+  text-decoration: none;
+}
+
+.navbar-nav a.active {
+  color: var(--color-primary, #007bff);
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+/* Responsive navbar */
+@media screen and (max-width: 768px) {
+  .navbar .container {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3, 0.75rem);
+  }
+
+  .navbar-nav {
+    width: 100%;
+    justify-content: center;
+    gap: var(--space-4, 1rem);
+  }
+}

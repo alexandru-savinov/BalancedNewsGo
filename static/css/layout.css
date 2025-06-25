@@ -1,2 +1,46 @@
 /* Layout Helpers */
-/* This file will contain layout utilities like grid, container widths, responsiveness */
+/* Layout utilities like grid, container widths, responsiveness */
+
+/* Container for centering content */
+.container {
+  max-width: var(--container-max-width, 1200px);
+  margin: 0 auto;
+  padding: 0 var(--space-4, 1rem);
+  width: 100%;
+}
+
+/* Container variants */
+.container-fluid {
+  max-width: none;
+  margin: 0 auto;
+  padding: 0 var(--space-4, 1rem);
+  width: 100%;
+}
+
+.container-sm {
+  max-width: 576px;
+  margin: 0 auto;
+  padding: 0 var(--space-4, 1rem);
+  width: 100%;
+}
+
+.container-md {
+  max-width: 768px;
+  margin: 0 auto;
+  padding: 0 var(--space-4, 1rem);
+  width: 100%;
+}
+
+.container-lg {
+  max-width: 992px;
+  margin: 0 auto;
+  padding: 0 var(--space-4, 1rem);
+  width: 100%;
+}
+
+.container-xl {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-4, 1rem);
+  width: 100%;
+}

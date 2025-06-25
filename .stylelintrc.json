@@ -6,6 +6,7 @@
     "function-name-case": "lower",
     "no-descending-specificity": null,
     "no-invalid-double-slash-comments": null,
-    "value-keyword-case": null
+    "value-keyword-case": null,
+    "media-feature-range-notation": null
   }
 }

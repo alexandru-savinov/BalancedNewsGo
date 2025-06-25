@@ -124,4 +124,11 @@
   --border-width-2: 2px;
   --border-width-4: 4px;
   --border-width-8: 8px;
+
+  /* Container Widths */
+  --container-max-width: 1200px;
+  --container-sm: 576px;
+  --container-md: 768px;
+  --container-lg: 992px;
+  --container-xl: 1200px;
 }
