@@ -173,6 +173,9 @@ func main() {
 		port = "8080"
 	}
 
+	// Serve static files
+	router.Static("/static", "./static")
+
 	// Template routes for web pages
 	router.GET("/", func(c *gin.Context) {
 		c.Redirect(302, "/articles")
