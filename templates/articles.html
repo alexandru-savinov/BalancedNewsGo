@@ -224,25 +224,26 @@
         </div>
         
         <!-- Load more button for dynamic loading -->
-        <div id="load-more-container" data-testid="load-more-container" style="margin: 20px 0; text-align: center;">
-            {{if .HasMore}}            <button id="load-more-btn" 
-                    data-testid="load-more-articles"                    class="filter-form button" 
+        <div id="load-more-container" data-testid="load-more-container" class="load-more-section">
+            {{if .HasMore}}
+            <button id="load-more-btn"
+                    data-testid="load-more-articles"
+                    class="btn btn-primary"
                     hx-get="/htmx/articles/load-more"
                     hx-target="#articles-container"
                     hx-swap="beforeend"
                     hx-vals='{"page": "{{.NextPage}}"}'
-                    hx-indicator="#loading-indicator"
-                    style="padding: 10px 20px; background-color: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    hx-indicator="#loading-indicator">
                 Load More Articles
             </button>
-            {{else}}            <button data-testid="load-more-articles" 
-                    class="filter-form button" 
+            {{else}}
+            <button data-testid="load-more-articles"
+                    class="btn btn-primary"
                     hx-get="/htmx/articles/load-more"
                     hx-target="#articles-container"
                     hx-swap="beforeend"
                     hx-vals='{"page": "2"}'
-                    hx-indicator="#loading-indicator"
-                    style="padding: 10px 20px; background-color: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    hx-indicator="#loading-indicator">
                 Load More Articles
             </button>
             {{end}}
