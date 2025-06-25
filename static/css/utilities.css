@@ -32,3 +32,13 @@
   margin: var(--space-5, 1.25rem) 0;
   text-align: center;
 }
+
+/* Button Spacing */
+.btn-group .btn {
+  margin-right: var(--space-2-5, 0.625rem);
+  margin-bottom: var(--space-2-5, 0.625rem);
+}
+
+.btn-group .btn:last-child {
+  margin-right: 0;
+}
