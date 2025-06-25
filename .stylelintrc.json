@@ -7,6 +7,9 @@
     "no-descending-specificity": null,
     "no-invalid-double-slash-comments": null,
     "value-keyword-case": null,
-    "media-feature-range-notation": null
+    "media-feature-range-notation": null,
+    "color-function-notation": null,
+    "color-function-alias-notation": null,
+    "alpha-value-notation": null
   }
 }
