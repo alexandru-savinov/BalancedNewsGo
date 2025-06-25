@@ -141,16 +141,18 @@
         }
     </style>
 </head>
-<body>    <header>
-    <div class="container">
-        <h1>NewsBalancer</h1>        <nav role="navigation" aria-label="Main navigation">
-            <a href="/articles" 
-               hx-get="/articles" 
-               hx-target="body"
-               hx-push-url="true">Articles</a> |
-            <a href="/admin">Admin</a>
-        </nav>
-    </div>
+<body>    <header class="navbar">
+        <div class="container">
+            <a href="/articles" class="navbar-brand">NewsBalancer</a>
+            <nav class="navbar-nav" role="navigation" aria-label="Main navigation">
+                <a href="/articles"
+                   hx-get="/articles"
+                   hx-target="body"
+                   hx-push-url="true"
+                   class="active">Articles</a>
+                <a href="/admin">Admin</a>
+            </nav>
+        </div>
     </header>
 
     <main class="container">

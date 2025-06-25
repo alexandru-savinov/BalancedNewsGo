@@ -15,12 +15,7 @@
             padding: 20px;
             color: #333;
         }
-        header {
-            background-color: #f8f9fa;
-            padding: 10px 0;
-            margin-bottom: 20px;
-            border-bottom: 1px solid #e3e3e3;
-        }
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -131,11 +126,11 @@
     </style>
 </head>
 <body>
-    <header>
+    <header class="navbar">
         <div class="container">
-            <h1>NewsBalancer</h1>
-            <nav>
-                <a href="/articles">Articles</a> |
+            <a href="/articles" class="navbar-brand">NewsBalancer</a>
+            <nav class="navbar-nav">
+                <a href="/articles">Articles</a>
                 <a href="/admin">Admin</a>
             </nav>
         </div>
