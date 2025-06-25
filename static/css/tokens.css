@@ -1,2 +1,43 @@
 /* Design Tokens - CSS Custom Properties */
-/* This file will contain global design tokens for colors, typography, spacing, etc. */
+/* Global design tokens for colors, typography, spacing, etc. */
+
+:root {
+  /* Brand Colors */
+  --color-primary: #007bff;        /* Primary blue (from admin buttons) */
+  --color-secondary: #6c757d;      /* Secondary gray */
+  --color-success: #28a745;        /* Success green */
+  --color-warning: #ffc107;        /* Warning yellow */
+  --color-danger: #dc3545;         /* Danger red */
+  --color-info: #17a2b8;          /* Info cyan */
+
+  /* Neutral Colors */
+  --color-white: #fff;
+  --color-light: #f8f9fa;          /* Light background */
+  --color-gray-100: #f8f9fa;
+  --color-gray-200: #e9ecef;
+  --color-gray-300: #dee2e6;
+  --color-gray-400: #ced4da;
+  --color-gray-500: #adb5bd;
+  --color-gray-600: #6c757d;
+  --color-gray-700: #495057;
+  --color-gray-800: #343a40;
+  --color-gray-900: #212529;
+  --color-dark: #343a40;
+  --color-black: #000;
+
+  /* Text Colors */
+  --color-text: #333;              /* Primary text color */
+  --color-text-muted: #6c757d;     /* Muted text color */
+  --color-text-light: #fff;        /* Light text for dark backgrounds */
+
+  /* Background Colors */
+  --color-bg: #fff;                /* Primary background */
+  --color-bg-light: #f8f9fa;       /* Light background variant */
+  --color-bg-dark: #343a40;        /* Dark background */
+
+  /* Bias Indicator Colors */
+  --color-bias-left: #0d6efd;      /* Blue for left bias */
+  --color-bias-center: #6c757d;    /* Gray for center bias */
+  --color-bias-right: #dc3545;     /* Red for right bias */
+  --color-bias-unknown: #ffc107;   /* Yellow for unknown bias */
+}

@@ -1,0 +1,10 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "rules": {
+    "comment-empty-line-before": null,
+    "declaration-empty-line-before": null,
+    "function-name-case": "lower",
+    "no-descending-specificity": null,
+    "no-invalid-double-slash-comments": null
+  }
+}
