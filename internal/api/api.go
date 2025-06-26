@@ -205,9 +205,7 @@ func SafeHandler(handler gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if r := recover(); r != nil {
-				// Log the panic
-				log.Printf("[PANIC] %v\\n%s", r, debug.Stack()) // Added stack trace
-				// Return an error response
+				log.Printf("[PANIC] %v\\n%s", r, debug.Stack())
 				RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Internal Server Error: %v", r)))
 			}
 		}()
@@ -309,7 +307,6 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if article already exists
 		exists, err := db.ArticleExistsByURL(dbConn, req.URL)
 		if err != nil {
 			RespondError(c, WrapError(err, ErrInternal, "Failed to check for existing article"))
@@ -404,24 +401,24 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		limitStr := c.DefaultQuery("limit", "20")
 		offsetStr := c.DefaultQuery("offset", "0")
 
-		log.Printf("[DEBUG] getArticlesHandler: Parsed query params - source: %s, leaning: %s, limit: %s, offset: %s", source, leaning, limitStr, offsetStr) // Added log
+		log.Printf("[DEBUG] getArticlesHandler: Parsed query params - source: %s, leaning: %s, limit: %s, offset: %s", source, leaning, limitStr, offsetStr)
 
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
-			log.Printf("[ERROR] getArticlesHandler: invalid limit parameter: %v. Value: %s", err, limitStr) // Enhanced log
+			log.Printf("[ERROR] getArticlesHandler: invalid limit parameter: %v. Value: %s", err, limitStr)
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'limit' parameter"))
 			return
 		}
 		offset, err := strconv.Atoi(offsetStr)
 		if err != nil || offset < 0 {
-			log.Printf("[ERROR] getArticlesHandler: invalid offset parameter: %v. Value: %s", err, offsetStr) // Enhanced log
+			log.Printf("[ERROR] getArticlesHandler: invalid offset parameter: %v. Value: %s", err, offsetStr)
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'offset' parameter"))
 			return
 		}
 
 		log.Printf("[INFO] getArticlesHandler: Fetching articles (source=%s, leaning=%s, limit=%d, offset=%d)", source, leaning, limit, offset)
 		// Corrected parameters for db.FetchArticles
-		log.Printf("[DEBUG] getArticlesHandler: Calling db.FetchArticles with source: '%s', leaning: '%s', limit: %d, offset: %d", source, leaning, limit, offset) // Added log
+		log.Printf("[DEBUG] getArticlesHandler: Calling db.FetchArticles with source: '%s', leaning: '%s', limit: %d, offset: %d", source, leaning, limit, offset)
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		// totalCount is not returned by FetchArticles, so its usage is removed for now.
 		log.Printf("[DEBUG] getArticlesHandler: After db.FetchArticles. Error: %v. Articles count: %d", err, len(articles))
@@ -490,12 +487,12 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		c.Header("X-Total-Count", strconv.Itoa(totalCount))
-		log.Printf("[DEBUG] getArticlesHandler: Preparing to send response. Number of articles: %d", len(out)) // Added log
+		log.Printf("[DEBUG] getArticlesHandler: Preparing to send response. Number of articles: %d", len(out))
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data":    out,
 		})
-		log.Printf("[DEBUG] getArticlesHandler: Response sent successfully.") // Added log
+		log.Printf("[DEBUG] getArticlesHandler: Response sent successfully.")
 	}
 }
 
@@ -623,7 +620,6 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 		articleID := id
 		log.Printf("[POST /api/llm/reanalyze] ArticleID=%d", articleID)
 
-		// Check if article exists
 		article, err := db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {
@@ -956,7 +952,6 @@ func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 					continue // No progress update yet
 				}
 
-				// Log the raw progress object fetched
 				// log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Fetched progress: %+v", articleID, progress)
 
 				data, err := json.Marshal(progress)
@@ -976,7 +971,7 @@ func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 					lastProgressJSON = currentProgressJSON
 
 					// Check for terminal states
-					if progress.Status == "Complete" || progress.Status == "Error" || progress.Status == "Success" { // Added "Success"
+					if progress.Status == "Complete" || progress.Status == "Error" || progress.Status == "Success" {
 						log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Terminal progress status '%s' received. Closing SSE stream.", articleID, progress.Status)
 						// Send one last time to be sure, then close.
 						// It's possible the client might miss this if we return immediately.
@@ -1583,7 +1578,6 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if article exists
 		_, err = db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {

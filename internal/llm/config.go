@@ -13,7 +13,7 @@ const (
 	LabelLeft    = "left"
 	LabelCenter  = "center"
 	LabelRight   = "right"
-	LabelNeutral = "neutral" // Added for flexibility
+	LabelNeutral = "neutral"
 )
 
 // CompositeScoreConfig defines the structure for composite score calculation configuration
