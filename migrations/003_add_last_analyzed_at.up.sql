@@ -1,0 +1,1 @@
+ALTER TABLE articles ADD COLUMN last_analyzed_at TIMESTAMP;

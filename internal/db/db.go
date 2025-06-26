@@ -40,22 +40,23 @@ var (
 
 // Article represents a news article with bias information
 type Article struct {
-	ID             int64      `db:"id" json:"id"`
-	Source         string     `db:"source" json:"source"`
-	PubDate        time.Time  `db:"pub_date" json:"pub_date"`
-	URL            string     `db:"url" json:"url"`
-	Title          string     `db:"title" json:"title"`
-	Content        string     `db:"content" json:"content"`
-	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
-	Status         *string    `db:"status" json:"status,omitempty"`
-	FailCount      *int       `db:"fail_count" json:"fail_count,omitempty"`
-	LastAttempt    *time.Time `db:"last_attempt" json:"last_attempt,omitempty"`
-	Escalated      *bool      `db:"escalated" json:"escalated,omitempty"`
-	CompositeScore *float64   `db:"composite_score" json:"composite_score,omitempty"`
-	Confidence     *float64   `db:"confidence" json:"confidence,omitempty"`
-	ScoreSource    *string    `db:"score_source" json:"score_source,omitempty"`
-	BiasLabel      *string    `db:"bias_label" json:"bias_label,omitempty"`
-	Bias           string     `db:"-" json:"bias,omitempty"` // Calculated field, not stored in DB
+	ID              int64      `db:"id" json:"id"`
+	Source          string     `db:"source" json:"source"`
+	PubDate         time.Time  `db:"pub_date" json:"pub_date"`
+	URL             string     `db:"url" json:"url"`
+	Title           string     `db:"title" json:"title"`
+	Content         string     `db:"content" json:"content"`
+	CreatedAt       time.Time  `db:"created_at" json:"created_at"`
+	Status          *string    `db:"status" json:"status,omitempty"`
+	FailCount       *int       `db:"fail_count" json:"fail_count,omitempty"`
+	LastAttempt     *time.Time `db:"last_attempt" json:"last_attempt,omitempty"`
+	LastAnalyzedAt  *time.Time `db:"last_analyzed_at" json:"last_analyzed_at,omitempty"`
+	Escalated       *bool      `db:"escalated" json:"escalated,omitempty"`
+	CompositeScore  *float64   `db:"composite_score" json:"composite_score,omitempty"`
+	Confidence      *float64   `db:"confidence" json:"confidence,omitempty"`
+	ScoreSource     *string    `db:"score_source" json:"score_source,omitempty"`
+	BiasLabel       *string    `db:"bias_label" json:"bias_label,omitempty"`
+	Bias            string     `db:"-" json:"bias,omitempty"` // Calculated field, not stored in DB
 }
 
 // LLMScore represents a political bias score from an LLM model
@@ -690,7 +691,7 @@ func UpdateArticleScore(db *sqlx.DB, articleID int64, score float64, confidence 
 	err := WithRetry(DefaultRetryConfig(), func() error {
 		_, err := db.Exec(`
 			UPDATE articles
-			SET composite_score = ?, confidence = ?, score_source = 'llm'
+			SET composite_score = ?, confidence = ?, score_source = 'llm', last_analyzed_at = CURRENT_TIMESTAMP
 			WHERE id = ?`,
 			score, confidence, articleID)
 		if err != nil {
@@ -717,7 +718,7 @@ func UpdateArticleScoreLLM(exec sqlx.ExtContext, articleID int64, score float64,
 	err := WithRetry(DefaultRetryConfig(), func() error {
 		result, err := exec.ExecContext(context.Background(), `
 			UPDATE articles
-			SET composite_score = ?, confidence = ?, score_source = 'llm'
+			SET composite_score = ?, confidence = ?, score_source = 'llm', last_analyzed_at = CURRENT_TIMESTAMP
 			WHERE id = ?`,
 			score, confidence, articleID)
 
@@ -833,6 +834,7 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		status TEXT DEFAULT 'pending',
 		fail_count INTEGER DEFAULT 0,
 		last_attempt DATETIME,
+		last_analyzed_at TIMESTAMP,
 		escalated BOOLEAN DEFAULT 0,
 		composite_score REAL,
 		confidence REAL,
