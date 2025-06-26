@@ -550,11 +550,11 @@ jobs:
           echo "Deployment to staging would happen here"
           echo "Image: ${{ secrets.CONTAINER_REGISTRY }}/newsbalancer:staging-${{ github.sha }}"
 
-  # Deploy to production (only on main branch with manual approval)
+  # Deploy to production (DISABLED - not ready for production deployment)
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false  # Disabled until ready for production deployment
     needs: [integration, security, docker, benchmark]
     environment: production
     steps:

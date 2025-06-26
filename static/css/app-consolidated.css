@@ -5,9 +5,9 @@
   /* Brand Colors */
   --color-primary: #0056b3;        /* Primary blue - WCAG AA compliant */
   --color-secondary: #6c757d;      /* Secondary gray */
-  --color-success: #28a745;        /* Success green */
+  --color-success: #1e7e34;        /* Success green - WCAG AA compliant (4.5:1) */
   --color-warning: #ffc107;        /* Warning yellow */
-  --color-danger: #dc3545;         /* Danger red */
+  --color-danger: #b02a37;         /* Danger red - WCAG AA compliant (4.5:1) */
   --color-info: #17a2b8;          /* Info cyan */
 
   /* Neutral Colors */
@@ -36,9 +36,9 @@
   --color-bg-dark: #343a40;        /* Dark background */
 
   /* Bias Indicator Colors */
-  --color-bias-left: #0d6efd;      /* Blue for left bias */
+  --color-bias-left: #0a58ca;      /* Blue for left bias - WCAG AA compliant (4.5:1) */
   --color-bias-center: #6c757d;    /* Gray for center bias */
-  --color-bias-right: #dc3545;     /* Red for right bias */
+  --color-bias-right: #b02a37;     /* Red for right bias - WCAG AA compliant (4.5:1) */
   --color-bias-unknown: #ffc107;   /* Yellow for unknown bias */
 
   /* Typography */
@@ -770,24 +770,24 @@ img {
 
 .btn-success {
   color: var(--color-white, #fff);
-  background-color: var(--color-success, #28a745);
-  border-color: var(--color-success, #28a745);
+  background-color: var(--color-success, #1e7e34);
+  border-color: var(--color-success, #1e7e34);
 }
 
 .btn-success:hover {
   color: var(--color-white, #fff);
-  background-color: #218838;
-  border-color: #1e7e34;
+  background-color: #1c7430;
+  border-color: #1a6e2d;
 }
 
 .btn-success:focus {
-  box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.5);
+  box-shadow: 0 0 0 0.2rem rgba(30, 126, 52, 0.5);
 }
 
 .btn-success:active {
   color: var(--color-white, #fff);
-  background-color: #1e7e34;
-  border-color: #1c7430;
+  background-color: #1a6e2d;
+  border-color: #18682a;
 }
 
 .btn-warning {
@@ -814,8 +814,8 @@ img {
 
 .btn-danger {
   color: var(--color-white, #fff);
-  background-color: var(--color-danger, #dc3545);
-  border-color: var(--color-danger, #dc3545);
+  background-color: var(--color-danger, #b02a37);
+  border-color: var(--color-danger, #b02a37);
 }
 
 .btn-danger:hover {
@@ -920,9 +920,9 @@ img {
 }
 
 .bias-left {
-  background-color: rgba(13, 110, 253, 0.1);
-  color: var(--color-bias-left, #0d6efd);
-  border: 1px solid rgba(13, 110, 253, 0.25);
+  background-color: rgba(10, 88, 202, 0.1);
+  color: var(--color-bias-left, #0a58ca);
+  border: 1px solid rgba(10, 88, 202, 0.25);
 }
 
 .bias-center {
@@ -932,9 +932,9 @@ img {
 }
 
 .bias-right {
-  background-color: rgba(220, 53, 69, 0.1);
-  color: var(--color-bias-right, #dc3545);
-  border: 1px solid rgba(220, 53, 69, 0.25);
+  background-color: rgba(176, 42, 55, 0.1);
+  color: var(--color-bias-right, #b02a37);
+  border: 1px solid rgba(176, 42, 55, 0.25);
 }
 
 /* Filter Section */
