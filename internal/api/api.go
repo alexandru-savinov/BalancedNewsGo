@@ -1489,8 +1489,19 @@ func feedbackHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient) gin.HandlerFunc 
 			CreatedAt:        time.Now(),
 		}
 
+		// Validate that the article exists before inserting feedback
+		_, err := db.FetchArticleByID(dbConn, req.ArticleID)
+		if err != nil {
+			if err == db.ErrArticleNotFound {
+				RespondError(c, NewAppError(ErrNotFound, fmt.Sprintf("Article with ID %d not found", req.ArticleID)))
+				return
+			}
+			RespondError(c, NewAppError(ErrInternal, "Failed to validate article existence"))
+			return
+		}
+
 		// Insert feedback
-		err := db.InsertFeedback(dbConn, feedback)
+		err = db.InsertFeedback(dbConn, feedback)
 		if err != nil {
 			RespondError(c, NewAppError(ErrInternal, fmt.Sprintf("Failed to store feedback: %v", err)))
 			return
