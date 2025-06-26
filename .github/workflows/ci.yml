@@ -400,6 +400,13 @@ jobs:
         run: go build -o newsbalancer ./cmd/server
 
       - name: Run Lighthouse CI
+        env:
+          NO_AUTO_ANALYZE: "true"
+          PORT: 8080
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY || '' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
         run: |
           # Install Lighthouse CI globally for better performance
           npm install -g @lhci/cli
@@ -417,13 +424,18 @@ jobs:
 
           # Stop the server
           kill $SERVER_PID || true
-        env:
-          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
       - name: Run accessibility tests
+        env:
+          NO_AUTO_ANALYZE: "true"
+          PORT: 8080
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY || '' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+          CI: true
         run: |
           # Start the server in background
           ./newsbalancer &
@@ -437,8 +449,6 @@ jobs:
 
           # Stop the server
           kill $SERVER_PID || true
-        env:
-          CI: true
 
   # Performance benchmarks (on main branch and frontend-rewrite-v3 for testing)
   benchmark:
