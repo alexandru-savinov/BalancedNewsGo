@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
@@ -21,10 +20,11 @@ func main() {
 
 	fmt.Printf("Seeding test data into database: %s\n", dbPath)
 
-	// Connect to the database
-	database, err := sqlx.Connect("sqlite", dbPath)
+	// Initialize database with schema (this will create tables if they don't exist)
+	fmt.Println("Initializing database with schema...")
+	database, err := db.InitDB(dbPath)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer func() {
 		if err := database.Close(); err != nil {
@@ -32,12 +32,7 @@ func main() {
 		}
 	}()
 
-	// Verify database connection
-	if err := database.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
-
-	fmt.Println("Database connection successful")
+	fmt.Println("Database initialized successfully")
 
 	// Seed test articles for accessibility tests
 	testArticles := []struct {
