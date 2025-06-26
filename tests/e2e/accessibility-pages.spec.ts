@@ -80,10 +80,10 @@ test.describe('Page-Specific Accessibility Tests', () => {
     expect(criticalViolations).toEqual([]);
     
     // Check article content structure
-    const articleTitle = page.locator('.article-title, h1');
-    if (await articleTitle.count() > 0) {
-      await expect(articleTitle.first()).toBeVisible();
-      const titleText = await articleTitle.first().textContent();
+    const articleTitleElement = page.locator('.article-title, h1');
+    if (await articleTitleElement.count() > 0) {
+      await expect(articleTitleElement.first()).toBeVisible();
+      const titleText = await articleTitleElement.first().textContent();
       expect(titleText?.trim()).toBeTruthy();
     }
     
