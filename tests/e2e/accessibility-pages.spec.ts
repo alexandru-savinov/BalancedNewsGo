@@ -6,7 +6,17 @@ test.describe('Page-Specific Accessibility Tests', () => {
   test('Articles listing page (/articles) should be accessible', async ({ page }) => {
     await page.goto('/articles');
     await page.waitForLoadState('networkidle');
-    
+
+    // Verify that articles are loaded - fail fast if database is empty
+    const articleElements = await page.locator('article, .article, [data-testid="article"], .articles-grid .article-item').count();
+    if (articleElements === 0) {
+      // Check if there's a "no articles" message or if the page is completely empty
+      const pageText = await page.textContent('body');
+      console.log('Page content when no articles found:', pageText);
+      throw new Error('No articles found on the page. Database seeding may have failed. Cannot test accessibility without content.');
+    }
+    console.log(`Found ${articleElements} article elements on the page`);
+
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
       .analyze();
@@ -44,7 +54,16 @@ test.describe('Page-Specific Accessibility Tests', () => {
   test('Article detail page (/article/:id) should be accessible', async ({ page }) => {
     await page.goto('/article/1');
     await page.waitForLoadState('networkidle');
-    
+
+    // Verify that the article loaded - fail fast if article doesn't exist
+    const articleTitle = await page.locator('h1').textContent();
+    if (!articleTitle || articleTitle.trim() === '') {
+      const pageText = await page.textContent('body');
+      console.log('Page content when article not found:', pageText);
+      throw new Error('Article not found or has empty title. Database seeding may have failed. Cannot test accessibility without content.');
+    }
+    console.log(`Found article with title: "${articleTitle}"`);
+
     const accessibilityScanResults = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
       .analyze();

@@ -440,10 +440,12 @@ jobs:
           # Seed test data directly into database BEFORE starting server
           echo "Seeding test data for accessibility tests..."
           export DATABASE_PATH="newsbalancer.db"
+          export DB_CONNECTION="newsbalancer.db"
           go run ./cmd/seed_test_data
 
           # Start the server in background with same database
           export DATABASE_PATH="newsbalancer.db"
+          export DB_CONNECTION="newsbalancer.db"
           ./newsbalancer &
           SERVER_PID=$!
 
