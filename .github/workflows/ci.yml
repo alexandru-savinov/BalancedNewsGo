@@ -441,36 +441,15 @@ jobs:
           ./newsbalancer &
           SERVER_PID=$!
 
+          # Seed test data directly into database before starting server
+          echo "Seeding test data for accessibility tests..."
+          go run ./cmd/seed_test_data
+
           # Wait for server to be ready
           timeout 30 bash -c 'until curl -f http://localhost:8080/articles; do sleep 1; done'
 
-          # Add test data to database for accessibility tests
-          echo "Adding test data for accessibility tests..."
-          curl -X POST http://localhost:8080/api/articles \
-            -H "Content-Type: application/json" \
-            -d '{
-              "source": "Test Source",
-              "pub_date": "2024-01-01T12:00:00Z",
-              "url": "http://test.example.com/article/580",
-              "title": "Test Article for Accessibility Testing",
-              "content": "This is test content for accessibility testing. It ensures that H1 elements have proper content and are visible to screen readers."
-            }' || echo "Failed to add test article, continuing anyway..."
-
-          # Add a few more test articles for the articles list page
-          for i in {1..3}; do
-            curl -X POST http://localhost:8080/api/articles \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"source\": \"Test Source $i\",
-                \"pub_date\": \"2024-01-0${i}T12:00:00Z\",
-                \"url\": \"http://test.example.com/article/58$i\",
-                \"title\": \"Test Article $i for Accessibility\",
-                \"content\": \"Test content for article $i to ensure proper page rendering.\"
-              }" || echo "Failed to add test article $i, continuing anyway..."
-          done
-
-          # Verify test data was added
-          echo "Verifying test data..."
+          # Verify test data is accessible via API
+          echo "Verifying test data via API..."
           curl -s http://localhost:8080/api/articles | head -200
 
           # Run accessibility tests
