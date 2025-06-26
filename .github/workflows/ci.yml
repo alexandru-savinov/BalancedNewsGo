@@ -437,13 +437,15 @@ jobs:
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
           CI: true
         run: |
-          # Start the server in background
+          # Seed test data directly into database BEFORE starting server
+          echo "Seeding test data for accessibility tests..."
+          export DATABASE_PATH="newsbalancer.db"
+          go run ./cmd/seed_test_data
+
+          # Start the server in background with same database
+          export DATABASE_PATH="newsbalancer.db"
           ./newsbalancer &
           SERVER_PID=$!
-
-          # Seed test data directly into database before starting server
-          echo "Seeding test data for accessibility tests..."
-          go run ./cmd/seed_test_data
 
           # Wait for server to be ready
           timeout 30 bash -c 'until curl -f http://localhost:8080/articles; do sleep 1; done'
