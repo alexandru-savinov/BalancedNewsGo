@@ -42,7 +42,7 @@ test.describe('Page-Specific Accessibility Tests', () => {
   });
 
   test('Article detail page (/article/:id) should be accessible', async ({ page }) => {
-    await page.goto('/article/580');
+    await page.goto('/article/1');
     await page.waitForLoadState('networkidle');
     
     const accessibilityScanResults = await new AxeBuilder({ page })
@@ -114,7 +114,7 @@ test.describe('Page-Specific Accessibility Tests', () => {
   });
 
   test('All pages should have proper document structure', async ({ page }) => {
-    const pages = ['/articles', '/article/580', '/admin'];
+    const pages = ['/articles', '/article/1', '/admin'];
     
     for (const pagePath of pages) {
       await page.goto(pagePath);
@@ -140,7 +140,7 @@ test.describe('Page-Specific Accessibility Tests', () => {
   });
 
   test('All pages should be keyboard navigable', async ({ page }) => {
-    const pages = ['/articles', '/article/580', '/admin'];
+    const pages = ['/articles', '/article/1', '/admin'];
     
     for (const pagePath of pages) {
       await page.goto(pagePath);
