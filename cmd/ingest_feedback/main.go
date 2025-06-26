@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
@@ -29,7 +29,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	dbConn, err := sqlx.Open("sqlite3", *dbPath)
+	dbConn, err := sqlx.Open("sqlite", *dbPath)
 	if err != nil {
 		log.Printf("ERROR: Failed to open database: %v", err)
 		os.Exit(1)
