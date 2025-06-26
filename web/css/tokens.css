@@ -3,7 +3,7 @@
 
 :root {
   /* Brand Colors */
-  --color-primary: #0056b3;        /* Primary blue - WCAG AA compliant */
+  --color-primary: #007bff;        /* Primary blue (from admin buttons) */
   --color-secondary: #6c757d;      /* Secondary gray */
   --color-success: #28a745;        /* Success green */
   --color-warning: #ffc107;        /* Warning yellow */

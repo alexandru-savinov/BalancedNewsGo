@@ -139,8 +139,8 @@
 /* Button Color Variants */
 .btn-primary {
   color: var(--color-white, #fff);
-  background-color: #0056b3;
-  border-color: #0056b3;
+  background-color: var(--color-primary, #007bff);
+  border-color: var(--color-primary, #007bff);
 }
 
 .btn-primary:hover {
@@ -269,6 +269,55 @@
   border-color: #10707f;
 }
 
+/* Enhanced Button Groups */
+.btn-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.btn-group .btn {
+  min-height: 44px;
+  white-space: nowrap;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@supports not (display: grid) {
+  .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .btn-group .btn {
+    flex: 1 1 140px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .btn-group {
+    grid-template-columns: 1fr;
+  }
+
+  .btn-group .btn {
+    min-height: 48px;
+  }
+
+  @supports not (display: grid) {
+    .btn-group {
+      flex-direction: column;
+    }
+
+    .btn-group .btn {
+      flex: 1 1 auto;
+    }
+  }
+}
+
 /* Article Cards */
 .article-item,
 .article-card {
@@ -339,15 +388,30 @@
 }
 
 .bias-center {
-  background-color: rgba(108, 117, 125, 0.15);
-  color: #495057;
-  border: 1px solid rgba(108, 117, 125, 0.3);
+  background-color: rgba(108, 117, 125, 0.1);
+  color: var(--color-bias-center, #6c757d);
+  border: 1px solid rgba(108, 117, 125, 0.25);
 }
 
 .bias-right {
   background-color: rgba(220, 53, 69, 0.1);
   color: var(--color-bias-right, #dc3545);
   border: 1px solid rgba(220, 53, 69, 0.25);
+}
+
+/* Admin Control Section Cards */
+.control-section {
+  background: var(--color-bg-light, #f8f9fa);
+  border: 1px solid var(--color-gray-300, #dee2e6);
+  border-radius: var(--border-radius, 0.25rem);
+  padding: var(--space-4, 1rem);
+  height: fit-content;
+}
+
+.control-section h3 {
+  margin-top: 0;
+  margin-bottom: var(--space-3, 0.75rem);
+  color: var(--color-text, #333);
 }
 
 /* Filter Section */

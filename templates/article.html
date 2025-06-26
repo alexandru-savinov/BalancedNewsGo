@@ -6,113 +6,9 @@
     <title>{{.Article.Title}} - NewsBalancer</title>
 
     <!-- Unified CSS System -->
-    <link rel="stylesheet" href="/static/css/app.css?v=1" />
+    <link rel="stylesheet" href="/static/css/app-consolidated.css?v=1" />
 
-    <style>        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 20px;
-            color: #333;
-        }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 15px;
-        }
-        .main-content {
-            display: grid;
-            grid-template-columns: 3fr 1fr;
-            gap: 30px;
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 5px;
-        }
-        .article-meta {
-            font-size: 14px;
-            color: #6c757d;
-            margin-bottom: 20px;
-        }
-        .article-content {
-            margin-bottom: 30px;
-            line-height: 1.8;
-        }
-        .article-content img {
-            max-width: 100%;
-            height: auto;
-            margin: 15px 0;
-        }
-        .bias-analysis {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 30px;
-            border: 1px solid #e3e3e3;
-        }
-        .bias-score {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 10px;
-        }
-        .bias-label {
-            display: inline-block;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-weight: bold;
-            margin-bottom: 15px;
-        }
-        .bias-left {
-            background-color: #d1ecf1;
-            color: #0c5460;
-        }
-        .bias-center {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .bias-right {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        .analysis-details {
-            margin-top: 15px;
-        }
-        .sidebar {
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            border: 1px solid #e3e3e3;
-        }
-        .recent-articles {
-            margin-bottom: 30px;
-        }
-        .recent-articles h3, .stats h3 {
-            margin-top: 0;
-            border-bottom: 1px solid #e3e3e3;
-            padding-bottom: 10px;
-        }
-        .recent-article-item {
-            margin-bottom: 15px;
-        }        .recent-article-item a {
-            color: #0056b3;
-            text-decoration: none;
-        }
-        .recent-article-item a:hover {
-            text-decoration: underline;
-        }
-        .stats-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }        .article-summary {
-            font-style: italic;
-            margin-bottom: 20px;
-            padding: 15px;
-            background-color: #f8f9fa;
-            border-left: 3px solid #0056b3;
-        }
-    </style>
 </head>
 <body>
     <header class="navbar">
@@ -126,7 +22,7 @@
     </header>
 
     <div class="container">
-        <div class="main-content">
+        <div class="two-column-layout">
             <div>
                 <h1>{{.Article.Title}}</h1>
                 <div class="article-meta">
@@ -155,12 +51,12 @@
                         id="reanalysis-progress" 
                         article-id="{{.Article.ID}}" 
                         show-details="true"
-                        style="display: none; margin: 15px 0;">
+                        class="progress-hidden">
                     </progress-indicator>
                     
                     <button class="btn btn-primary" id="reanalyze-btn" data-article-id="{{.Article.ID}}">
                         <span id="btn-text">Request Reanalysis</span>
-                        <span id="btn-loading" style="display: none;">Processing...</span>
+                        <span id="btn-loading" class="btn-loading-hidden">Processing...</span>
                     </button>
                 </div>
 

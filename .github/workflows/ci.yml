@@ -369,6 +369,66 @@ jobs:
 
           docker stop newsbalancer-test || true
 
+  # Frontend Quality Assurance
+  frontend-qa:
+    name: Frontend Quality & Performance
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run CSS linting
+        run: npm run lint:css
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build application
+        run: go build -o newsbalancer ./cmd/server
+
+      - name: Run Lighthouse CI
+        run: |
+          # Install Lighthouse CI globally for better performance
+          npm install -g @lhci/cli
+
+          # Run Lighthouse CI with our configuration
+          lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run accessibility tests
+        run: |
+          # Start the server in background
+          ./newsbalancer &
+          SERVER_PID=$!
+
+          # Wait for server to be ready
+          timeout 30 bash -c 'until curl -f http://localhost:8080/articles; do sleep 1; done'
+
+          # Run accessibility tests
+          npx playwright test tests/e2e/accessibility-pages.spec.ts --reporter=dot
+
+          # Stop the server
+          kill $SERVER_PID || true
+        env:
+          CI: true
+
   # Performance benchmarks (on main branch and frontend-rewrite-v3 for testing)
   benchmark:
     name: Performance Benchmarks

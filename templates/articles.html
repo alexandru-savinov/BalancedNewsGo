@@ -6,140 +6,13 @@
     <title>NewsBalancer - Articles</title>
 
     <!-- Unified CSS System -->
-    <link rel="stylesheet" href="/static/css/app.css?v=1" />
+    <link rel="stylesheet" href="/static/css/app-consolidated.css?v=1" />
 
     <!-- HTMX for dynamic functionality -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 
     <!-- Custom NewsBalancer styles -->
-    <style>
-        /* Custom bias indicators using design system colors */
-        .bias-indicator {
-            display: inline-block;
-            padding: 0.25em 0.65em;
-            border-radius: 0.375em;
-            font-size: 0.8em;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
 
-        .bias-left {
-            background-color: rgba(245, 106, 106, 0.1);
-            color: #f56a6a;
-            border: 1px solid rgba(245, 106, 106, 0.25);
-        }
-
-        .bias-center {
-            background-color: rgba(127, 136, 143, 0.1);
-            color: #7f888f;
-            border: 1px solid rgba(127, 136, 143, 0.25);
-        }
-
-        .bias-right {
-            background-color: rgba(61, 68, 73, 0.1);
-            color: #3d4449;
-            border: 1px solid rgba(61, 68, 73, 0.25);
-        }
-
-        /* Article cards using design system */
-        .article-card {
-            background: #ffffff;
-            border: 1px solid rgba(210, 215, 217, 0.75);
-            border-radius: 0.375em;
-            padding: 1.5em;
-            transition: all 0.2s ease-in-out;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .article-card:hover {
-            transform: translateY(-0.25em);
-            box-shadow: 0 0.5em 1.5em rgba(0, 0, 0, 0.1);
-            border-color: rgba(245, 106, 106, 0.5);
-        }
-
-        .article-card h3 {
-            margin: 0 0 0.5em 0;
-            font-size: 1.1em;
-            line-height: 1.4;
-        }
-
-        .article-card h3 a {
-            color: #3d4449;
-            border-bottom: none;
-        }
-
-        .article-card h3 a:hover {
-            color: #f56a6a;
-        }
-
-        .article-meta {
-            color: #9fa3a6;
-            font-size: 0.9em;
-            margin: 0.5em 0;
-            flex-grow: 1;
-        }
-
-        .article-actions {
-            margin-top: auto;
-            padding-top: 1em;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        /* Filter form using design system */
-        .filter-section {
-            background: #f5f6f7;
-            border: 1px solid rgba(210, 215, 217, 0.75);
-            border-radius: 0.375em;
-            padding: 1.5em;
-            margin-bottom: 2em;
-        }
-
-        /* Results summary */
-        .results-summary {
-            color: #9fa3a6;
-            font-size: 0.9em;
-            margin: 1em 0 2em 0;
-            padding: 0.75em 1em;
-            background: rgba(245, 246, 247, 0.5);
-            border-radius: 0.375em;
-            border-left: 3px solid #f56a6a;
-        }
-
-        /* Loading states */
-        .htmx-indicator {
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .htmx-request .htmx-indicator {
-            opacity: 1;
-        }
-        .htmx-request.htmx-indicator {
-            opacity: 1;
-        }
-
-        /* Responsive article grid */
-        .articles-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 1.5em;
-        }
-
-        @media screen and (max-width: 736px) {
-            .articles-grid {
-                grid-template-columns: 1fr;
-                gap: 1em;
-            }
-
-            .filter-section {
-                padding: 1em;
-            }
-        }
-    </style>
 </head>
 <body>    <header class="navbar">
         <div class="container">
@@ -182,17 +55,17 @@
               <button type="submit">Filter</button>
             
             <!-- HTMX Loading indicator -->
-            <div id="loading-indicator" class="htmx-indicator" style="display: none; margin-left: 10px;">
+            <div id="loading-indicator" class="htmx-indicator loading-hidden">
                 Loading...
             </div>
         </form>
         
                 
-        <div class="results-summary" style="margin: 15px 0; color: #6c757d; font-size: 14px;">
+        <div class="results-summary">
             {{if .Articles}}
             <span>Showing {{len .Articles}} of {{.TotalResults}} articles</span>
             {{if or .SearchQuery .SelectedSource .SelectedBias}}
-            <span style="margin-left: 10px;">
+            <span class="filter-info">
                 (filtered{{if .SearchQuery}} for "{{.SearchQuery}}"{{end}}{{if .SelectedSource}} from {{.SelectedSource}}{{end}}{{if .SelectedBias}} with {{.SelectedBias}} bias{{end}})
             </span>
             {{end}}
@@ -200,7 +73,7 @@
             <span>No articles found matching your criteria.</span>
             {{end}}
         </div>
-<div class="article-list" id="articles-container" data-testid="articles-container">
+<div class="articles-grid" id="articles-container" data-testid="articles-container">
             {{range .Articles}}
             <div class="article-item" data-testid="article-card-{{.ID}}" data-article-id="{{.ID}}">
                 <div class="article-title">
@@ -224,7 +97,7 @@
         </div>
         
         <!-- Load more button for dynamic loading -->
-        <div id="load-more-container" data-testid="load-more-container" class="load-more-section">
+        <div id="load-more-container" data-testid="load-more-container" class="load-more-section text-center my-4">
             {{if .HasMore}}
             <button id="load-more-btn"
                     data-testid="load-more-articles"
