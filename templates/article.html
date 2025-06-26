@@ -5,8 +5,121 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Article.Title}} - NewsBalancer</title>
 
-    <!-- Unified CSS System -->
-    <link rel="stylesheet" href="/static/css/app-consolidated.css?v=1" />
+    <!-- Critical CSS inlined for immediate rendering -->
+    <style>
+        /* Critical CSS - Above-the-fold styles for immediate rendering */
+        :root {
+          --color-primary: #0056b3;
+          --color-text: #333;
+          --color-bg: #fff;
+          --color-gray-300: #dee2e6;
+          --color-gray-100: #f8f9fa;
+          --font-primary: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+          --font-size-base: 1rem;
+          --font-size-xl: 1.25rem;
+          --line-height-base: 1.6;
+          --font-weight-normal: 400;
+          --font-weight-medium: 500;
+          --font-weight-bold: 700;
+          --space-4: 1rem;
+          --space-6: 1.5rem;
+          --border-radius: 0.25rem;
+          --container-max-width: 1200px;
+        }
+        
+        *,
+        *::before,
+        *::after {
+          box-sizing: border-box;
+        }
+        
+        * {
+          margin: 0;
+          padding: 0;
+        }
+        
+        html {
+          font-size: 16px;
+        }
+        
+        body {
+          min-height: 100vh;
+          font-family: var(--font-primary);
+          font-size: var(--font-size-base);
+          line-height: var(--line-height-base);
+          color: var(--color-text);
+          background-color: var(--color-bg);
+          font-weight: var(--font-weight-normal);
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        
+        h1 { 
+          font-size: 2rem; 
+          font-weight: var(--font-weight-bold); 
+          margin-bottom: var(--space-6); 
+          color: var(--color-text);
+        }
+        
+        .container {
+          max-width: var(--container-max-width);
+          margin: 0 auto;
+          padding: 0 var(--space-4);
+          width: 100%;
+        }
+        
+        .navbar {
+          background-color: var(--color-bg);
+          border-bottom: 1px solid var(--color-gray-300);
+          padding: var(--space-4) 0;
+          position: relative;
+        }
+        
+        .navbar .container {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: var(--space-4);
+        }
+        
+        .navbar-brand {
+          font-size: var(--font-size-xl);
+          font-weight: var(--font-weight-bold);
+          color: var(--color-text);
+          text-decoration: none;
+        }
+        
+        .navbar-nav {
+          display: flex;
+          align-items: center;
+          gap: var(--space-6);
+          list-style: none;
+        }
+        
+        .navbar-nav a {
+          color: var(--color-text);
+          text-decoration: none;
+          font-weight: var(--font-weight-medium);
+          padding: 0.5rem 0.75rem;
+          border-radius: var(--border-radius);
+        }
+        
+        a {
+          color: var(--color-primary);
+          text-decoration: none;
+        }
+        
+        .htmx-indicator,
+        .btn-loading-hidden,
+        .progress-hidden {
+          display: none;
+        }
+    </style>
+
+    <!-- Non-critical CSS loaded asynchronously -->
+    <link rel="preload" href="/static/css/app-consolidated.css?v=1" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="/static/css/app-consolidated.css?v=1"></noscript>
 
 
 </head>
@@ -106,12 +219,12 @@
             </div>
         </div>
     </div>    <!-- Import ProgressIndicator component and SSEClient utility -->
-    <script type="module" src="/web/static/js/components/ProgressIndicator.js"></script>
-    <script type="module" src="/web/static/js/utils/SSEClient.js"></script>
+    <script type="module" src="/web/static/js/components/ProgressIndicator.js" defer></script>
+    <script type="module" src="/web/static/js/utils/SSEClient.js" defer></script>
     
     <script>
         // Enhanced article detail page with real-time SSE progress tracking
-        document.addEventListener('DOMContentLoaded', function() {
+        window.addEventListener('load', function() {
             const reanalyzeBtn = document.getElementById('reanalyze-btn');
             const btnText = document.getElementById('btn-text');
             const btnLoading = document.getElementById('btn-loading');
