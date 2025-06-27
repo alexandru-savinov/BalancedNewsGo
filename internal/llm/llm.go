@@ -16,7 +16,7 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/models" // Added import
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/go-resty/resty/v2"
 	"github.com/jmoiron/sqlx"
 )

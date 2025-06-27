@@ -2,8 +2,8 @@ package client
 
 import (
 	"fmt"
-	"net/url" // Added for URL parsing
-	"strings" // Added for string manipulation
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 

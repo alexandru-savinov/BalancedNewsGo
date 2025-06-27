@@ -655,13 +655,13 @@ func TestUpdateArticleScoreCacheInvalidation(t *testing.T) {
 	assert.NotNil(t, valBefore) // Check value is not nil
 
 	testScores := []db.LLMScore{
-		{ArticleID: articleID, Model: "model1", Score: -0.5, Metadata: `{"confidence":0.9}`}, // Added metadata
+		{ArticleID: articleID, Model: "model1", Score: -0.5, Metadata: `{"confidence":0.9}`},
 	}
 	config := &CompositeScoreConfig{
 		Models: []ModelConfig{
 			{ModelName: "model1", Perspective: "left"},
 		},
-		Formula: "average", DefaultMissing: 0.0, HandleInvalid: "default", // Added necessary config fields
+		Formula: "average", DefaultMissing: 0.0, HandleInvalid: "default",
 		MinScore: -1.0, MaxScore: 1.0,
 	}
 	expectedScore := -0.5           // Only one valid score

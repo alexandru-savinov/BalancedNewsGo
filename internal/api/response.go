@@ -71,7 +71,6 @@ func RespondError(c *gin.Context, err error) {
 			errorDetail.Message = "LLM service error"
 		}
 
-		// Log the error
 		log.Printf("[ERROR] LLM error (%s): %s", llmErr.ErrorType, llmErr.Message)
 
 		// We need to use gin.H to add details which is not part of ErrorDetail

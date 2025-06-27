@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json" // Added for json marshalling
+	"encoding/json"
 	"fmt"
 	"html/template"
-	"io" // Added for io.MultiWriter
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -17,14 +17,14 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx" // Added for sqlx
+	"github.com/jmoiron/sqlx"
 	"github.com/joho/godotenv"
 
 	_ "github.com/alexandru-savinov/BalancedNewsGo/docs" // This will import the generated docs
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/api"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics" // Added metrics import
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/metrics"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
