@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -39,7 +40,17 @@ func DefaultTestServerConfig() TestServerConfig {
 	}
 	// Use a random port to avoid conflicts with other test runs
 	port := 8080
-	if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
+
+	// Check if PORT is explicitly set in environment (e.g., in CI)
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		// Use the explicitly set port (e.g., from CI environment)
+		if parsedPort, err := strconv.Atoi(envPort); err == nil {
+			port = parsedPort
+		} else {
+			// If parsing fails, fall back to default logic
+			port = 8080
+		}
+	} else if os.Getenv("TEST_MODE") == "true" || os.Getenv("NO_AUTO_ANALYZE") == "true" {
 		// Use a different port range for tests to avoid conflicts
 		port = 8090 + (os.Getpid() % 10) // Use PID to get a unique port
 	}
