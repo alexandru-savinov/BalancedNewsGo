@@ -528,3 +528,127 @@ func BenchmarkGetArticlesWithCache(b *testing.B) {
 		}
 	}
 }
+
+// TestCalculateWrapperRetryDelay tests the exponential backoff delay calculation for wrapper
+func TestCalculateWrapperRetryDelay(t *testing.T) {
+	tests := []struct {
+		name     string
+		attempt  int
+		expected string // Using string for easier comparison with time.Duration
+	}{
+		{
+			name:     "First retry (attempt 0)",
+			attempt:  0,
+			expected: "1s",
+		},
+		{
+			name:     "Second retry (attempt 1)",
+			attempt:  1,
+			expected: "2s",
+		},
+		{
+			name:     "Third retry (attempt 2)",
+			attempt:  2,
+			expected: "4s",
+		},
+		{
+			name:     "Fourth retry (attempt 3)",
+			attempt:  3,
+			expected: "8s",
+		},
+		{
+			name:     "Fifth retry (attempt 4)",
+			attempt:  4,
+			expected: "16s", // Capped at max
+		},
+		{
+			name:     "High attempt number (attempt 10)",
+			attempt:  10,
+			expected: "16s", // Should be capped at 16s
+		},
+		{
+			name:     "Negative attempt",
+			attempt:  -1,
+			expected: "1s", // Should default to base delay
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateWrapperRetryDelay(tt.attempt)
+			assert.Equal(t, tt.expected, result.String(),
+				"calculateWrapperRetryDelay(%d) should return %s", tt.attempt, tt.expected)
+		})
+	}
+}
+
+// TestWrapperRetryBehavior tests the actual retry behavior with exponential backoff timing
+func TestWrapperRetryBehavior(t *testing.T) {
+	var callCount int
+	var callTimes []time.Time
+	var mu sync.Mutex
+
+	// Mock server that fails first 2 requests, then succeeds
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		callCount++
+		callTimes = append(callTimes, time.Now())
+		currentCall := callCount
+		mu.Unlock()
+
+		if currentCall <= 2 {
+			// Fail first 2 requests to trigger retries
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error": "server error"}`))
+			return
+		}
+
+		// Succeed on 3rd request
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"success": true,
+			"data": [{"article_id": 1, "title": "Test Article"}]
+		}`))
+	})
+
+	client, server := newTestClientWithMockServer(handler)
+	defer server.Close()
+
+	// Configure client with shorter max retries for faster test
+	client.cfg.MaxRetries = 2
+
+	ctx := context.Background()
+	params := ArticlesParams{Limit: 1}
+
+	startTime := time.Now()
+	_, err := client.GetArticles(ctx, params)
+	totalTime := time.Since(startTime)
+
+	// Should succeed after retries
+	assert.NoError(t, err, "Request should succeed after retries")
+	assert.Equal(t, 3, callCount, "Should make exactly 3 calls (1 initial + 2 retries)")
+	assert.Len(t, callTimes, 3, "Should record 3 call times")
+
+	// Verify exponential backoff timing
+	if len(callTimes) >= 3 {
+		// First retry delay should be ~1s
+		firstRetryDelay := callTimes[1].Sub(callTimes[0])
+		assert.True(t, firstRetryDelay >= 900*time.Millisecond && firstRetryDelay <= 1200*time.Millisecond,
+			"First retry delay should be ~1s, got %v", firstRetryDelay)
+
+		// Second retry delay should be ~2s
+		secondRetryDelay := callTimes[2].Sub(callTimes[1])
+		assert.True(t, secondRetryDelay >= 1800*time.Millisecond && secondRetryDelay <= 2200*time.Millisecond,
+			"Second retry delay should be ~2s, got %v", secondRetryDelay)
+	}
+
+	// Total test should complete in reasonable time (under 5 seconds)
+	assert.True(t, totalTime < 5*time.Second,
+		"Test should complete in under 5 seconds, took %v", totalTime)
+
+	t.Logf("Test completed in %v with call delays: %v, %v",
+		totalTime,
+		callTimes[1].Sub(callTimes[0]),
+		callTimes[2].Sub(callTimes[1]))
+}

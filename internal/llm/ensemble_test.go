@@ -330,3 +330,56 @@ func TestLLMAPIError_ErrorPropagation(t *testing.T) {
 		})
 	}
 }
+
+// TestCalculateRetryDelay tests the exponential backoff delay calculation
+func TestCalculateRetryDelay(t *testing.T) {
+	tests := []struct {
+		name     string
+		attempt  int
+		expected string // Using string for easier comparison with time.Duration
+	}{
+		{
+			name:     "First retry (attempt 0)",
+			attempt:  0,
+			expected: "2s",
+		},
+		{
+			name:     "Second retry (attempt 1)",
+			attempt:  1,
+			expected: "4s",
+		},
+		{
+			name:     "Third retry (attempt 2)",
+			attempt:  2,
+			expected: "8s",
+		},
+		{
+			name:     "Fourth retry (attempt 3)",
+			attempt:  3,
+			expected: "16s",
+		},
+		{
+			name:     "Fifth retry (attempt 4)",
+			attempt:  4,
+			expected: "30s", // Capped at max
+		},
+		{
+			name:     "High attempt number (attempt 10)",
+			attempt:  10,
+			expected: "30s", // Should be capped at 30s
+		},
+		{
+			name:     "Negative attempt",
+			attempt:  -1,
+			expected: "2s", // Should default to base delay
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateRetryDelay(tt.attempt)
+			assert.Equal(t, tt.expected, result.String(),
+				"calculateRetryDelay(%d) should return %s", tt.attempt, tt.expected)
+		})
+	}
+}

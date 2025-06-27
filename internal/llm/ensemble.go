@@ -14,6 +14,25 @@ import (
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 )
 
+// calculateRetryDelay calculates exponential backoff delay for retry attempts
+// Returns delay duration: 2s → 4s → 8s → 16s → 30s (capped at 30s)
+func calculateRetryDelay(attempt int) time.Duration {
+	if attempt <= 0 {
+		return 2 * time.Second // Base delay for first retry
+	}
+
+	// Exponential backoff: 2^(attempt+1) seconds
+	delay := time.Duration(math.Pow(2, float64(attempt+1))) * time.Second
+
+	// Cap at 30 seconds maximum
+	maxDelay := 30 * time.Second
+	if delay > maxDelay {
+		return maxDelay
+	}
+
+	return delay
+}
+
 // callLLM queries a specific LLM with a prompt variant
 func (c *LLMClient) callLLM(articleID int64, modelName string, promptVariant PromptVariant, content string) (float64, string, float64, string, error) {
 	maxRetries := 2
@@ -290,6 +309,14 @@ func (c *LLMClient) EnsembleAnalyze(articleID int64, content string) (*db.LLMSco
 		for attempts < maxAttempts && len(validResponses) < minValid {
 			for _, pv := range promptVariants {
 				for retry := 0; retry < 2 && attempts < maxAttempts && len(validResponses) < minValid; retry++ {
+					// Add exponential backoff delay for retries (not on first attempt)
+					if retry > 0 {
+						delay := calculateRetryDelay(retry - 1)
+						log.Printf("[Ensemble] ArticleID %d | Model %s | Prompt %s | Retry %d: waiting %v before retry",
+							articleID, model, pv.ID, retry, delay)
+						time.Sleep(delay)
+					}
+
 					attempts++
 					score, explanation, confidence, rawResp, err := c.callLLM(articleID, model, pv, content)
 					if err != nil {

@@ -10,6 +10,25 @@ import (
 	rawclient "github.com/alexandru-savinov/BalancedNewsGo/internal/api/client"
 )
 
+// calculateWrapperRetryDelay calculates exponential backoff delay for wrapper retry attempts
+// Returns delay duration: 1s → 2s → 4s → 8s → 16s (capped at 16s for wrapper)
+func calculateWrapperRetryDelay(attempt int) time.Duration {
+	if attempt <= 0 {
+		return 1 * time.Second // Base delay for first retry
+	}
+
+	// Exponential backoff: 2^attempt seconds
+	delay := time.Duration(1<<attempt) * time.Second
+
+	// Cap at 16 seconds maximum for wrapper (shorter than LLM calls)
+	maxDelay := 16 * time.Second
+	if delay > maxDelay {
+		return maxDelay
+	}
+
+	return delay
+}
+
 // APIClient is a wrapper around the generated client with caching and configuration
 type APIClient struct {
 	raw   *rawclient.APIClient

@@ -24,7 +24,8 @@ func (c *APIClient) GetArticles(ctx context.Context, params ArticlesParams) ([]A
 	var lastErr error
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 
 		rawParams := rawclient.ArticlesParams{
@@ -72,7 +73,8 @@ func (c *APIClient) GetArticle(ctx context.Context, id int64) (*Article, error) 
 
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		rawArticle, err := c.raw.ArticlesAPI.GetArticle(ctx, id)
 		if err != nil {
@@ -112,7 +114,8 @@ func (c *APIClient) GetArticleSummary(ctx context.Context, id int64) (string, er
 
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		result, err := c.raw.ArticlesAPI.GetArticleSummary(ctx, id)
 		if err != nil {
@@ -151,7 +154,8 @@ func (c *APIClient) GetArticleBias(ctx context.Context, id int64) (*ScoreRespons
 
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		rawBias, err := c.raw.ArticlesAPI.GetArticleBias(ctx, id)
 		if err != nil {
@@ -189,7 +193,8 @@ func (c *APIClient) GetArticleEnsemble(ctx context.Context, id int64) (interface
 
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		result, err := c.raw.ArticlesAPI.GetArticleEnsemble(ctx, id)
 		if err != nil {
@@ -224,7 +229,8 @@ func (c *APIClient) CreateArticle(ctx context.Context, req CreateArticleRequest)
 	var lastErr error
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		rawResp, err := c.raw.ArticlesAPI.CreateArticle(ctx, rawReq)
 		if err != nil {
@@ -257,7 +263,8 @@ func (c *APIClient) ReanalyzeArticle(ctx context.Context, id int64, req *ManualS
 	var lastErr error
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		result, err := c.raw.LLMApi.ReanalyzeArticle(ctx, id, rawReq)
 		if err != nil {
@@ -290,7 +297,8 @@ func (c *APIClient) GetFeedHealth(ctx context.Context) (FeedHealth, error) {
 
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		rawHealth, err := c.raw.FeedsApi.GetFeedHealth(ctx)
 		if err != nil {
@@ -320,7 +328,8 @@ func (c *APIClient) TriggerRefresh(ctx context.Context) (string, error) {
 	var lastErr error
 	for attempt := 0; attempt <= c.cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
-			time.Sleep(c.cfg.RetryDelay * time.Duration(attempt))
+			delay := calculateWrapperRetryDelay(attempt - 1)
+			time.Sleep(delay)
 		}
 		result, err := c.raw.FeedsApi.TriggerRefresh(ctx)
 		if err != nil {
