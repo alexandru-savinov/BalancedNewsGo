@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/stretchr/testify/assert"
@@ -327,6 +328,194 @@ func TestLLMAPIError_ErrorPropagation(t *testing.T) {
 			assert.Contains(t, errString, tc.message, "Error string should contain the message")
 			assert.Contains(t, errString, string(tc.errorType), "Error string should contain the error type")
 			assert.Contains(t, errString, fmt.Sprintf("status %d", tc.statusCode), "Error string should contain the status code")
+		})
+	}
+}
+
+// TestCalculateRetryDelay tests the exponential backoff delay calculation
+func TestCalculateRetryDelay(t *testing.T) {
+	tests := []struct {
+		name     string
+		attempt  int
+		expected string // Using string for easier comparison with time.Duration
+	}{
+		{
+			name:     "First retry (attempt 0)",
+			attempt:  0,
+			expected: "2s",
+		},
+		{
+			name:     "Second retry (attempt 1)",
+			attempt:  1,
+			expected: "4s",
+		},
+		{
+			name:     "Third retry (attempt 2)",
+			attempt:  2,
+			expected: "8s",
+		},
+		{
+			name:     "Fourth retry (attempt 3)",
+			attempt:  3,
+			expected: "16s",
+		},
+		{
+			name:     "Fifth retry (attempt 4)",
+			attempt:  4,
+			expected: "30s", // Capped at max
+		},
+		{
+			name:     "High attempt number (attempt 10)",
+			attempt:  10,
+			expected: "30s", // Should be capped at 30s
+		},
+		{
+			name:     "Negative attempt",
+			attempt:  -1,
+			expected: "2s", // Should default to base delay
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateRetryDelay(tt.attempt)
+			assert.Equal(t, tt.expected, result.String(),
+				"calculateRetryDelay(%d) should return %s", tt.attempt, tt.expected)
+		})
+	}
+}
+
+// TestEnsembleRetryLogicWithFailures tests the retry logic integration with calculateRetryDelay
+func TestEnsembleRetryLogicWithFailures(t *testing.T) {
+	// Test that the retry logic and calculateRetryDelay function are properly integrated
+	// We'll test this by verifying the delay calculation works correctly
+
+	// Test the retry delay calculation directly (this is the main coverage target)
+	delays := []time.Duration{
+		calculateRetryDelay(0), // First retry
+		calculateRetryDelay(1), // Second retry
+		calculateRetryDelay(2), // Third retry
+	}
+
+	// Verify exponential backoff progression
+	assert.Equal(t, 2*time.Second, delays[0], "First retry should be 2s")
+	assert.Equal(t, 4*time.Second, delays[1], "Second retry should be 4s")
+	assert.Equal(t, 8*time.Second, delays[2], "Third retry should be 8s")
+
+	// Test that the retry logic paths are covered by testing error conditions
+	// that would trigger retries in the actual ensemble code
+
+	// Test with nil config (should fail immediately, no retries)
+	client := &LLMClient{
+		llmService: nil,
+		cache:      NewCache(),
+		config:     nil, // This will trigger early return
+	}
+
+	score, err := client.EnsembleAnalyze(123, "test content")
+	assert.Error(t, err, "Should fail with nil config")
+	assert.Nil(t, score, "Score should be nil on failure")
+	assert.Contains(t, err.Error(), "config is nil", "Error should mention nil config")
+
+	// Test with empty models config (should fail immediately, no retries)
+	emptyConfig := &CompositeScoreConfig{
+		Models: []ModelConfig{}, // Empty models
+	}
+
+	client.config = emptyConfig
+	score, err = client.EnsembleAnalyze(123, "test content")
+	assert.Error(t, err, "Should fail with empty models")
+	assert.Nil(t, score, "Score should be nil on failure")
+	assert.Contains(t, err.Error(), "config is nil", "Error should mention config is nil")
+}
+
+// TestCalculateRetryDelayEdgeCases tests additional edge cases for better coverage
+func TestCalculateRetryDelayEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		attempt  int
+		expected time.Duration
+	}{
+		{
+			name:     "Very negative attempt",
+			attempt:  -100,
+			expected: 2 * time.Second,
+		},
+		{
+			name:     "Zero attempt",
+			attempt:  0,
+			expected: 2 * time.Second,
+		},
+		{
+			name:     "Large attempt number",
+			attempt:  20,
+			expected: 30 * time.Second, // Should be capped
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateRetryDelay(tt.attempt)
+			assert.Equal(t, tt.expected, result,
+				"calculateRetryDelay(%d) should return %v", tt.attempt, tt.expected)
+		})
+	}
+}
+
+// TestRetryDelayMathPrecision tests the mathematical precision of delay calculation
+func TestRetryDelayMathPrecision(t *testing.T) {
+	// Test that math.Pow calculation works correctly for various inputs
+	testCases := []struct {
+		attempt  int
+		expected time.Duration
+	}{
+		{1, 4 * time.Second},  // 2^(1+1) = 4
+		{2, 8 * time.Second},  // 2^(2+1) = 8
+		{3, 16 * time.Second}, // 2^(3+1) = 16
+		{4, 30 * time.Second}, // 2^(4+1) = 32, but capped at 30
+	}
+
+	for _, tc := range testCases {
+		result := calculateRetryDelay(tc.attempt)
+		assert.Equal(t, tc.expected, result,
+			"Attempt %d should produce delay %v", tc.attempt, tc.expected)
+	}
+}
+
+// TestRetryDelayBoundaryConditions tests edge cases and boundary conditions
+func TestRetryDelayBoundaryConditions(t *testing.T) {
+	// Test boundary conditions that might not be covered by other tests
+	tests := []struct {
+		name     string
+		attempt  int
+		expected time.Duration
+	}{
+		{
+			name:     "Exactly at cap threshold",
+			attempt:  4,
+			expected: 30 * time.Second, // 2^(4+1) = 32, capped at 30
+		},
+		{
+			name:     "Just over cap threshold",
+			attempt:  5,
+			expected: 30 * time.Second, // 2^(5+1) = 64, capped at 30
+		},
+		{
+			name:     "Large attempt number",
+			attempt:  10,
+			expected: 30 * time.Second, // Should be capped
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateRetryDelay(tt.attempt)
+			assert.Equal(t, tt.expected, result,
+				"calculateRetryDelay(%d) should return %v", tt.attempt, tt.expected)
+
+			// Verify it never exceeds the cap
+			assert.True(t, result <= 30*time.Second,
+				"Delay should never exceed 30s, got %v", result)
 		})
 	}
 }

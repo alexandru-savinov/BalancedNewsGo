@@ -25,7 +25,7 @@ import (
 var ErrInvalidLLMResponse = apperrors.New("Invalid response from LLM service", "llm_service_error")
 
 // HTTP timeout for LLM requests
-const defaultLLMTimeout = 30 * time.Second
+const defaultLLMTimeout = 90 * time.Second
 
 // PromptVariant defines a prompt template with few-shot examples
 type PromptVariant struct {
