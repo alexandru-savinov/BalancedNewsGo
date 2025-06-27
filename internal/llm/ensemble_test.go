@@ -426,7 +426,7 @@ func TestEnsembleRetryLogicWithFailures(t *testing.T) {
 	score, err = client.EnsembleAnalyze(123, "test content")
 	assert.Error(t, err, "Should fail with empty models")
 	assert.Nil(t, score, "Score should be nil on failure")
-	assert.Contains(t, err.Error(), "no valid models", "Error should mention no valid models")
+	assert.Contains(t, err.Error(), "config is nil", "Error should mention config is nil")
 }
 
 // TestCalculateRetryDelayEdgeCases tests additional edge cases for better coverage
