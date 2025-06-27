@@ -47,9 +47,10 @@
                     </div>
                     
                     <!-- Progress Indicator for real-time updates -->
-                    <progress-indicator 
-                        id="reanalysis-progress" 
-                        article-id="{{.Article.ID}}" 
+                    <progress-indicator
+                        id="reanalysis-progress"
+                        article-id="{{.Article.ID}}"
+                        auto-connect="true"
                         show-details="true"
                         class="progress-hidden">
                     </progress-indicator>
@@ -106,8 +107,8 @@
             </div>
         </div>
     </div>    <!-- Import ProgressIndicator component and SSEClient utility -->
-    <script type="module" src="/web/static/js/components/ProgressIndicator.js"></script>
-    <script type="module" src="/web/static/js/utils/SSEClient.js"></script>
+    <script type="module" src="/static/js/components/ProgressIndicator.js"></script>
+    <script type="module" src="/static/js/utils/SSEClient.js"></script>
     
     <script>
         // Enhanced article detail page with real-time SSE progress tracking
@@ -117,7 +118,6 @@
             const btnLoading = document.getElementById('btn-loading');
             const progressIndicator = document.getElementById('reanalysis-progress');            // Elements for updating bias analysis results
             const biasScoreElement = document.getElementById('bias-score');
-            const confidenceValue = document.getElementById('confidence-value');
             
             if (reanalyzeBtn) {
                 reanalyzeBtn.addEventListener('click', async function() {
@@ -196,11 +196,7 @@
                             }, 3000);
                         });
                         
-                        // Start SSE connection to track progress
-                        // The ProgressIndicator component will automatically connect due to article-id attribute
-                        if (progressIndicator.connect) {
-                            progressIndicator.connect(articleId);
-                        }
+                        // SSE connection will start automatically due to auto-connect="true" attribute
                         
                     } catch (error) {
                         console.error('Error requesting reanalysis:', error);
