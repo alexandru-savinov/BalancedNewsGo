@@ -185,7 +185,6 @@ export class SSEClient {
             readyState: this.#eventSource?.readyState
         };
     }
-
     /**
      * Internal method for testing - expose emit functionality
      * @private
