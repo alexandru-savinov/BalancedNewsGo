@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -655,4 +656,346 @@ func TestWrapperRetryBehavior(t *testing.T) {
 		totalTime,
 		callTimes[1].Sub(callTimes[0]),
 		callTimes[2].Sub(callTimes[1]))
+}
+
+// TestCalculateWrapperRetryDelayEdgeCases tests additional edge cases for better coverage
+func TestCalculateWrapperRetryDelayEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		attempt  int
+		expected time.Duration
+	}{
+		{
+			name:     "Very negative attempt",
+			attempt:  -100,
+			expected: 1 * time.Second,
+		},
+		{
+			name:     "Zero attempt",
+			attempt:  0,
+			expected: 1 * time.Second,
+		},
+		{
+			name:     "Large attempt number",
+			attempt:  20,
+			expected: 16 * time.Second, // Should be capped at 16s
+		},
+		{
+			name:     "Boundary case - exactly at cap",
+			attempt:  4,
+			expected: 16 * time.Second, // 2^4 = 16, exactly at cap
+		},
+		{
+			name:     "Just over cap",
+			attempt:  5,
+			expected: 16 * time.Second, // 2^5 = 32, but capped at 16
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := calculateWrapperRetryDelay(tt.attempt)
+			assert.Equal(t, tt.expected, result,
+				"calculateWrapperRetryDelay(%d) should return %v", tt.attempt, tt.expected)
+		})
+	}
+}
+
+// TestWrapperRetryDelayMathPrecision tests the mathematical precision of wrapper delay calculation
+func TestWrapperRetryDelayMathPrecision(t *testing.T) {
+	// Test that bit shift calculation works correctly for various inputs
+	testCases := []struct {
+		attempt  int
+		expected time.Duration
+	}{
+		{1, 2 * time.Second},  // 1<<1 = 2
+		{2, 4 * time.Second},  // 1<<2 = 4
+		{3, 8 * time.Second},  // 1<<3 = 8
+		{4, 16 * time.Second}, // 1<<4 = 16 (at cap)
+		{5, 16 * time.Second}, // 1<<5 = 32, but capped at 16
+	}
+
+	for _, tc := range testCases {
+		result := calculateWrapperRetryDelay(tc.attempt)
+		assert.Equal(t, tc.expected, result,
+			"Attempt %d should produce delay %v", tc.attempt, tc.expected)
+	}
+}
+
+// TestWrapperRetryWithDifferentErrors tests retry behavior with various error types
+func TestWrapperRetryWithDifferentErrors(t *testing.T) {
+	var callCount int
+	var callTimes []time.Time
+	var mu sync.Mutex
+
+	// Mock server that returns different error types
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		callCount++
+		callTimes = append(callTimes, time.Now())
+		currentCall := callCount
+		mu.Unlock()
+
+		if currentCall == 1 {
+			// First call: timeout error
+			w.WriteHeader(http.StatusRequestTimeout)
+			_, _ = w.Write([]byte(`{"error": "request timeout"}`))
+			return
+		} else if currentCall == 2 {
+			// Second call: server error
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error": "internal server error"}`))
+			return
+		}
+
+		// Third call: success
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"success": true,
+			"data": [{"article_id": 1, "title": "Test Article"}]
+		}`))
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	client := NewAPIClient(server.URL)
+	client.cfg.MaxRetries = 2
+
+	ctx := context.Background()
+	params := ArticlesParams{Limit: 1}
+
+	startTime := time.Now()
+	_, err := client.GetArticles(ctx, params)
+	totalTime := time.Since(startTime)
+
+	// Should succeed after retries
+	assert.NoError(t, err, "Request should succeed after retries")
+	assert.Equal(t, 3, callCount, "Should make exactly 3 calls")
+	assert.Len(t, callTimes, 3, "Should record 3 call times")
+
+	// Verify retry delays were applied
+	if len(callTimes) >= 3 {
+		firstRetryDelay := callTimes[1].Sub(callTimes[0])
+		secondRetryDelay := callTimes[2].Sub(callTimes[1])
+
+		assert.True(t, firstRetryDelay >= 900*time.Millisecond,
+			"First retry delay should be ~1s, got %v", firstRetryDelay)
+		assert.True(t, secondRetryDelay >= 1800*time.Millisecond,
+			"Second retry delay should be ~2s, got %v", secondRetryDelay)
+	}
+
+	assert.True(t, totalTime < 5*time.Second,
+		"Test should complete in reasonable time, took %v", totalTime)
+}
+
+// TestRetryLogicIntegrationWithMethods tests retry logic integration across all wrapper methods
+func TestRetryLogicIntegrationWithMethods(t *testing.T) {
+	var callCount int
+	var mu sync.Mutex
+
+	// Mock server that fails first few calls then succeeds
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		callCount++
+		currentCall := callCount
+		mu.Unlock()
+
+		if currentCall <= 2 {
+			// First two calls fail with different errors
+			if currentCall == 1 {
+				w.WriteHeader(http.StatusRequestTimeout)
+				_, _ = w.Write([]byte(`{"error": "timeout"}`))
+			} else {
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = w.Write([]byte(`{"error": "bad gateway"}`))
+			}
+			return
+		}
+
+		// Third call succeeds
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		// Return appropriate response based on endpoint
+		if strings.Contains(r.URL.Path, "/articles/") && r.Method == "GET" {
+			_, _ = w.Write([]byte(`{
+				"success": true,
+				"data": {"article_id": 1, "title": "Test Article"}
+			}`))
+		} else {
+			_, _ = w.Write([]byte(`{
+				"success": true,
+				"data": [{"article_id": 1, "title": "Test Article"}]
+			}`))
+		}
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	client := NewAPIClient(server.URL)
+	client.cfg.MaxRetries = 2
+
+	ctx := context.Background()
+
+	// Test GetArticles with retry logic
+	callCount = 0
+	startTime := time.Now()
+	_, err := client.GetArticles(ctx, ArticlesParams{Limit: 1})
+	duration := time.Since(startTime)
+
+	assert.NoError(t, err, "GetArticles should succeed after retries")
+	assert.Equal(t, 3, callCount, "Should make exactly 3 calls for GetArticles")
+	assert.True(t, duration >= 3*time.Second, "Should take at least 3s due to retry delays")
+
+	// Test GetArticle with retry logic
+	callCount = 0
+	startTime = time.Now()
+	_, err = client.GetArticle(ctx, 1)
+	duration = time.Since(startTime)
+
+	assert.NoError(t, err, "GetArticle should succeed after retries")
+	assert.Equal(t, 3, callCount, "Should make exactly 3 calls for GetArticle")
+	assert.True(t, duration >= 3*time.Second, "Should take at least 3s due to retry delays")
+}
+
+// TestRetryDelayCalculationCoverage tests all branches of calculateWrapperRetryDelay
+func TestRetryDelayCalculationCoverage(t *testing.T) {
+	// Test all possible code paths in calculateWrapperRetryDelay
+	testCases := []struct {
+		name     string
+		attempt  int
+		expected time.Duration
+		testType string
+	}{
+		{
+			name:     "Negative attempt (boundary condition)",
+			attempt:  -1,
+			expected: 1 * time.Second,
+			testType: "boundary",
+		},
+		{
+			name:     "Zero attempt (boundary condition)",
+			attempt:  0,
+			expected: 1 * time.Second,
+			testType: "boundary",
+		},
+		{
+			name:     "First retry (normal case)",
+			attempt:  1,
+			expected: 2 * time.Second,
+			testType: "normal",
+		},
+		{
+			name:     "Second retry (normal case)",
+			attempt:  2,
+			expected: 4 * time.Second,
+			testType: "normal",
+		},
+		{
+			name:     "Third retry (normal case)",
+			attempt:  3,
+			expected: 8 * time.Second,
+			testType: "normal",
+		},
+		{
+			name:     "Fourth retry (at cap)",
+			attempt:  4,
+			expected: 16 * time.Second,
+			testType: "cap",
+		},
+		{
+			name:     "Fifth retry (over cap)",
+			attempt:  5,
+			expected: 16 * time.Second,
+			testType: "cap",
+		},
+		{
+			name:     "Very large attempt (over cap)",
+			attempt:  10,
+			expected: 16 * time.Second,
+			testType: "cap",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := calculateWrapperRetryDelay(tc.attempt)
+			assert.Equal(t, tc.expected, result,
+				"calculateWrapperRetryDelay(%d) should return %v", tc.attempt, tc.expected)
+
+			// Additional validation based on test type
+			switch tc.testType {
+			case "boundary":
+				assert.Equal(t, 1*time.Second, result, "Boundary cases should return 1s")
+			case "normal":
+				expectedBitShift := time.Duration(1<<tc.attempt) * time.Second
+				if expectedBitShift <= 16*time.Second {
+					assert.Equal(t, expectedBitShift, result, "Normal cases should follow bit shift pattern")
+				}
+			case "cap":
+				assert.Equal(t, 16*time.Second, result, "Capped cases should return 16s")
+			}
+		})
+	}
+}
+
+// TestRetryLogicErrorPaths tests error handling paths in retry logic
+func TestRetryLogicErrorPaths(t *testing.T) {
+	// Test context cancellation during retry
+	t.Run("Context cancellation during retry", func(t *testing.T) {
+		var callCount int
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			// Always fail to trigger retries
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error": "server error"}`))
+		})
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		client := NewAPIClient(server.URL)
+		client.cfg.MaxRetries = 5
+
+		// Create context that will be cancelled
+		ctx, cancel := context.WithCancel(context.Background())
+
+		// Cancel context after a short delay
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+		}()
+
+		_, err := client.GetArticles(ctx, ArticlesParams{Limit: 1})
+
+		assert.Error(t, err, "Should fail due to context cancellation")
+		assert.True(t, callCount >= 1, "Should make at least one call before cancellation")
+		assert.True(t, callCount < 6, "Should not complete all retries due to cancellation")
+	})
+
+	// Test maximum retries exceeded
+	t.Run("Maximum retries exceeded", func(t *testing.T) {
+		var callCount int
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			callCount++
+			// Always fail
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error": "persistent server error"}`))
+		})
+
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		client := NewAPIClient(server.URL)
+		client.cfg.MaxRetries = 2
+
+		ctx := context.Background()
+		_, err := client.GetArticles(ctx, ArticlesParams{Limit: 1})
+
+		assert.Error(t, err, "Should fail after max retries")
+		assert.Equal(t, 3, callCount, "Should make original call + 2 retries = 3 total calls")
+	})
 }
