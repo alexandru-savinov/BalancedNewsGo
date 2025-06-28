@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
+	_ "modernc.org/sqlite"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/benchmark"
 )
@@ -37,7 +37,7 @@ func main() {
 	// Setup database connection if provided
 	var db *sqlx.DB
 	if *dbURL != "" {
-		db, err = sqlx.Connect("postgres", *dbURL)
+		db, err = sqlx.Connect("sqlite", *dbURL)
 		if err != nil {
 			log.Printf("Warning: Failed to connect to database: %v", err)
 		} else {
@@ -142,21 +142,21 @@ func loadConfig(configFile, baseURL string, users, requests int, duration time.D
 func createBenchmarkTable(db *sqlx.DB) error {
 	query := `
 		CREATE TABLE IF NOT EXISTS benchmark_results (
-			id SERIAL PRIMARY KEY,
-			test_name VARCHAR(255) NOT NULL,
-			timestamp TIMESTAMP NOT NULL,
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			test_name TEXT NOT NULL,
+			timestamp TEXT NOT NULL,
 			total_requests INTEGER NOT NULL,
 			successful_requests INTEGER NOT NULL,
 			failed_requests INTEGER NOT NULL,
-			average_latency_ms BIGINT NOT NULL,
-			min_latency_ms BIGINT NOT NULL,
-			max_latency_ms BIGINT NOT NULL,
-			p95_latency_ms BIGINT NOT NULL,
-			p99_latency_ms BIGINT NOT NULL,
-			requests_per_second DECIMAL(10,2) NOT NULL,
-			error_rate DECIMAL(5,2) NOT NULL,
-			total_duration_ms BIGINT NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			average_latency_ms INTEGER NOT NULL,
+			min_latency_ms INTEGER NOT NULL,
+			max_latency_ms INTEGER NOT NULL,
+			p95_latency_ms INTEGER NOT NULL,
+			p99_latency_ms INTEGER NOT NULL,
+			requests_per_second REAL NOT NULL,
+			error_rate REAL NOT NULL,
+			total_duration_ms INTEGER NOT NULL,
+			created_at TEXT DEFAULT (datetime('now'))
 		)
 	`
 	_, err := db.Exec(query)
