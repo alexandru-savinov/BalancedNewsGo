@@ -14,24 +14,28 @@
 import { SSEClient } from '../utils/SSEClient.js';
 
 class ProgressIndicator extends HTMLElement {
+  // Private properties - declare once at class level
+  #sseClient = null;
+  #progressValue = 0;
+  #status = 'idle';
+  #stage = '';
+  #articleId = null;
+  #reconnectAttempts = 0;
+  #reconnectTimer = null;
+  #maxReconnectAttempts = 5;
+  #baseReconnectDelay = 1000;
+  #autoConnect = false;
+  #showDetails = false;
+  #eta = null;
+  #modelProgress = null;
+
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
 
-    // Component state
-    this.#sseClient = null;
-    this.#progressValue = 0;
-    this.#status = 'idle';
-    this.#stage = '';
-    this.#articleId = null;
-    this.#reconnectAttempts = 0;
-    this.#reconnectTimer = null;
+    // Initialize component state
     this.#maxReconnectAttempts = 5;
     this.#baseReconnectDelay = 1000; // 1 second
-    this.#autoConnect = false;
-    this.#showDetails = false;
-    this.#eta = null;
-    this.#modelProgress = null;
 
     this.#render();
   }
@@ -39,18 +43,6 @@ class ProgressIndicator extends HTMLElement {
   static get observedAttributes() {
     return ['article-id', 'auto-connect', 'show-details'];
   }
-  // Private properties
-  #sseClient = null;
-  #progressValue = 0;
-  #status = 'idle';
-  #stage = '';
-  #articleId = null;
-  #reconnectTimer = null;
-  #maxReconnectAttempts = 5;
-  #baseReconnectDelay = 1000;
-  #autoConnect = false;
-  #showDetails = false;
-  #eta = null;
 
   // Getters and setters
   get articleId() {

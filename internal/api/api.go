@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
@@ -620,7 +619,8 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 		articleID := id
 		log.Printf("[POST /api/llm/reanalyze] ArticleID=%d", articleID)
 
-		article, err := db.FetchArticleByID(dbConn, articleID)
+		// Verify article exists
+		_, err := db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {
 				RespondError(c, ErrArticleNotFound)
@@ -701,82 +701,14 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			return
 		}
 
-		// Try each model in sequence until we find one that works
-		var workingModel string
-		var healthErr error
-
-		if os.Getenv("NO_AUTO_ANALYZE") == "true" {
-			log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping working model health check.", articleID)
-			if len(cfg.Models) > 0 {
-				workingModel = cfg.Models[0].ModelName // Assume the first model would work for queuing purposes
-			} else {
-				log.Printf("[reanalyzeHandler %d] No models configured, cannot proceed even with NO_AUTO_ANALYZE.", articleID)
-				RespondError(c, NewAppError(ErrLLMService, "No LLM models configured"))
-				return
-			}
-		} else {
-			originalTimeout := llmClient.GetHTTPLLMTimeout()
-			healthCheckTimeout := 2 * time.Second                // Keep short timeout for individual health checks
-			if os.Getenv("HEALTH_CHECK_TIMEOUT_SECONDS") != "" { // Allow override for testing
-				if s, err := strconv.Atoi(os.Getenv("HEALTH_CHECK_TIMEOUT_SECONDS")); err == nil && s > 0 {
-					healthCheckTimeout = time.Duration(s) * time.Second
-				}
-			}
-			llmClient.SetHTTPLLMTimeout(healthCheckTimeout)
-
-			var lastHealthCheckError error
-
-			for _, modelConfig := range cfg.Models {
-				log.Printf("[reanalyzeHandler %d] Health checking model: %s", articleID, modelConfig.ModelName)
-				// 'article' object is already fetched in reanalyzeHandler; ScoreWithModel expects this object.
-				_, healthCheckErr := llmClient.ScoreWithModel(article, modelConfig.ModelName)
-
-				if healthCheckErr == nil {
-					workingModel = modelConfig.ModelName
-					lastHealthCheckError = nil
-					log.Printf("[reanalyzeHandler %d] Health check PASSED for model: %s", articleID, workingModel)
-					break
-				}
-
-				log.Printf("[reanalyzeHandler %d] Health check FAILED for model %s: %v. "+
-					"Trying next model.", articleID, modelConfig.ModelName, healthCheckErr)
-				lastHealthCheckError = healthCheckErr
-			}
-			llmClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
-
-			if workingModel == "" { // All models failed health check
-				healthErr = lastHealthCheckError
-				if healthErr == nil {
-					healthErr = apperrors.New("All models failed health check", "llm_service_unavailable")
-				}
-			}
-		}
-
-		if workingModel == "" {
-			log.Printf("[reanalyzeHandler %d] No working models found after checking all configured models. Last error: %v", articleID, healthErr)
-			// Ensure healthErr is an AppError or wrapped appropriately before RespondError
-			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Status:  "Error",
-					Step:    "Error",
-					Message: fmt.Sprintf("All models failed: %v", healthErr),
-				})
-			}
-			if healthErr != nil {
-				// Ensure it's an AppError; if not, wrap it.
-				appErr, ok := healthErr.(*apperrors.AppError)
-				if !ok {
-					// Determine appropriate app error type, e.g., ErrLLMService or ErrInternal
-					respondErr := NewAppError(ErrLLMService, fmt.Sprintf("All models failed health check. Last error: %v", healthErr.Error()))
-					RespondError(c, respondErr)
-				} else {
-					RespondError(c, appErr)
-				}
-			} else {
-				RespondError(c, NewAppError(ErrLLMService, "No working models found and no specific error recorded."))
-			}
+		// Check if models are configured
+		if len(cfg.Models) == 0 {
+			log.Printf("[reanalyzeHandler %d] No models configured, cannot proceed.", articleID)
+			RespondError(c, NewAppError(ErrLLMService, "No LLM models configured"))
 			return
 		}
+
+		log.Printf("[reanalyzeHandler %d] Proceeding with reanalysis - ReanalyzeArticle will handle model fallbacks", articleID)
 
 		// Start the reanalysis process
 		if scoreManager != nil {
@@ -784,7 +716,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			initialProgress := &models.ProgressState{
 				Status:  "Queued",
 				Step:    "Pending",
-				Message: fmt.Sprintf("Reanalysis queued for model %s", workingModel),
+				Message: "Reanalysis queued for all configured models",
 			}
 			log.Printf("[reanalyzeHandler %d] Setting initial progress: %+v", articleID, initialProgress)
 			scoreManager.SetProgress(articleID, initialProgress)

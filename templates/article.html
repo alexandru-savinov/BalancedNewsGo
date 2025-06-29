@@ -116,13 +116,24 @@
             const reanalyzeBtn = document.getElementById('reanalyze-btn');
             const btnText = document.getElementById('btn-text');
             const btnLoading = document.getElementById('btn-loading');
-            const progressIndicator = document.getElementById('reanalysis-progress');            // Elements for updating bias analysis results
+            const progressIndicator = document.getElementById('reanalysis-progress');
+
+            // Elements for updating bias analysis results
             const biasScoreElement = document.getElementById('bias-score');
             
             if (reanalyzeBtn) {
                 reanalyzeBtn.addEventListener('click', async function() {
+                    console.log('🖱️ Reanalyze button clicked!');
                     const articleId = this.getAttribute('data-article-id');
+                    console.log('📄 Article ID:', articleId);
                     
+                    // Reset progress indicator to ensure clean state
+                    if (progressIndicator && typeof progressIndicator.reset === 'function') {
+                        progressIndicator.reset();
+                    } else {
+                        console.warn('ProgressIndicator reset method not available');
+                    }
+
                     // Disable button and show loading state
                     this.disabled = true;
                     btnText.style.display = 'none';
@@ -140,63 +151,75 @@
                         if (!response.ok) {
                             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                         }
-                        
-                        // Show progress indicator
-                        progressIndicator.style.display = 'block';
-                        
-                        // Set up progress indicator event listeners
-                        progressIndicator.addEventListener('completed', async (event) => {
+
+                        // Set up progress indicator event listeners BEFORE showing it
+                        // This prevents race condition where completion event fires before listeners are attached
+
+                        // Remove any existing listeners to prevent duplicates
+                        progressIndicator.removeEventListener('completed', progressIndicator._completedHandler);
+                        progressIndicator.removeEventListener('error', progressIndicator._errorHandler);
+                        progressIndicator.removeEventListener('connectionerror', progressIndicator._connectionErrorHandler);
+
+                        // Define and store event handlers for cleanup
+                        progressIndicator._completedHandler = async (event) => {
                             console.log('Analysis completed:', event.detail);
-                            
+
                             // Hide progress indicator
                             progressIndicator.style.display = 'none';
-                            
+
                             // Reset button state
                             btnText.style.display = 'inline';
                             btnLoading.style.display = 'none';
-                            this.disabled = false;
-                            
+                            reanalyzeBtn.disabled = false;
+
                             // Fetch updated bias data
                             await updateBiasAnalysis(articleId);
-                        });
-                        
-                        progressIndicator.addEventListener('error', (event) => {
+                        };
+
+                        progressIndicator._errorHandler = (event) => {
                             console.error('Analysis error:', event.detail);
-                            
+
                             // Hide progress indicator
                             progressIndicator.style.display = 'none';
-                            
+
                             // Reset button state with error message
                             btnText.textContent = 'Error - Try Again';
                             btnText.style.display = 'inline';
                             btnLoading.style.display = 'none';
-                            this.disabled = false;
-                            
+                            reanalyzeBtn.disabled = false;
+
                             // Reset button text after a few seconds
                             setTimeout(() => {
                                 btnText.textContent = 'Request Reanalysis';
                             }, 3000);
-                        });
-                        
-                        progressIndicator.addEventListener('connectionerror', (event) => {
+                        };
+
+                        progressIndicator._connectionErrorHandler = (event) => {
                             console.error('Connection error:', event.detail);
-                            
+
                             // Hide progress indicator
                             progressIndicator.style.display = 'none';
-                            
+
                             // Reset button state
                             btnText.textContent = 'Connection Error - Try Again';
                             btnText.style.display = 'inline';
                             btnLoading.style.display = 'none';
-                            this.disabled = false;
-                            
+                            reanalyzeBtn.disabled = false;
+
                             // Reset button text after a few seconds
                             setTimeout(() => {
                                 btnText.textContent = 'Request Reanalysis';
                             }, 3000);
-                        });
-                        
-                        // SSE connection will start automatically due to auto-connect="true" attribute
+                        };
+
+                        // Add the event listeners
+                        progressIndicator.addEventListener('completed', progressIndicator._completedHandler);
+                        progressIndicator.addEventListener('error', progressIndicator._errorHandler);
+                        progressIndicator.addEventListener('connectionerror', progressIndicator._connectionErrorHandler);
+
+                        // Show progress indicator AFTER event listeners are set up
+                        // This prevents race condition with auto-connect="true"
+                        progressIndicator.style.display = 'block';
                         
                     } catch (error) {
                         console.error('Error requesting reanalysis:', error);
@@ -208,7 +231,7 @@
                         btnText.textContent = 'Request Failed - Try Again';
                         btnText.style.display = 'inline';
                         btnLoading.style.display = 'none';
-                        this.disabled = false;
+                        reanalyzeBtn.disabled = false;
                         
                         // Reset button text after a few seconds
                         setTimeout(() => {

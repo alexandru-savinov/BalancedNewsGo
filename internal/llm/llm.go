@@ -27,6 +27,17 @@ var ErrInvalidLLMResponse = apperrors.New("Invalid response from LLM service", "
 // HTTP timeout for LLM requests
 const defaultLLMTimeout = 90 * time.Second
 
+// maskKey masks an API key for logging purposes
+func maskKey(key string) string {
+	if key == "" {
+		return "<empty>"
+	}
+	if len(key) <= 8 {
+		return strings.Repeat("*", len(key))
+	}
+	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
+}
+
 // PromptVariant defines a prompt template with few-shot examples
 type PromptVariant struct {
 	ID       string
@@ -172,6 +183,12 @@ func NewLLMClient(dbConn *sqlx.DB) (*LLMClient, error) {
 	primaryKey := os.Getenv("LLM_API_KEY")
 	backupKey := os.Getenv("LLM_API_KEY_SECONDARY")
 	baseURL := os.Getenv("LLM_BASE_URL")
+
+	// Debug logging for configuration
+	log.Printf("[DEBUG][NewLLMClient] Environment configuration:")
+	log.Printf("[DEBUG][NewLLMClient] LLM_API_KEY: %s", maskKey(primaryKey))
+	log.Printf("[DEBUG][NewLLMClient] LLM_API_KEY_SECONDARY: %s", maskKey(backupKey))
+	log.Printf("[DEBUG][NewLLMClient] LLM_BASE_URL: %s", baseURL)
 
 	// Return error for missing primary key instead of panicking
 	if primaryKey == "" {
