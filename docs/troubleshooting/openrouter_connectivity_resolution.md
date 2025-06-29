@@ -89,7 +89,7 @@ LLM_BASE_URL=https://openrouter.ai/api/v1
 ### 3. Verified Environment Configuration
 **File:** `.env`
 ```
-LLM_API_KEY=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
+LLM_API_KEY=sk-or-v1-[REDACTED-FOR-SECURITY]
 LLM_API_KEY_SECONDARY=your_secondary_api_key
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_HTTP_TIMEOUT=60s
