@@ -226,6 +226,7 @@ func TestNewLLMClientMissingPrimaryKey(t *testing.T) {
 }
 
 func TestModelConfiguration(t *testing.T) {
+	t.Setenv("TEST_MODE", "true") // Skip API validation in tests
 	t.Setenv("LLM_API_KEY", "test-key")
 
 	client, err := NewLLMClient((*sqlx.DB)(nil))
