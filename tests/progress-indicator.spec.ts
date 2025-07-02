@@ -78,14 +78,14 @@ test.describe('Progress Indicator Functionality', () => {
 
     // Check if the button was clicked successfully
     const hasClickMessage = consoleMessages.some(msg => msg.includes('Reanalyze button clicked'));
-    console.log('Button click detected:', hasClickMessage);
+    expect(hasClickMessage).toBe(true);
 
     // The button might be disabled only briefly if analysis completes quickly
     // Check that at least the loading state shows, or the button was temporarily disabled
     const btnLoadingVisible = await btnLoading.isVisible();
     const progressVisible = await progressIndicator.isVisible();
     
-    console.log('Loading visible:', btnLoadingVisible, 'Progress visible:', progressVisible);
+    expect(btnLoadingVisible || progressVisible).toBeTruthy();
     
     // Either the loading state should show, or progress should be visible, indicating the click worked
     expect(hasClickMessage || btnLoadingVisible || progressVisible).toBeTruthy();
@@ -122,7 +122,7 @@ test.describe('Progress Indicator Functionality', () => {
     await reanalyzeBtn.click();
 
     // Wait for SSE connection to be established
-    await page.waitForTimeout(3000);
+    await page.waitForFunction(() => sseRequests.length > 0, { timeout: 5000 });
 
     // Check that SSE request was made
     expect(sseRequests.length).toBeGreaterThan(0);
