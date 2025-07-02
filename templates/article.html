@@ -127,27 +127,20 @@
                     const articleId = this.getAttribute('data-article-id');
                     console.log('📄 Article ID:', articleId);
                     
-                    // SIMPLE FIX: Just use a timeout to re-enable the button
-                    console.log('🔌 Starting simple timeout-based completion');
+                    // Reset progress indicator to ensure clean state
+                    if (progressIndicator && typeof progressIndicator.reset === 'function') {
+                        progressIndicator.reset();
+                    } else {
+                        console.warn('ProgressIndicator reset method not available');
+                    }
 
-                    // Re-enable button after 30 seconds and update bias data
-                    setTimeout(async () => {
-                        console.log('⏰ 30-second timeout - re-enabling button and updating data');
-
-                        // Clear emergency timeout
-                        if (reanalyzeBtn._emergencyTimeout) {
-                            clearTimeout(reanalyzeBtn._emergencyTimeout);
-                            reanalyzeBtn._emergencyTimeout = null;
-                        }
-
-                        // Reset button state
-                        btnText.style.display = 'inline';
-                        btnLoading.style.display = 'none';
-                        reanalyzeBtn.disabled = false;
-
-                        // Update bias analysis
-                        await updateBiasAnalysis(articleId);
-                    }, 30000); // 30 seconds
+                    // Connect to SSE for progress updates
+                    if (progressIndicator && typeof progressIndicator.connect === 'function') {
+                        console.log('🔌 Connecting ProgressIndicator to SSE');
+                        progressIndicator.connect(articleId);
+                    } else {
+                        console.warn('ProgressIndicator connect method not available');
+                    }
 
                     // Disable button and show loading state
                     this.disabled = true;
@@ -179,13 +172,6 @@
                         // Define and store event handlers for cleanup
                         progressIndicator._completedHandler = async (event) => {
                             console.log('Analysis completed:', event.detail);
-
-                            // Clear emergency timeout since completion was received
-                            if (reanalyzeBtn._emergencyTimeout) {
-                                clearTimeout(reanalyzeBtn._emergencyTimeout);
-                                reanalyzeBtn._emergencyTimeout = null;
-                                console.log('Emergency timeout cleared - normal completion received');
-                            }
 
                             // Don't hide progress indicator immediately - let users see completion state
                             // The ProgressIndicator will auto-hide after a delay via the 'autohide' event
@@ -264,27 +250,6 @@
                         progressIndicator.classList.remove('progress-hidden');
                         progressIndicator.style.display = 'block';
 
-                        // EMERGENCY TIMEOUT: Force button re-enable after 2 minutes if nothing happens
-                        // This ensures the UI never gets permanently stuck
-                        const emergencyTimeout = setTimeout(() => {
-                            console.warn('EMERGENCY TIMEOUT: Force re-enabling button after 2 minutes');
-
-                            // Reset button state
-                            btnText.style.display = 'inline';
-                            btnLoading.style.display = 'none';
-                            reanalyzeBtn.disabled = false;
-
-                            // Hide progress indicator
-                            progressIndicator.style.display = 'none';
-                            progressIndicator.classList.add('progress-hidden');
-
-                            // Trigger auto-refresh to show updated results
-                            updateBiasAnalysis(articleId);
-                        }, 120000); // 2 minutes
-
-                        // Store timeout ID so it can be cleared if completion happens normally
-                        reanalyzeBtn._emergencyTimeout = emergencyTimeout;
-
                     } catch (error) {
                         console.error('Error requesting reanalysis:', error);
                         
@@ -314,30 +279,37 @@
                     }
                     
                     const biasData = await response.json();
-                    console.log('Fetched bias data:', biasData);
-
+                    
                     // Update bias score with the composite score
-                    if (biasScoreElement && biasData.success && biasData.data && biasData.data.composite_score !== null) {
-                        biasScoreElement.textContent = `Bias Score: ${biasData.data.composite_score.toFixed(3)}`;
-                        console.log('✅ Bias score updated successfully');
+                    // Handle both old format (biasData.composite_score) and new format (biasData.data.composite_score)
+                    let compositeScore = null;
+                    if (biasData.composite_score !== undefined) {
+                        compositeScore = biasData.composite_score;
+                    } else if (biasData.data && biasData.data.composite_score !== undefined) {
+                        compositeScore = biasData.data.composite_score;
+                    }
+                    
+                    if (biasScoreElement && compositeScore !== null) {
+                        biasScoreElement.textContent = `Bias Score: ${compositeScore.toFixed(3)}`;
                     } else if (biasScoreElement) {
                         biasScoreElement.textContent = 'Bias Score: Analysis pending';
-                        console.log('ℹ️ No composite score available yet');
                     }
+                    
+                    console.log('Bias analysis updated with fresh data');
                     
                 } catch (error) {
                     console.error('Error updating bias analysis:', error);
                     
-                    // Auto-refresh instead of manual refresh message
+                    // Show a subtle notification that data couldn't be updated
                     if (biasScoreElement) {
-                        biasScoreElement.textContent = 'Auto-refreshing page in 3 seconds...';
+                        const originalText = biasScoreElement.textContent;
+                        biasScoreElement.textContent = 'Analysis complete - refresh page for updated results';
                         biasScoreElement.style.fontStyle = 'italic';
-                        biasScoreElement.style.color = '#007bff';
 
                         setTimeout(() => {
-                            console.log('Auto-refreshing page to show updated results');
-                            window.location.reload();
-                        }, 3000);
+                            biasScoreElement.textContent = originalText;
+                            biasScoreElement.style.fontStyle = 'normal';
+                        }, 5000);
                     }
                 }
             }
