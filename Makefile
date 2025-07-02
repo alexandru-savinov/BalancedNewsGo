@@ -75,7 +75,7 @@ SERVER_BIN      := bin\newbalancer_server.exe # Use backslashes for Windows
 # Flags
 SHORT           := -short
 
-.PHONY: help build run clean \
+.PHONY: help build run stop restart clean \
         tidy lint unit integ e2e test coverage-core coverage coverage-html \
         mock-llm-go mock-llm-py docker-up docker-down integration benchmark \
         precommit-check
@@ -100,11 +100,21 @@ build: $(BIN_DIR) ## Compile backend server into ./bin
 	$(GO) build -v -o $(SERVER_BIN) ./cmd/server/...
 
 run: build ## Build and run server in background, redirecting output
+	@echo "Stopping any existing server..."
+	@taskkill /IM newbalancer_server.exe /F 2>nul || echo "No newbalancer_server.exe running."
+	@taskkill /IM newsbalancer_server.exe /F 2>nul || echo "No newsbalancer_server.exe running."
 	@echo "Running server $(SERVER_BIN) in background (output to server_run.log)..."
 	cmd /c "start /B .\$(SERVER_BIN) > server_run.log 2>&1"
+	@echo "Server started. Check server_run.log for output."
 
 stop: ## Stop the running server
-	taskkill /IM newbalancer_server /F
+	@taskkill /IM newbalancer_server.exe /F 2>nul || echo "No newbalancer_server.exe running."
+	@taskkill /IM newsbalancer_server.exe /F 2>nul || echo "No newsbalancer_server.exe running."
+
+restart: ## Restart the server (stop + run)
+	@echo "Restarting server..."
+	@$(MAKE) stop
+	@$(MAKE) run
 
 clean:
 	@echo "Cleaning build artifacts..."

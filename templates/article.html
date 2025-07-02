@@ -50,7 +50,7 @@
                     <progress-indicator
                         id="reanalysis-progress"
                         article-id="{{.Article.ID}}"
-                        auto-connect="true"
+                        auto-connect="false"
                         show-details="true"
                         class="progress-hidden">
                     </progress-indicator>
@@ -134,6 +134,14 @@
                         console.warn('ProgressIndicator reset method not available');
                     }
 
+                    // Connect to SSE for progress updates
+                    if (progressIndicator && typeof progressIndicator.connect === 'function') {
+                        console.log('🔌 Connecting ProgressIndicator to SSE');
+                        progressIndicator.connect(articleId);
+                    } else {
+                        console.warn('ProgressIndicator connect method not available');
+                    }
+
                     // Disable button and show loading state
                     this.disabled = true;
                     btnText.style.display = 'none';
@@ -159,21 +167,24 @@
                         progressIndicator.removeEventListener('completed', progressIndicator._completedHandler);
                         progressIndicator.removeEventListener('error', progressIndicator._errorHandler);
                         progressIndicator.removeEventListener('connectionerror', progressIndicator._connectionErrorHandler);
+                        progressIndicator.removeEventListener('autohide', progressIndicator._autoHideHandler);
 
                         // Define and store event handlers for cleanup
                         progressIndicator._completedHandler = async (event) => {
                             console.log('Analysis completed:', event.detail);
 
-                            // Hide progress indicator
-                            progressIndicator.style.display = 'none';
+                            // Don't hide progress indicator immediately - let users see completion state
+                            // The ProgressIndicator will auto-hide after a delay via the 'autohide' event
 
                             // Reset button state
                             btnText.style.display = 'inline';
                             btnLoading.style.display = 'none';
                             reanalyzeBtn.disabled = false;
 
-                            // Fetch updated bias data
-                            await updateBiasAnalysis(articleId);
+                            // Fetch updated bias data after a delay to allow users to see completion
+                            setTimeout(async () => {
+                                await updateBiasAnalysis(articleId);
+                            }, 4000); // 4 second delay to allow users to see the completion state
                         };
 
                         progressIndicator._errorHandler = (event) => {
@@ -197,28 +208,46 @@
                         progressIndicator._connectionErrorHandler = (event) => {
                             console.error('Connection error:', event.detail);
 
-                            // Hide progress indicator
+                            // Don't hide progress indicator if analysis completed successfully
+                            // Check if the progress indicator shows completion
+                            const isCompleted = progressIndicator._status === 'completed' ||
+                                              progressIndicator._progressValue >= 100;
+
+                            if (!isCompleted) {
+                                // Hide progress indicator only if analysis didn't complete
+                                progressIndicator.style.display = 'none';
+
+                                // Reset button state
+                                btnText.textContent = 'Connection Error - Try Again';
+                                btnText.style.display = 'inline';
+                                btnLoading.style.display = 'none';
+                                reanalyzeBtn.disabled = false;
+
+                                // Reset button text after a few seconds
+                                setTimeout(() => {
+                                    btnText.textContent = 'Request Reanalysis';
+                                }, 3000);
+                            } else {
+                                console.log('Connection closed after completion - keeping progress visible');
+                            }
+                        };
+
+                        // Add autohide handler for delayed hiding after completion
+                        progressIndicator._autoHideHandler = (event) => {
+                            console.log('Auto-hiding progress indicator after completion:', event.detail);
                             progressIndicator.style.display = 'none';
-
-                            // Reset button state
-                            btnText.textContent = 'Connection Error - Try Again';
-                            btnText.style.display = 'inline';
-                            btnLoading.style.display = 'none';
-                            reanalyzeBtn.disabled = false;
-
-                            // Reset button text after a few seconds
-                            setTimeout(() => {
-                                btnText.textContent = 'Request Reanalysis';
-                            }, 3000);
+                            progressIndicator.classList.add('progress-hidden');
                         };
 
                         // Add the event listeners
                         progressIndicator.addEventListener('completed', progressIndicator._completedHandler);
                         progressIndicator.addEventListener('error', progressIndicator._errorHandler);
                         progressIndicator.addEventListener('connectionerror', progressIndicator._connectionErrorHandler);
+                        progressIndicator.addEventListener('autohide', progressIndicator._autoHideHandler);
 
                         // Show progress indicator AFTER event listeners are set up
                         // This prevents race condition with auto-connect="true"
+                        progressIndicator.classList.remove('progress-hidden');
                         progressIndicator.style.display = 'block';
                         
                     } catch (error) {

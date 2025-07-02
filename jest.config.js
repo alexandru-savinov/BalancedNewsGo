@@ -1,5 +1,15 @@
 module.exports = {
   testEnvironment: 'jsdom',
+  preset: 'jest-environment-jsdom',
+  extensionsToTreatAsEsm: ['.js'],
+  globals: {
+    'ts-jest': {
+      useESM: true
+    }
+  },
+  transform: {
+    '^.+\\.js$': ['babel-jest', { presets: [['@babel/preset-env', { targets: { node: 'current' } }]] }]
+  },
   testMatch: [
     '**/web/js/components/*.test.js',
     '**/web/js/pages/*.test.js',

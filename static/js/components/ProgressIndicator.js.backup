@@ -15,29 +15,29 @@ import { SSEClient } from '../utils/SSEClient.js';
 
 class ProgressIndicator extends HTMLElement {
   // Private properties - declare once at class level
-  _sseClient = null;
-  _progressValue = 0;
-  _status = 'idle';
-  _stage = '';
-  _articleId = null;
-  _reconnectAttempts = 0;
-  _reconnectTimer = null;
-  _maxReconnectAttempts = 5;
-  _baseReconnectDelay = 1000;
-  _autoConnect = false;
-  _showDetails = false;
-  _eta = null;
-  _modelProgress = null;
+  #sseClient = null;
+  #progressValue = 0;
+  #status = 'idle';
+  #stage = '';
+  #articleId = null;
+  #reconnectAttempts = 0;
+  #reconnectTimer = null;
+  #maxReconnectAttempts = 5;
+  #baseReconnectDelay = 1000;
+  #autoConnect = false;
+  #showDetails = false;
+  #eta = null;
+  #modelProgress = null;
 
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
 
     // Initialize component state
-    this._maxReconnectAttempts = 5;
-    this._baseReconnectDelay = 1000; // 1 second
+    this.#maxReconnectAttempts = 5;
+    this.#baseReconnectDelay = 1000; // 1 second
 
-    this._render();
+    this.#render();
   }
 
   static get observedAttributes() {
@@ -46,39 +46,39 @@ class ProgressIndicator extends HTMLElement {
 
   // Getters and setters
   get articleId() {
-    return this._articleId;
+    return this.#articleId;
   }
 
   set articleId(value) {
-    this._articleId = value;
-    if (this._autoConnect && value) {
+    this.#articleId = value;
+    if (this.#autoConnect && value) {
       this.connect(value);
     }
   }
 
   get progress() {
-    return this._progressValue;
+    return this.#progressValue;
   }
 
   get status() {
-    return this._status;
+    return this.#status;
   }
 
   get autoConnect() {
-    return this._autoConnect;
+    return this.#autoConnect;
   }
 
   set autoConnect(value) {
-    this._autoConnect = value === true || value === 'true';
+    this.#autoConnect = value === true || value === 'true';
   }
 
   get showDetails() {
-    return this._showDetails;
+    return this.#showDetails;
   }
 
   set showDetails(value) {
-    this._showDetails = value === true || value === 'true';
-    this._updateDetailsVisibility();
+    this.#showDetails = value === true || value === 'true';
+    this.#updateDetailsVisibility();
   }
 
   // Lifecycle callbacks
@@ -116,125 +116,113 @@ class ProgressIndicator extends HTMLElement {
   }
   // Public methods
   async connect(articleId) {
-    if (this._sseClient && this._sseClient.connected) {
+    if (this.#sseClient && this.#sseClient.connected) {
       this.disconnect();
     }
 
-    this._articleId = articleId || this._articleId;
+    this.#articleId = articleId || this.#articleId;
 
-    if (!this._articleId) {
-      console.warn('ProgressIndicator: No article ID provided for connection');
+    if (!this.#articleId) {
+      console.warn('ProgressIndicator: No article ID provided for connection'); 
       return;
     }
 
-    this._updateStatus('connecting', 'Establishing connection...');
+    this.#updateStatus('connecting', 'Establishing connection...');
 
     try {
-      this._sseClient = new SSEClient({
-        maxReconnectAttempts: this._maxReconnectAttempts,
-        reconnectDelay: this._baseReconnectDelay
+      this.#sseClient = new SSEClient({
+        maxReconnectAttempts: this.#maxReconnectAttempts,
+        reconnectDelay: this.#baseReconnectDelay
       });
 
       // Set up event listeners
-      this._sseClient.addEventListener('connected', (data) => {
-        this._updateStatus('processing', 'Connected - awaiting progress data...');
-        this._reconnectAttempts = 0;
+      this.#sseClient.addEventListener('connected', (data) => {
+        this.#updateStatus('processing', 'Connected - awaiting progress data...');
+        this.#reconnectAttempts = 0;
       });
 
-      this._sseClient.addEventListener('message', (data) => {
-        this._handleProgressUpdate(data);
+      this.#sseClient.addEventListener('message', (data) => {
+        this.#handleProgressUpdate(data);
       });
 
-      this._sseClient.addEventListener('progress', (data) => {
-        this._handleProgressUpdate(data);
+      this.#sseClient.addEventListener('progress', (data) => {
+        this.#handleProgressUpdate(data);
       });
 
-      this._sseClient.addEventListener('completed', (data) => {
-        this._handleProgressUpdate(data);
+      this.#sseClient.addEventListener('completed', (data) => {
+        this.#handleProgressUpdate(data);
       });
 
-      this._sseClient.addEventListener('error', (data) => {
+      this.#sseClient.addEventListener('error', (data) => {
         console.error('ProgressIndicator SSE error:', data);
-
-        // Don't treat disconnection as error if analysis is already complete
-        if (this._status === 'completed' || this._progressValue >= 100) {
-          console.log('SSE disconnected after completion - this is normal');
-          return;
-        }
-
-        this._updateStatus('error', 'Connection error occurred');
-        this._dispatchEvent('connectionerror', data);
+        this.#updateStatus('error', 'Connection error occurred');
+        this.#dispatchEvent('connectionerror', data);
       });
 
-      this._sseClient.addEventListener('disconnected', (data) => {
+      this.#sseClient.addEventListener('disconnected', (data) => {
         if (data.reason !== 'Manual disconnect') {
-          // Don't treat disconnection as error if analysis is already complete
-          if (this._status === 'completed' || this._progressValue >= 100) {
-            console.log('SSE disconnected after completion - this is normal');
-            return;
-          }
-          this._updateStatus('error', 'Connection lost');
+          this.#updateStatus('error', 'Connection lost');
         }
       });
 
-      this._sseClient.addEventListener('reconnecting', (data) => {
-        this._reconnectAttempts = data.attempt;
-        this._updateStatus('connecting', `Reconnecting... (${data.attempt}/${data.maxAttempts})`);
+      this.#sseClient.addEventListener('reconnecting', (data) => {
+        this.#reconnectAttempts = data.attempt;
+        this.#updateStatus('connecting', `Reconnecting... (${data.attempt}/${data.maxAttempts})`);
       });
 
-      this._sseClient.addEventListener('failed', (data) => {
-        this._updateStatus('error', 'Connection failed - max retries reached');
-        this._dispatchEvent('error', data);
+      this.#sseClient.addEventListener('failed', (data) => {
+        this.#updateStatus('error', 'Connection failed - max retries reached');
+        this.#dispatchEvent('error', data);
       });
 
       // Connect to the progress endpoint
-      const endpoint = `/api/llm/score-progress/${this._articleId}`;
-      this._sseClient.connect(endpoint);
+      const endpoint = `/api/llm/score-progress/${this.#articleId}`;
+      this.#sseClient.connect(endpoint);
 
     } catch (error) {
       console.error('Failed to establish SSE connection:', error);
-      this._updateStatus('error', `Connection failed: ${error.message}`);
+      this.#updateStatus('error', `Connection failed: ${error.message}`);       
     }
   }
 
   disconnect() {
-    if (this._sseClient) {
-      this._sseClient.disconnect();
-      this._sseClient = null;
+    if (this.#sseClient) {
+      this.#sseClient.disconnect();
+      this.#sseClient = null;
     }
 
-    if (this._reconnectTimer) {
-      clearTimeout(this._reconnectTimer);
-      this._reconnectTimer = null;
+    if (this.#reconnectTimer) {
+      clearTimeout(this.#reconnectTimer);
+      this.#reconnectTimer = null;
     }
 
-    this._reconnectAttempts = 0;
+    this.#reconnectAttempts = 0;
   }
 
   reset() {
     this.disconnect();
-    this._progressValue = 0;
-    this._status = 'idle';
-    this._stage = '';
-    this._eta = null;
-    this._updateUI();
+    this.#progressValue = 0;
+    this.#status = 'idle';
+    this.#stage = '';
+    this.#eta = null;
+    this.#updateUI();
   }
 
   // Manual progress update (for non-SSE scenarios)
   updateProgress(progressData) {
     // Handle both "progress" and "percent" field names from backend
     const progress = progressData.progress || progressData.percent || 0;
-    this._progressValue = Math.max(0, Math.min(100, progress));
-    this._status = progressData.status || this._status;
-    this._stage = progressData.stage || progressData.step || this._stage;
-    this._eta = progressData.eta || null;
+    this.#progressValue = Math.max(0, Math.min(100, progress));
+    this.#status = progressData.status || this.#status;
+    this.#stage = progressData.stage || progressData.step || this.#stage;
+    this.#eta = progressData.eta || null;
 
-    this._updateUI();
-    this._dispatchEvent('progressupdate', progressData);
+    this.#updateUI();
+    this.#dispatchEvent('progressupdate', progressData);
   }
 
   // Private methods
-  _render() {
+  #render() {
     const template = document.createElement('template');
     template.innerHTML = `
       <style>
@@ -406,7 +394,7 @@ class ProgressIndicator extends HTMLElement {
   }
 
   // Private methods for handling progress updates
-  _handleProgressUpdate(data) {
+  #handleProgressUpdate(data) {
     try {
       // Data might already be parsed if coming from SSEClient
       const progressData = typeof data === 'string' ? JSON.parse(data) : data;
@@ -418,45 +406,31 @@ class ProgressIndicator extends HTMLElement {
       const progress = progressData.progress || progressData.percent || 0;
       const status = progressData.status ? progressData.status.toLowerCase() : '';
 
-      // Check for error status first
-      if (status === 'error') {
-        const errorMessage = progressData.message || 'Analysis failed';
-        this._updateStatus('error', errorMessage);
-        this.disconnect();
-        this._dispatchEvent('error', progressData);
-        return;
-      }
-
       if (progress >= 100 || status === 'completed' || status === 'complete') {
-        this._updateStatus('completed', 'Analysis completed');
-        this._dispatchEvent('completed', progressData);
-
-        // Delay disconnection and auto-hide to allow users to see completion state
-        setTimeout(() => {
-          this.disconnect();
-          this._autoHideAfterCompletion();
-        }, 3000); // 3 second delay before disconnecting
+        this.#updateStatus('completed', 'Analysis completed');
+        this.disconnect();
+        this.#dispatchEvent('completed', progressData);
       }
 
     } catch (error) {
       console.error('Failed to parse progress data:', error);
-      this._updateStatus('error', 'Failed to parse progress data');
+      this.#updateStatus('error', 'Failed to parse progress data');
     }
   }
 
-  _updateStatus(status, stage = '') {
-    const oldStatus = this._status;
-    this._status = status;
-    this._stage = stage;
+  #updateStatus(status, stage = '') {
+    const oldStatus = this.#status;
+    this.#status = status;
+    this.#stage = stage;
 
     // Update UI classes
     this.container.className = `progress-container status-${status}`;
 
     // Update status icon
-    this._updateStatusIcon(status);
+    this.#updateStatusIcon(status);
 
     // Update status text
-    this.statusText.textContent = this._getStatusDisplayText(status);
+    this.statusText.textContent = this.#getStatusDisplayText(status);
 
     // Update stage text
     this.stageText.textContent = stage;
@@ -466,11 +440,11 @@ class ProgressIndicator extends HTMLElement {
 
     // Dispatch status change event
     if (oldStatus !== status) {
-      this._dispatchEvent('statuschange', { status, stage, oldStatus });
+      this.#dispatchEvent('statuschange', { status, stage, oldStatus });
     }
   }
 
-  _updateStatusIcon(status) {
+  #updateStatusIcon(status) {
     let iconHTML;
 
     switch (status) {
@@ -494,7 +468,7 @@ class ProgressIndicator extends HTMLElement {
     this.statusIcon.innerHTML = iconHTML;
   }
 
-  _getStatusDisplayText(status) {
+  #getStatusDisplayText(status) {
     const statusTexts = {
       idle: 'Ready',
       connecting: 'Connecting',
@@ -507,30 +481,30 @@ class ProgressIndicator extends HTMLElement {
     return statusTexts[status] || status;
   }
 
-  _updateUI() {
+  #updateUI() {
     // Update progress bar
-    this.progressFill.style.width = `${this._progressValue}%`;
+    this.progressFill.style.width = `${this.#progressValue}%`;
 
     // Update percentage display
-    this.percentageText.textContent = `${Math.round(this._progressValue)}%`;
+    this.percentageText.textContent = `${Math.round(this.#progressValue)}%`;
 
     // Update ARIA attributes
-    this.container.setAttribute('aria-valuenow', Math.round(this._progressValue));
+    this.container.setAttribute('aria-valuenow', Math.round(this.#progressValue));
 
     // Update stage text
-    if (this._stage) {
-      this.stageText.textContent = this._stage;
+    if (this.#stage) {
+      this.stageText.textContent = this.#stage;
     }
 
     // Update ETA display
-    if (this._eta) {
-      const etaDate = new Date(this._eta * 1000);
+    if (this.#eta) {
+      const etaDate = new Date(this.#eta * 1000);
       const now = new Date();
       const remainingMs = etaDate.getTime() - now.getTime();
 
       if (remainingMs > 0) {
         const remainingSeconds = Math.ceil(remainingMs / 1000);
-        this.etaText.textContent = `ETA: ${this._formatDuration(remainingSeconds)}`;
+        this.etaText.textContent = `ETA: ${this.#formatDuration(remainingSeconds)}`;
       } else {
         this.etaText.textContent = '';
       }
@@ -539,12 +513,12 @@ class ProgressIndicator extends HTMLElement {
     }
   }
 
-  _updateDetailsVisibility() {
+  #updateDetailsVisibility() {
     // This method is referenced but details section was removed for simplicity
     // Can be implemented later if needed
   }
 
-  _formatDuration(seconds) {
+  #formatDuration(seconds) {
     if (seconds < 60) {
       return `${seconds}s`;
     } else if (seconds < 3600) {
@@ -560,21 +534,12 @@ class ProgressIndicator extends HTMLElement {
 
 
 
-  _dispatchEvent(eventName, detail) {
+  #dispatchEvent(eventName, detail) {
     this.dispatchEvent(new CustomEvent(eventName, {
       detail,
       bubbles: true,
       composed: true
     }));
-  }
-
-  // Auto-hide the progress indicator after completion with a delay
-  _autoHideAfterCompletion() {
-    // Allow users to see the completion state for a few seconds before hiding
-    setTimeout(() => {
-      // Dispatch a custom event that the parent can listen to for auto-hiding
-      this._dispatchEvent('autohide', { reason: 'completion' });
-    }, 2000); // Additional 2 seconds after disconnect (total 5 seconds from completion)
   }
 }
 
