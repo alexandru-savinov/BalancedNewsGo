@@ -122,7 +122,7 @@ test.describe('Progress Indicator Functionality', () => {
     await reanalyzeBtn.click();
 
     // Wait for SSE connection to be established
-    await page.waitForTimeout(3000);
+    await page.waitForFunction(() => sseRequests.length > 0, { timeout: 5000 });
 
     // Check that SSE request was made
     expect(sseRequests.length).toBeGreaterThan(0);
