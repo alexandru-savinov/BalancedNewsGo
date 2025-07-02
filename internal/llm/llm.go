@@ -27,6 +27,17 @@ var ErrInvalidLLMResponse = apperrors.New("Invalid response from LLM service", "
 // HTTP timeout for LLM requests
 const defaultLLMTimeout = 90 * time.Second
 
+// maskKey masks an API key for logging purposes
+func maskKey(key string) string {
+	if key == "" {
+		return "<empty>"
+	}
+	if len(key) <= 8 {
+		return strings.Repeat("*", len(key))
+	}
+	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
+}
+
 // PromptVariant defines a prompt template with few-shot examples
 type PromptVariant struct {
 	ID       string
@@ -173,6 +184,12 @@ func NewLLMClient(dbConn *sqlx.DB) (*LLMClient, error) {
 	backupKey := os.Getenv("LLM_API_KEY_SECONDARY")
 	baseURL := os.Getenv("LLM_BASE_URL")
 
+	// Debug logging for configuration
+	log.Printf("[DEBUG][NewLLMClient] Environment configuration:")
+	log.Printf("[DEBUG][NewLLMClient] LLM_API_KEY: %s", maskKey(primaryKey))
+	log.Printf("[DEBUG][NewLLMClient] LLM_API_KEY_SECONDARY: %s", maskKey(backupKey))
+	log.Printf("[DEBUG][NewLLMClient] LLM_BASE_URL: %s", baseURL)
+
 	// Return error for missing primary key instead of panicking
 	if primaryKey == "" {
 		return nil, fmt.Errorf("LLM_API_KEY not set")
@@ -200,13 +217,25 @@ func NewLLMClient(dbConn *sqlx.DB) (*LLMClient, error) {
 	// Initialize service with OpenRouter configuration
 	service := NewHTTPLLMService(restyClient, primaryKey, backupKey, baseURL)
 
-	return &LLMClient{
+	client := &LLMClient{
 		client:     &http.Client{},
 		cache:      cache,
 		db:         dbConn,
 		llmService: service,
 		config:     config,
-	}, nil // Return nil error on success
+	}
+
+	// Validate API key during initialization if not in test mode
+	if os.Getenv("TEST_MODE") != "true" && os.Getenv("SKIP_API_VALIDATION") != "true" {
+		log.Printf("[INFO] Validating API key during startup...")
+		if err := client.ValidateAPIKey(); err != nil {
+			log.Printf("[ERROR] API key validation failed: %v", err)
+			return nil, fmt.Errorf("API key validation failed: %w", err)
+		}
+		log.Printf("[INFO] API key validation successful")
+	}
+
+	return client, nil // Return nil error on success
 }
 
 // GetConfig returns the loaded configuration for the client.
@@ -214,6 +243,47 @@ func (c *LLMClient) GetConfig() *CompositeScoreConfig {
 	// Maybe add logic here to load config if nil?
 	// For now, just return the stored config.
 	return c.config
+}
+
+// ValidateAPIKey validates the API key by making a test request to the LLM service
+func (c *LLMClient) ValidateAPIKey() error {
+	// Cast to HTTPLLMService to access the callLLMAPIWithKey method
+	httpService, ok := c.llmService.(*HTTPLLMService)
+	if !ok {
+		return fmt.Errorf("API validation not supported for this LLM service type")
+	}
+
+	// Make a minimal test request
+	resp, err := httpService.callLLMAPIWithKey(
+		"openai/gpt-4.1-nano", // Use a lightweight model for testing
+		"Test",                // Minimal prompt
+		httpService.apiKey,    // Use primary API key
+	)
+
+	if err != nil {
+		// Translate network errors to user-friendly messages
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "context deadline exceeded") {
+			return fmt.Errorf("API request timeout - please check your internet connection")
+		}
+		return fmt.Errorf("API validation failed: %w", err)
+	}
+
+	// Check response status code
+	switch resp.StatusCode() {
+	case 200, 201:
+		log.Printf("[INFO] API key validation successful (HTTP %d)", resp.StatusCode())
+		return nil
+	case 401:
+		return fmt.Errorf("invalid API key - please check your LLM_API_KEY in .env file")
+	case 402:
+		return fmt.Errorf("insufficient credits - please add credits to your OpenRouter account")
+	case 429:
+		return fmt.Errorf("rate limited - please wait a few minutes before starting the server")
+	case 500, 502, 503, 504:
+		return fmt.Errorf("LLM service temporarily unavailable (HTTP %d) - please try again later", resp.StatusCode())
+	default:
+		return fmt.Errorf("API validation failed with HTTP %d: %s", resp.StatusCode(), resp.String())
+	}
 }
 
 func (c *LLMClient) analyzeContent(articleID int64, content string, model string) (*db.LLMScore, error) {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -40,15 +41,10 @@ func main() {
 		log.Fatalf("Failed to fetch article: %v", err)
 	}
 
-	// Set environment variables for NewLLMClient
-	if err := os.Setenv("LLM_API_KEY", "dummy-key"); err != nil {
-		log.Printf("Warning: failed to set LLM_API_KEY: %v", err)
-	}
-	if err := os.Setenv("LLM_API_KEY_SECONDARY", "dummy-backup-key"); err != nil {
-		log.Printf("Warning: failed to set LLM_API_KEY_SECONDARY: %v", err)
-	}
-	if err := os.Setenv("LLM_BASE_URL", "http://localhost:8090"); err != nil { // Use local mock service URL
-		log.Printf("Warning: failed to set LLM_BASE_URL: %v", err)
+	// Load .env file for real API configuration
+	err = godotenv.Load()
+	if err != nil {
+		log.Printf("Warning: .env file not loaded: %v", err)
 	}
 	// Create client using constructor
 	llmClient, err := llm.NewLLMClient(dbConn)

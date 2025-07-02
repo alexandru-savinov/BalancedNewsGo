@@ -7,13 +7,13 @@
  * Simple SSE client with automatic reconnection
  */
 export class SSEClient {
-    _eventSource = null;
-    _url = null;
-    _listeners = new Map();
-    _reconnectAttempts = 0;
-    _maxReconnectAttempts = 3;
-    _reconnectDelay = 1000;
-    _isConnected = false;
+    #eventSource = null;
+    #url = null;
+    #listeners = new Map();
+    #reconnectAttempts = 0;
+    #maxReconnectAttempts = 3;
+    #reconnectDelay = 1000;
+    #isConnected = false;
 
     constructor(options = {}) {
         this.options = {
@@ -22,8 +22,8 @@ export class SSEClient {
             withCredentials: false,
             ...options
         };
-        this._maxReconnectAttempts = this.options.maxReconnectAttempts;
-        this._reconnectDelay = this.options.reconnectDelay;
+        this.#maxReconnectAttempts = this.options.maxReconnectAttempts;
+        this.#reconnectDelay = this.options.reconnectDelay;
     }
 
     /**
@@ -32,7 +32,7 @@ export class SSEClient {
      * @param {Object} params - Query parameters
      */
     connect(url, params = {}) {
-        this._url = url;
+        this.#url = url;
 
         // Build URL with parameters
         const fullUrl = new URL(url, window.location.origin);
@@ -41,91 +41,62 @@ export class SSEClient {
         });
 
         try {
-            this._eventSource = new EventSource(fullUrl.toString(), {
+            this.#eventSource = new EventSource(fullUrl.toString(), {
                 withCredentials: this.options.withCredentials
             });
 
-            this._eventSource.onopen = () => {
-                this._isConnected = true;
-                this._reconnectAttempts = 0;
-                this._emit('connected', { url: fullUrl.toString() });
+            this.#eventSource.onopen = () => {
+                this.#isConnected = true;
+                this.#reconnectAttempts = 0;
+                this.#emit('connected', { url: fullUrl.toString() });
             };
 
-            this._eventSource.onmessage = (event) => {
+            this.#eventSource.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    this._emit('message', data);
+                    this.#emit('message', data);
                 } catch (error) {
                     console.warn('SSEClient: Failed to parse message data, using raw data:', error);
-                    this._emit('message', event.data);
+                    this.#emit('message', event.data);
                 }
             };
 
-            this._eventSource.onerror = (event) => {
-                this._isConnected = false;
+            this.#eventSource.onerror = (event) => {
+                this.#isConnected = false;
 
-                if (this._eventSource.readyState === EventSource.CLOSED) {
-                    this._emit('disconnected', { event });
-                    this._handleReconnection();
+                if (this.#eventSource.readyState === EventSource.CLOSED) {
+                    this.#emit('disconnected', { event });
+                    this.#handleReconnection();
                 } else {
-                    this._emit('error', { event });
+                    this.#emit('error', { event });
                 }
             };
 
         } catch (error) {
             console.error('SSEClient connection error:', error);
-            this._emit('error', { error });
+            this.#emit('error', { error });
         }
-
-        // Attach any custom event listeners that were registered before connection
-        this._attachPendingEventListeners();
-    }
-
-    /**
-     * Attach pending custom event listeners to the EventSource
-     * This handles the timing issue where listeners are registered before connection
-     */
-    _attachPendingEventListeners() {
-        if (!this._eventSource) {
-            return;
-        }
-
-        // Iterate through all registered listeners and attach custom event types to EventSource
-        this._listeners.forEach((callbacks, eventType) => {
-            // Skip built-in event types that are handled by onopen, onmessage, onerror
-            if (!['connected', 'disconnected', 'error', 'message', 'reconnecting', 'failed'].includes(eventType)) {
-                this._eventSource.addEventListener(eventType, (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        this._emit(eventType, data);
-                    } catch (error) {
-                        console.warn(`SSEClient: Failed to parse ${eventType} data, using raw data:`, error);
-                        this._emit(eventType, event.data);
-                    }
-                });
-            }
-        });
     }
 
     /**
      * Handle automatic reconnection
      */
-    _handleReconnection() {
-        if (this._reconnectAttempts < this._maxReconnectAttempts) {
-            const delay = this._reconnectDelay * Math.pow(2, this._reconnectAttempts);
+    #handleReconnection() {
+        if (this.#reconnectAttempts < this.#maxReconnectAttempts) {
+            const delay = this.#reconnectDelay * Math.pow(2, this.#reconnectAttempts);
 
             setTimeout(() => {
-                this._reconnectAttempts++;
-                this._emit('reconnecting', {
-                    attempt: this._reconnectAttempts,
-                    maxAttempts: this._maxReconnectAttempts
+                this.#reconnectAttempts++;
+                this.#emit('reconnecting', {
+                    attempt: this.#reconnectAttempts,
+                    maxAttempts: this.#maxReconnectAttempts
                 });
-                this.connect(this._url);
+                this.connect(this.#url);
             }, delay);
         } else {
-            this._emit('failed', {
+            this.#emit('failed', {
                 reason: 'Max reconnection attempts reached',
-                attempts: this._reconnectAttempts
+                attempts: this.#reconnectAttempts
             });
         }
     }
@@ -136,24 +107,23 @@ export class SSEClient {
      * @param {Function} callback - Callback function
      */
     addEventListener(eventType, callback) {
-        if (!this._listeners.has(eventType)) {
-            this._listeners.set(eventType, new Set());
+        if (!this.#listeners.has(eventType)) {
+            this.#listeners.set(eventType, new Set());
         }
-        this._listeners.get(eventType).add(callback);
+        this.#listeners.get(eventType).add(callback);
 
-        // If EventSource already exists and this is a custom event type, attach immediately
-        if (this._eventSource && !['connected', 'disconnected', 'error', 'message', 'reconnecting', 'failed'].includes(eventType)) {
-            this._eventSource.addEventListener(eventType, (event) => {
+        // Add to EventSource if it's a custom event type
+        if (this.#eventSource && !['connected', 'disconnected', 'error', 'message', 'reconnecting', 'failed'].includes(eventType)) {
+            this.#eventSource.addEventListener(eventType, (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    this._emit(eventType, data);
+                    this.#emit(eventType, data);
                 } catch (error) {
                     console.warn(`SSEClient: Failed to parse ${eventType} data, using raw data:`, error);
-                    this._emit(eventType, event.data);
+                    this.#emit(eventType, event.data);
                 }
             });
         }
-        // If EventSource doesn't exist yet, the listener will be attached in _attachPendingEventListeners()
     }
 
     /**
@@ -162,8 +132,8 @@ export class SSEClient {
      * @param {Function} callback - The callback to remove
      */
     removeEventListener(eventType, callback) {
-        if (this._listeners.has(eventType)) {
-            this._listeners.get(eventType).delete(callback);
+        if (this.#listeners.has(eventType)) {
+            this.#listeners.get(eventType).delete(callback);
         }
     }
 
@@ -172,9 +142,9 @@ export class SSEClient {
      * @param {string} eventType - The event type
      * @param {*} data - The event data
      */
-    _emit(eventType, data) {
-        if (this._listeners.has(eventType)) {
-            this._listeners.get(eventType).forEach(callback => {
+    #emit(eventType, data) {
+        if (this.#listeners.has(eventType)) {
+            this.#listeners.get(eventType).forEach(callback => {
                 try {
                     callback(data);
                 } catch (error) {
@@ -188,20 +158,20 @@ export class SSEClient {
      * Close the SSE connection
      */
     disconnect() {
-        if (this._eventSource) {
-            this._eventSource.close();
-            this._eventSource = null;
+        if (this.#eventSource) {
+            this.#eventSource.close();
+            this.#eventSource = null;
         }
-        this._isConnected = false;
-        this._listeners.clear();
-        this._emit('disconnected', { reason: 'Manual disconnect' });
+        this.#isConnected = false;
+        this.#listeners.clear();
+        this.#emit('disconnected', { reason: 'Manual disconnect' });
     }
 
     /**
      * Check if connected
      */
     get connected() {
-        return this._isConnected;
+        return this.#isConnected;
     }
 
     /**
@@ -209,11 +179,19 @@ export class SSEClient {
      */
     get state() {
         return {
-            connected: this._isConnected,
-            url: this._url,
-            reconnectAttempts: this._reconnectAttempts,
-            readyState: this._eventSource?.readyState
+            connected: this.#isConnected,
+            url: this.#url,
+            reconnectAttempts: this.#reconnectAttempts,
+            readyState: this.#eventSource?.readyState
         };
+    }
+
+    /**
+     * Internal method for testing - expose emit functionality
+     * @private
+     */
+    _emit(eventType, data) {
+        this.#emit(eventType, data);
     }
 
     /**
@@ -221,7 +199,7 @@ export class SSEClient {
      * @private
      */
     _getEventSource() {
-        return this._eventSource;
+        return this.#eventSource;
     }
 }
 

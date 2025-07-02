@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alexandru-savinov/BalancedNewsGo/internal/apperrors"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
@@ -187,6 +186,20 @@ func RegisterRoutes(
 	// @Router /api/feeds/healthz [get]
 	// @ID getFeedsHealth
 	router.GET("/api/feeds/healthz", SafeHandler(feedHealthHandler(rssCollector)))
+
+	// @Summary Check LLM API key health
+	// @Description Validates the LLM API key and returns health status
+	// @Tags LLM
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse{data=map[string]interface{}} "API key is valid"
+	// @Failure 401 {object} ErrorResponse "Invalid API key"
+	// @Failure 402 {object} ErrorResponse "Insufficient credits"
+	// @Failure 429 {object} ErrorResponse "Rate limited"
+	// @Failure 503 {object} ErrorResponse "Service unavailable"
+	// @Router /api/llm/health [get]
+	// @ID getLLMHealth
+	router.GET("/api/llm/health", SafeHandler(llmHealthHandler(llmClient)))
 
 	// Progress tracking
 	// @Summary Score progress
@@ -594,6 +607,41 @@ func refreshHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	}
 }
 
+// translateReanalysisError converts technical errors into user-friendly messages
+func translateReanalysisError(err error) (userMessage string, step string) {
+	errStr := strings.ToLower(err.Error())
+
+	// Check for specific error patterns
+	switch {
+	case strings.Contains(errStr, "context deadline exceeded") || strings.Contains(errStr, "timeout"):
+		if strings.Contains(errStr, "awaiting headers") {
+			return "API connection failed. Please check your API key configuration.", "API Connection Failed"
+		}
+		return "Request timed out. The LLM service may be experiencing high load.", "Request Timeout"
+
+	case strings.Contains(errStr, "401") || strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "invalid api key"):
+		return "Invalid API key. Please check your OpenRouter API key configuration.", "Authentication Failed"
+
+	case strings.Contains(errStr, "402") || strings.Contains(errStr, "payment required") || strings.Contains(errStr, "credits"):
+		return "Insufficient credits. Please add credits to your OpenRouter account.", "Payment Required"
+
+	case strings.Contains(errStr, "429") || strings.Contains(errStr, "rate limit"):
+		return "Rate limit exceeded. Please wait a few minutes before trying again.", "Rate Limited"
+
+	case strings.Contains(errStr, "503") || strings.Contains(errStr, "service unavailable"):
+		return "LLM service is temporarily unavailable. Please try again later.", "Service Unavailable"
+
+	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection"):
+		return "Network connection error. Please check your internet connection.", "Network Error"
+
+	case strings.Contains(errStr, "llm_api_key not set"):
+		return "API key not configured. Please set your OpenRouter API key.", "Configuration Error"
+
+	default:
+		return "Analysis failed due to an unexpected error. Please try again.", "Analysis Failed"
+	}
+}
+
 // Refactored reanalyzeHandler to use ScoreManager for scoring, storage, and progress
 // @Summary Reanalyze article
 // @Description Trigger a new LLM analysis for a specific article and update its scores.
@@ -620,7 +668,8 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 		articleID := id
 		log.Printf("[POST /api/llm/reanalyze] ArticleID=%d", articleID)
 
-		article, err := db.FetchArticleByID(dbConn, articleID)
+		// Verify article exists
+		_, err := db.FetchArticleByID(dbConn, articleID)
 		if err != nil {
 			if errors.Is(err, db.ErrArticleNotFound) {
 				RespondError(c, ErrArticleNotFound)
@@ -701,82 +750,14 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			return
 		}
 
-		// Try each model in sequence until we find one that works
-		var workingModel string
-		var healthErr error
-
-		if os.Getenv("NO_AUTO_ANALYZE") == "true" {
-			log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping working model health check.", articleID)
-			if len(cfg.Models) > 0 {
-				workingModel = cfg.Models[0].ModelName // Assume the first model would work for queuing purposes
-			} else {
-				log.Printf("[reanalyzeHandler %d] No models configured, cannot proceed even with NO_AUTO_ANALYZE.", articleID)
-				RespondError(c, NewAppError(ErrLLMService, "No LLM models configured"))
-				return
-			}
-		} else {
-			originalTimeout := llmClient.GetHTTPLLMTimeout()
-			healthCheckTimeout := 2 * time.Second                // Keep short timeout for individual health checks
-			if os.Getenv("HEALTH_CHECK_TIMEOUT_SECONDS") != "" { // Allow override for testing
-				if s, err := strconv.Atoi(os.Getenv("HEALTH_CHECK_TIMEOUT_SECONDS")); err == nil && s > 0 {
-					healthCheckTimeout = time.Duration(s) * time.Second
-				}
-			}
-			llmClient.SetHTTPLLMTimeout(healthCheckTimeout)
-
-			var lastHealthCheckError error
-
-			for _, modelConfig := range cfg.Models {
-				log.Printf("[reanalyzeHandler %d] Health checking model: %s", articleID, modelConfig.ModelName)
-				// 'article' object is already fetched in reanalyzeHandler; ScoreWithModel expects this object.
-				_, healthCheckErr := llmClient.ScoreWithModel(article, modelConfig.ModelName)
-
-				if healthCheckErr == nil {
-					workingModel = modelConfig.ModelName
-					lastHealthCheckError = nil
-					log.Printf("[reanalyzeHandler %d] Health check PASSED for model: %s", articleID, workingModel)
-					break
-				}
-
-				log.Printf("[reanalyzeHandler %d] Health check FAILED for model %s: %v. "+
-					"Trying next model.", articleID, modelConfig.ModelName, healthCheckErr)
-				lastHealthCheckError = healthCheckErr
-			}
-			llmClient.SetHTTPLLMTimeout(originalTimeout) // Restore original timeout
-
-			if workingModel == "" { // All models failed health check
-				healthErr = lastHealthCheckError
-				if healthErr == nil {
-					healthErr = apperrors.New("All models failed health check", "llm_service_unavailable")
-				}
-			}
-		}
-
-		if workingModel == "" {
-			log.Printf("[reanalyzeHandler %d] No working models found after checking all configured models. Last error: %v", articleID, healthErr)
-			// Ensure healthErr is an AppError or wrapped appropriately before RespondError
-			if scoreManager != nil {
-				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Status:  "Error",
-					Step:    "Error",
-					Message: fmt.Sprintf("All models failed: %v", healthErr),
-				})
-			}
-			if healthErr != nil {
-				// Ensure it's an AppError; if not, wrap it.
-				appErr, ok := healthErr.(*apperrors.AppError)
-				if !ok {
-					// Determine appropriate app error type, e.g., ErrLLMService or ErrInternal
-					respondErr := NewAppError(ErrLLMService, fmt.Sprintf("All models failed health check. Last error: %v", healthErr.Error()))
-					RespondError(c, respondErr)
-				} else {
-					RespondError(c, appErr)
-				}
-			} else {
-				RespondError(c, NewAppError(ErrLLMService, "No working models found and no specific error recorded."))
-			}
+		// Check if models are configured
+		if len(cfg.Models) == 0 {
+			log.Printf("[reanalyzeHandler %d] No models configured, cannot proceed.", articleID)
+			RespondError(c, NewAppError(ErrLLMService, "No LLM models configured"))
 			return
 		}
+
+		log.Printf("[reanalyzeHandler %d] Proceeding with reanalysis - ReanalyzeArticle will handle model fallbacks", articleID)
 
 		// Start the reanalysis process
 		if scoreManager != nil {
@@ -784,7 +765,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 			initialProgress := &models.ProgressState{
 				Status:  "Queued",
 				Step:    "Pending",
-				Message: fmt.Sprintf("Reanalysis queued for model %s", workingModel),
+				Message: "Reanalysis queued for all configured models",
 			}
 			log.Printf("[reanalyzeHandler %d] Setting initial progress: %+v", articleID, initialProgress)
 			scoreManager.SetProgress(articleID, initialProgress)
@@ -798,11 +779,12 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 						log.Printf("[reanalyzeHandler %d] Error during reanalysis: %v", articleID, err)
 						// Ensure scoreManager is not nil before using
 						if scoreManager != nil {
+							userMessage, step := translateReanalysisError(err)
 							scoreManager.SetProgress(articleID, &models.ProgressState{
 								Status:  "Error",
-								Step:    "Reanalysis Failed", // More specific step
-								Message: fmt.Sprintf("Error during analysis: %v", err),
-								Error:   err.Error(), // Populate Error field
+								Step:    step,
+								Message: userMessage,
+								Error:   err.Error(), // Keep technical error for debugging
 							})
 						}
 						return
@@ -823,7 +805,9 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 
 						// If the ReanalyzeArticle function set a near-complete state, update it to full "Complete"
 						// Otherwise, create a new one.
+						log.Printf("[reanalyzeHandler %d] Current progress state: %+v", articleID, finalProgressState)
 						if finalProgressState != nil && finalProgressState.Status == "InProgress" && finalProgressState.Percent == 99 {
+							log.Printf("[reanalyzeHandler %d] Updating existing progress state to Complete", articleID)
 							finalProgressState.Status = "Complete"
 							finalProgressState.Step = "Done"
 							finalProgressState.Message = "Analysis complete"
@@ -831,6 +815,7 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 							finalProgressState.FinalScore = finalScore
 							scoreManager.SetProgress(articleID, finalProgressState)
 						} else {
+							log.Printf("[reanalyzeHandler %d] Setting new Complete progress state", articleID)
 							scoreManager.SetProgress(articleID, &models.ProgressState{
 								Status:     "Complete",
 								Step:       "Done",
@@ -963,7 +948,7 @@ func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 				currentProgressJSON := string(data)
 				if currentProgressJSON != lastProgressJSON {
 					log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Sending progress update: %s", articleID, currentProgressJSON)
-					if _, err := fmt.Fprintf(c.Writer, "event: progress\\ndata: %s\\n\\n", data); err != nil {
+					if _, err := fmt.Fprintf(c.Writer, "event: progress\ndata: %s\n\n", data); err != nil {
 						log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Error writing to client: %v", articleID, err)
 						return // Stop if we can't write to client
 					}
@@ -973,6 +958,13 @@ func scoreProgressSSEHandler(scoreManager *llm.ScoreManager) gin.HandlerFunc {
 					// Check for terminal states
 					if progress.Status == "Complete" || progress.Status == "Error" || progress.Status == "Success" {
 						log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Terminal progress status '%s' received. Closing SSE stream.", articleID, progress.Status)
+
+						// For "Complete" status, delay closure to allow frontend to process and display completion
+						if progress.Status == "Complete" {
+							log.Printf("[SSE HANDLER /api/llm/score-progress] ArticleID=%d: Delaying SSE closure for 3 seconds to allow frontend completion processing.", articleID)
+							time.Sleep(3 * time.Second)
+						}
+
 						// Send one last time to be sure, then close.
 						// It's possible the client might miss this if we return immediately.
 						// However, the test client should see the event and then the connection close.
@@ -1000,6 +992,73 @@ func feedHealthHandler(rssCollector rss.CollectorInterface) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := rssCollector.CheckFeedHealth()
 		c.JSON(200, status)
+	}
+}
+
+// @Summary Check LLM API key health
+// @Description Validates the LLM API key and returns health status
+// @Tags LLM
+// @Accept json
+// @Produce json
+// @Success 200 {object} StandardResponse{data=map[string]interface{}} "API key is valid"
+// @Failure 401 {object} ErrorResponse "Invalid API key"
+// @Failure 402 {object} ErrorResponse "Insufficient credits"
+// @Failure 429 {object} ErrorResponse "Rate limited"
+// @Failure 503 {object} ErrorResponse "Service unavailable"
+// @Router /api/llm/health [get]
+// @ID getLLMHealth
+func llmHealthHandler(llmClient *llm.LLMClient) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if llmClient == nil {
+			RespondError(c, NewAppError(ErrInternal, "LLM client not initialized"))
+			return
+		}
+
+		// Validate the API key
+		err := llmClient.ValidateAPIKey()
+		if err != nil {
+			log.Printf("[LLM Health Check] API key validation failed: %v", err)
+
+			// Determine appropriate HTTP status code based on error
+			var statusCode int
+			var errorType string
+
+			errStr := strings.ToLower(err.Error())
+			switch {
+			case strings.Contains(errStr, "invalid api key"):
+				statusCode = 401
+				errorType = "invalid_api_key"
+			case strings.Contains(errStr, "insufficient credits"):
+				statusCode = 402
+				errorType = "insufficient_credits"
+			case strings.Contains(errStr, "rate limited"):
+				statusCode = 429
+				errorType = "rate_limited"
+			case strings.Contains(errStr, "timeout") || strings.Contains(errStr, "unavailable"):
+				statusCode = 503
+				errorType = "service_unavailable"
+			default:
+				statusCode = 503
+				errorType = "unknown_error"
+			}
+
+			c.JSON(statusCode, gin.H{
+				"success": false,
+				"error": gin.H{
+					"type":    errorType,
+					"message": err.Error(),
+				},
+			})
+			return
+		}
+
+		// API key is valid
+		RespondSuccess(c, map[string]interface{}{
+			"status":     "healthy",
+			"api_key":    "valid",
+			"message":    "LLM API key is valid and working",
+			"checked_at": time.Now().UTC().Format(time.RFC3339),
+		})
 	}
 }
 
