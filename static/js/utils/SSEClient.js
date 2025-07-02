@@ -47,9 +47,6 @@ export class SSEClient {
                 withCredentials: this.options.withCredentials
             });
 
-            // Register custom event listeners BEFORE setting up built-in handlers
-            this._registerCustomEventListeners();
-
             this._eventSource.onopen = () => {
                 console.log('SSEClient: Connection opened');
                 this._isConnected = true;
@@ -104,20 +101,6 @@ export class SSEClient {
             return;
         }
 
-        } catch (error) {
-            console.error('SSEClient: Failed to create EventSource:', error);
-            this._emit('error', { error: error.message });
-            throw error;
-        }
-    }
-
-    /**
-     * Register custom event listeners on the EventSource
-     * This is called before setting up the connection to ensure events are captured
-     */
-    _registerCustomEventListeners() {
-        if (!this._eventSource) return;
-
         // Register all custom event types that have listeners
         this._listeners.forEach((callbacks, eventType) => {
             // Skip built-in event types that are handled by onopen, onmessage, onerror
@@ -135,6 +118,9 @@ export class SSEClient {
                 });
             }
         });
+    }
+
+
     }
 
     /**
