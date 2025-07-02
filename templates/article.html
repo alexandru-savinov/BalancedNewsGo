@@ -127,20 +127,56 @@
                     const articleId = this.getAttribute('data-article-id');
                     console.log('📄 Article ID:', articleId);
                     
-                    // Reset progress indicator to ensure clean state
-                    if (progressIndicator && typeof progressIndicator.reset === 'function') {
-                        progressIndicator.reset();
-                    } else {
-                        console.warn('ProgressIndicator reset method not available');
-                    }
+                    // SIMPLE SOLUTION: Skip ProgressIndicator entirely and use direct polling
+                    console.log('🔌 Starting simple polling-based completion detection');
 
-                    // Connect to SSE for progress updates
-                    if (progressIndicator && typeof progressIndicator.connect === 'function') {
-                        console.log('🔌 Connecting ProgressIndicator to SSE');
-                        progressIndicator.connect(articleId);
-                    } else {
-                        console.warn('ProgressIndicator connect method not available');
-                    }
+                    // Start polling for completion immediately
+                    let pollAttempts = 0;
+                    const maxPollAttempts = 60; // 2 minutes of polling
+                    const pollInterval = 2000; // Poll every 2 seconds
+
+                    const pollTimer = setInterval(async () => {
+                        pollAttempts++;
+                        console.log(`⏳ Polling for completion (attempt ${pollAttempts}/${maxPollAttempts})`);
+
+                        try {
+                            // Check if analysis is complete by fetching bias data
+                            const response = await fetch(`/api/articles/${articleId}/bias`);
+                            if (response.ok) {
+                                const biasData = await response.json();
+
+                                if (biasData.success && biasData.data && biasData.data.composite_score !== null) {
+                                    console.log('✅ Analysis completed via polling - re-enabling button');
+
+                                    // Clear polling
+                                    clearInterval(pollTimer);
+
+                                    // Clear emergency timeout
+                                    if (reanalyzeBtn._emergencyTimeout) {
+                                        clearTimeout(reanalyzeBtn._emergencyTimeout);
+                                        reanalyzeBtn._emergencyTimeout = null;
+                                    }
+
+                                    // Reset button state
+                                    btnText.style.display = 'inline';
+                                    btnLoading.style.display = 'none';
+                                    reanalyzeBtn.disabled = false;
+
+                                    // Update bias analysis
+                                    await updateBiasAnalysis(articleId);
+                                    return;
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`❌ Polling attempt ${pollAttempts} failed:`, error);
+                        }
+
+                        // Stop polling after max attempts - emergency timeout will handle it
+                        if (pollAttempts >= maxPollAttempts) {
+                            console.log('⏰ Polling reached max attempts - relying on emergency timeout');
+                            clearInterval(pollTimer);
+                        }
+                    }, pollInterval);
 
                     // Disable button and show loading state
                     this.disabled = true;
