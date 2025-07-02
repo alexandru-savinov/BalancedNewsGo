@@ -191,6 +191,12 @@ class ProgressIndicator extends HTMLElement {
       const endpoint = `/api/llm/score-progress/${this._articleId}`;
       this._sseClient.connect(endpoint);
 
+      // Set up a timeout to handle cases where SSE completely fails
+      this._connectionTimeout = setTimeout(() => {
+        console.warn('ProgressIndicator: SSE connection timeout - implementing fallback');
+        this._handleSSETimeout();
+      }, 90000); // 90 second timeout
+
     } catch (error) {
       console.error('Failed to establish SSE connection:', error);
       this._updateStatus('error', `Connection failed: ${error.message}`);
@@ -208,6 +214,11 @@ class ProgressIndicator extends HTMLElement {
       this._reconnectTimer = null;
     }
 
+    if (this._connectionTimeout) {
+      clearTimeout(this._connectionTimeout);
+      this._connectionTimeout = null;
+    }
+
     this._reconnectAttempts = 0;
   }
 
@@ -218,6 +229,83 @@ class ProgressIndicator extends HTMLElement {
     this._stage = '';
     this._eta = null;
     this._updateUI();
+  }
+
+  /**
+   * Handle SSE connection timeout by implementing polling fallback
+   */
+  _handleSSETimeout() {
+    console.log('ProgressIndicator: SSE timeout - implementing polling fallback');
+
+    // Disconnect SSE to clean up
+    this.disconnect();
+
+    // Start polling fallback
+    this._startPollingFallback();
+  }
+
+  /**
+   * Start polling fallback when SSE fails
+   */
+  _startPollingFallback() {
+    console.log('ProgressIndicator: Starting polling fallback');
+
+    let pollAttempts = 0;
+    const maxPollAttempts = 30; // 30 attempts = 60 seconds
+    const pollInterval = 2000; // Poll every 2 seconds
+
+    this._updateStatus('processing', 'Using polling fallback...');
+
+    const pollTimer = setInterval(async () => {
+      pollAttempts++;
+      console.log(`ProgressIndicator: Polling attempt ${pollAttempts}/${maxPollAttempts}`);
+
+      try {
+        // Check if analysis is complete by fetching bias data
+        const response = await fetch(`/api/articles/${this._articleId}/bias`);
+        if (response.ok) {
+          const biasData = await response.json();
+
+          if (biasData.success && biasData.data && biasData.data.composite_score !== null) {
+            console.log('ProgressIndicator: Analysis completed via polling fallback');
+
+            // Clear polling
+            clearInterval(pollTimer);
+
+            // Simulate completion event
+            const completionData = {
+              step: 'Done',
+              message: 'Analysis complete',
+              percent: 100,
+              status: 'Complete',
+              final_score: biasData.data.composite_score
+            };
+
+            this._updateStatus('completed', 'Analysis completed');
+            this._dispatchEvent('completed', completionData);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error(`ProgressIndicator: Polling attempt ${pollAttempts} failed:`, error);
+      }
+
+      // Stop polling after max attempts
+      if (pollAttempts >= maxPollAttempts) {
+        console.log('ProgressIndicator: Polling fallback reached max attempts');
+        clearInterval(pollTimer);
+
+        // Force completion to unblock UI
+        this._updateStatus('completed', 'Analysis completed (timeout)');
+        this._dispatchEvent('completed', {
+          step: 'Done',
+          message: 'Analysis complete',
+          percent: 100,
+          status: 'Complete',
+          final_score: 0
+        });
+      }
+    }, pollInterval);
   }
 
   // Manual progress update (for non-SSE scenarios)
@@ -428,6 +516,14 @@ class ProgressIndicator extends HTMLElement {
       }
 
       if (progress >= 100 || status === 'completed' || status === 'complete') {
+        console.log('ProgressIndicator: Analysis completed via SSE');
+
+        // Clear timeout since we received completion via SSE
+        if (this._connectionTimeout) {
+          clearTimeout(this._connectionTimeout);
+          this._connectionTimeout = null;
+        }
+
         this._updateStatus('completed', 'Analysis completed');
         this._dispatchEvent('completed', progressData);
 

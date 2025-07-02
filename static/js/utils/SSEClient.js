@@ -41,17 +41,24 @@ export class SSEClient {
         });
 
         try {
+            console.log('SSEClient: Connecting to', fullUrl.toString());
+
             this._eventSource = new EventSource(fullUrl.toString(), {
                 withCredentials: this.options.withCredentials
             });
 
+            // Register custom event listeners BEFORE setting up built-in handlers
+            this._registerCustomEventListeners();
+
             this._eventSource.onopen = () => {
+                console.log('SSEClient: Connection opened');
                 this._isConnected = true;
                 this._reconnectAttempts = 0;
                 this._emit('connected', { url: fullUrl.toString() });
             };
 
             this._eventSource.onmessage = (event) => {
+                console.log('SSEClient: Received message:', event.data);
                 try {
                     const data = JSON.parse(event.data);
                     this._emit('message', data);
@@ -62,13 +69,20 @@ export class SSEClient {
             };
 
             this._eventSource.onerror = (event) => {
+                console.error('SSEClient: Error event:', event);
                 this._isConnected = false;
 
+                // Check readyState to determine the type of error
                 if (this._eventSource.readyState === EventSource.CLOSED) {
-                    this._emit('disconnected', { event });
+                    console.log('SSEClient: Connection closed');
+                    this._emit('disconnected', { event, reason: 'Connection closed' });
                     this._handleReconnection();
+                } else if (this._eventSource.readyState === EventSource.CONNECTING) {
+                    console.log('SSEClient: Connection failed, will retry');
+                    this._emit('error', { event, reason: 'Connection failed' });
                 } else {
-                    this._emit('error', { event });
+                    console.log('SSEClient: Unknown error state');
+                    this._emit('error', { event, reason: 'Unknown error' });
                 }
             };
 
@@ -90,11 +104,27 @@ export class SSEClient {
             return;
         }
 
-        // Iterate through all registered listeners and attach custom event types to EventSource
+        } catch (error) {
+            console.error('SSEClient: Failed to create EventSource:', error);
+            this._emit('error', { error: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Register custom event listeners on the EventSource
+     * This is called before setting up the connection to ensure events are captured
+     */
+    _registerCustomEventListeners() {
+        if (!this._eventSource) return;
+
+        // Register all custom event types that have listeners
         this._listeners.forEach((callbacks, eventType) => {
             // Skip built-in event types that are handled by onopen, onmessage, onerror
             if (!['connected', 'disconnected', 'error', 'message', 'reconnecting', 'failed'].includes(eventType)) {
+                console.log(`SSEClient: Registering listener for event type: ${eventType}`);
                 this._eventSource.addEventListener(eventType, (event) => {
+                    console.log(`SSEClient: Received ${eventType} event:`, event.data);
                     try {
                         const data = JSON.parse(event.data);
                         this._emit(eventType, data);
@@ -143,7 +173,9 @@ export class SSEClient {
 
         // If EventSource already exists and this is a custom event type, attach immediately
         if (this._eventSource && !['connected', 'disconnected', 'error', 'message', 'reconnecting', 'failed'].includes(eventType)) {
+            console.log(`SSEClient: Late-registering listener for event type: ${eventType}`);
             this._eventSource.addEventListener(eventType, (event) => {
+                console.log(`SSEClient: Received ${eventType} event:`, event.data);
                 try {
                     const data = JSON.parse(event.data);
                     this._emit(eventType, data);

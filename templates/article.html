@@ -173,6 +173,13 @@
                         progressIndicator._completedHandler = async (event) => {
                             console.log('Analysis completed:', event.detail);
 
+                            // Clear emergency timeout since completion was received
+                            if (reanalyzeBtn._emergencyTimeout) {
+                                clearTimeout(reanalyzeBtn._emergencyTimeout);
+                                reanalyzeBtn._emergencyTimeout = null;
+                                console.log('Emergency timeout cleared - normal completion received');
+                            }
+
                             // Don't hide progress indicator immediately - let users see completion state
                             // The ProgressIndicator will auto-hide after a delay via the 'autohide' event
 
@@ -249,7 +256,28 @@
                         // This prevents race condition with auto-connect="true"
                         progressIndicator.classList.remove('progress-hidden');
                         progressIndicator.style.display = 'block';
-                        
+
+                        // EMERGENCY TIMEOUT: Force button re-enable after 2 minutes if nothing happens
+                        // This ensures the UI never gets permanently stuck
+                        const emergencyTimeout = setTimeout(() => {
+                            console.warn('EMERGENCY TIMEOUT: Force re-enabling button after 2 minutes');
+
+                            // Reset button state
+                            btnText.style.display = 'inline';
+                            btnLoading.style.display = 'none';
+                            reanalyzeBtn.disabled = false;
+
+                            // Hide progress indicator
+                            progressIndicator.style.display = 'none';
+                            progressIndicator.classList.add('progress-hidden');
+
+                            // Trigger auto-refresh to show updated results
+                            updateBiasAnalysis(articleId);
+                        }, 120000); // 2 minutes
+
+                        // Store timeout ID so it can be cleared if completion happens normally
+                        reanalyzeBtn._emergencyTimeout = emergencyTimeout;
+
                     } catch (error) {
                         console.error('Error requesting reanalysis:', error);
                         
@@ -290,16 +318,16 @@
                 } catch (error) {
                     console.error('Error updating bias analysis:', error);
                     
-                    // Show a subtle notification that data couldn't be updated
+                    // Auto-refresh instead of manual refresh message
                     if (biasScoreElement) {
-                        const originalText = biasScoreElement.textContent;
-                        biasScoreElement.textContent = 'Analysis complete - refresh page for updated results';
+                        biasScoreElement.textContent = 'Auto-refreshing page in 3 seconds...';
                         biasScoreElement.style.fontStyle = 'italic';
-                        
+                        biasScoreElement.style.color = '#007bff';
+
                         setTimeout(() => {
-                            biasScoreElement.textContent = originalText;
-                            biasScoreElement.style.fontStyle = 'normal';
-                        }, 5000);
+                            console.log('Auto-refreshing page to show updated results');
+                            window.location.reload();
+                        }, 3000);
                     }
                 }
             }
