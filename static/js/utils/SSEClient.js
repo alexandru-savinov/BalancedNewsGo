@@ -120,9 +120,6 @@ export class SSEClient {
         });
     }
 
-
-    }
-
     /**
      * Handle automatic reconnection
      */
