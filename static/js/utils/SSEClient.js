@@ -90,7 +90,7 @@ export class SSEClient {
             return;
         }
 
-        // Iterate through all registered listeners and attach custom event types to EventSource
+        // Register all custom event types that have listeners
         this._listeners.forEach((callbacks, eventType) => {
             // Skip built-in event types that are handled by onopen, onmessage, onerror
             if (!['connected', 'disconnected', 'error', 'message', 'reconnecting', 'failed'].includes(eventType)) {

@@ -459,6 +459,10 @@ jobs:
           # Run accessibility tests
           npx playwright test tests/e2e/accessibility-pages.spec.ts --reporter=dot
 
+          # Run progress indicator tests
+          echo "Running progress indicator tests..."
+          npx playwright test tests/progress-indicator.spec.ts --reporter=dot
+
           # Stop the server
           kill $SERVER_PID || true
 
