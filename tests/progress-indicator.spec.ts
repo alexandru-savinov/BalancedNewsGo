@@ -122,7 +122,17 @@ test.describe('Progress Indicator Functionality', () => {
     await reanalyzeBtn.click();
 
     // Wait for SSE connection to be established
-    await page.waitForFunction(() => sseRequests.length > 0, { timeout: 5000 });
+    // Use polling in Node.js context instead of browser context
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds with 100ms intervals
+    while (sseRequests.length === 0 && attempts < maxAttempts) {
+      await page.waitForTimeout(100);
+      attempts++;
+    }
+
+    if (sseRequests.length === 0) {
+      throw new Error('SSE request was not made within timeout period');
+    }
 
     // Check that SSE request was made
     expect(sseRequests.length).toBeGreaterThan(0);
