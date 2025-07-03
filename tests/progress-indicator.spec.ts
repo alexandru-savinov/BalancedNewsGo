@@ -4,12 +4,13 @@ test.describe('Progress Indicator Functionality', () => {
   
   test.beforeEach(async ({ page }) => {
     // Navigate to an article page where we can test the progress indicator
-    await page.goto('/article/600');
+    // Use article ID 1 which should exist in the test database
+    await page.goto('/article/1');
     await page.waitForLoadState('networkidle');
   });
 
   test('should display progress indicator elements correctly', async ({ page }) => {
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     
     // Check that the progress indicator element exists
     const progressIndicator = page.locator('#reanalysis-progress');
@@ -33,7 +34,7 @@ test.describe('Progress Indicator Functionality', () => {
   });
 
   test('should load progress indicator JavaScript modules', async ({ page }) => {
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     
     // Check for JavaScript errors
     const errors: string[] = [];
@@ -59,7 +60,7 @@ test.describe('Progress Indicator Functionality', () => {
   });
 
   test('should handle reanalysis button click and show progress', async ({ page }) => {
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     
     // Set up console monitoring to catch events
     const consoleMessages: string[] = [];
@@ -105,7 +106,7 @@ test.describe('Progress Indicator Functionality', () => {
   });
 
   test('should show real-time progress updates via SSE', async ({ page }) => {
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     
     // Set up network monitoring to catch SSE requests
     const sseRequests: string[] = [];
@@ -136,7 +137,7 @@ test.describe('Progress Indicator Functionality', () => {
 
     // Check that SSE request was made
     expect(sseRequests.length).toBeGreaterThan(0);
-    expect(sseRequests[0]).toContain('/api/llm/score-progress/600');
+    expect(sseRequests[0]).toContain('/api/llm/score-progress/1');
 
     // Check for progress content in the progress indicator
     const progressContent = progressIndicator.locator('.progress-content, .progress-stage, [data-progress]');
@@ -146,7 +147,7 @@ test.describe('Progress Indicator Functionality', () => {
   });
 
   test('should handle analysis completion and update bias score', async ({ page }) => {
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     
     // Mock SSE endpoint to simulate completion after progress updates
     await page.route('/api/llm/score-progress/*', async (route) => {
@@ -196,10 +197,10 @@ data: {"progress": 100, "stage": "completed", "status": "completed", "step": "Do
   });
 
   test('should handle API format compatibility', async ({ page }) => {
-    await page.goto('/article/600');
-    
+    await page.goto('/article/1');
+
     // Test the bias score API directly
-    const response = await page.request.get('/api/articles/600/bias');
+    const response = await page.request.get('/api/articles/1/bias');
     const data = await response.json();
 
     expect(response.ok()).toBe(true);
@@ -226,7 +227,7 @@ data: {"progress": 100, "stage": "completed", "status": "completed", "step": "Do
   });
 
   test('should handle errors gracefully', async ({ page }) => {
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     
     // Mock a failing reanalysis request
     await page.route('/api/llm/reanalyze/*', (route) => {
@@ -255,7 +256,7 @@ data: {"progress": 100, "stage": "completed", "status": "completed", "step": "Do
   });
 
   test('should handle SSE connection errors', async ({ page }) => {
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     
     // Mock SSE endpoint to return error or fail to connect
     await page.route('/api/llm/score-progress/*', (route) => {
@@ -286,7 +287,7 @@ data: {"progress": 100, "stage": "completed", "status": "completed", "step": "Do
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
     
-    await page.goto('/article/600');
+    await page.goto('/article/1');
     await page.waitForLoadState('networkidle');
 
     const reanalyzeBtn = page.locator('#reanalyze-btn');
