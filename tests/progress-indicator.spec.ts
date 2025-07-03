@@ -223,7 +223,13 @@ data: {"progress": 100, "stage": "completed", "status": "completed", "step": "Do
       return compositeScore;
     }, data);
 
-    expect(extractionResult).not.toBeNull();
+    // The extraction should work (not undefined), but composite_score can be null when no bias data exists
+    expect(extractionResult).not.toBeUndefined();
+
+    // If composite_score is null, verify that status indicates scoring is unavailable
+    if (extractionResult === null) {
+      expect(data.data).toHaveProperty('status', 'scoring_unavailable');
+    }
   });
 
   test('should handle errors gracefully', async ({ page }) => {
