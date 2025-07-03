@@ -76,7 +76,7 @@ SERVER_BIN      := bin\newbalancer_server.exe # Use backslashes for Windows
 SHORT           := -short
 
 .PHONY: help build run stop restart clean \
-        tidy lint unit integ e2e test coverage-core coverage coverage-html \
+        tidy lint static-analysis-ci unit unit-ci integ e2e e2e-ci test coverage-core coverage coverage-html \
         mock-llm-go mock-llm-py docker-up docker-down integration benchmark \
         precommit-check
 
@@ -130,6 +130,26 @@ tidy: ## go mod tidy
 lint: ## Run golangci-lint
 	$(GOLANGCI) run --timeout=5m
 
+static-analysis-ci: ## Run comprehensive static analysis matching CI
+	@echo "Running static analysis for concurrency issues..."
+	@echo "✓ Running go vet..."
+	$(GO) vet -composites=false ./...
+	@echo "✓ Running staticcheck..."
+ifeq ($(OS),Windows_NT)
+	@where staticcheck >nul 2>&1 || (echo "Installing staticcheck..." && $(GO) install honnef.co/go/tools/cmd/staticcheck@latest)
+	@staticcheck ./...
+else
+	@if command -v staticcheck >/dev/null 2>&1; then \
+		staticcheck ./...; \
+	else \
+		echo "Installing staticcheck..."; \
+		$(GO) install honnef.co/go/tools/cmd/staticcheck@latest; \
+		staticcheck ./...; \
+	fi
+endif
+	@echo "✓ Running golangci-lint with test files..."
+	$(GOLANGCI) run --skip-files="" --tests=true ./...
+
 # Testing Matrix
 # ===============
 
@@ -151,6 +171,32 @@ endif
 	$(GO_TEST_CMD)
 	@echo "Unit tests complete."
 
+unit-ci: ## Run unit tests matching CI configuration (3 runs with coverage)
+	@echo "Running unit tests with CI configuration..."
+	@echo "Running tests 3 times to catch intermittent issues..."
+ifeq ($(OS),Windows_NT)
+	@set NO_AUTO_ANALYZE=true && set NO_DOCKER=true && $(GO) test -v -count=1 -parallel=4 -coverprofile=coverage-1.out -covermode=atomic ./...
+	@echo "Test run 1/3 completed"
+	@set NO_AUTO_ANALYZE=true && set NO_DOCKER=true && $(GO) test -v -count=1 -parallel=4 -coverprofile=coverage-2.out -covermode=atomic ./...
+	@echo "Test run 2/3 completed"
+	@set NO_AUTO_ANALYZE=true && set NO_DOCKER=true && $(GO) test -v -count=1 -parallel=4 -coverprofile=coverage-3.out -covermode=atomic ./...
+	@echo "Test run 3/3 completed"
+	@echo "Using the last coverage file"
+	@move coverage-3.out coverage.out
+	@del coverage-*.out 2>nul || echo "No coverage files to clean"
+else
+	NO_AUTO_ANALYZE=true NO_DOCKER=true $(GO) test -v -count=1 -parallel=4 -coverprofile=coverage-1.out -covermode=atomic ./...
+	@echo "Test run 1/3 completed"
+	NO_AUTO_ANALYZE=true NO_DOCKER=true $(GO) test -v -count=1 -parallel=4 -coverprofile=coverage-2.out -covermode=atomic ./...
+	@echo "Test run 2/3 completed"
+	NO_AUTO_ANALYZE=true NO_DOCKER=true $(GO) test -v -count=1 -parallel=4 -coverprofile=coverage-3.out -covermode=atomic ./...
+	@echo "Test run 3/3 completed"
+	@echo "Using the last coverage file"
+	@mv coverage-3.out coverage.out
+	@rm -f coverage-*.out
+endif
+	@echo "CI-style unit tests complete."
+
 integ: ## Go integration tests (requires DB etc.)
 	$(GO) test -tags=integration ./cmd/... ./internal...
 
@@ -171,6 +217,21 @@ integration: integ ## Alias for the 'integ' target to allow 'make integration'
 e2e: docker-up ## Docker stack + Playwright e2e
 	pnpm --filter=web test:e2e
 	$(MAKE) docker-down
+
+e2e-ci: ## Run Playwright tests matching CI configuration
+	@echo "Running Playwright tests with CI configuration..."
+	@echo "Seeding test data for accessibility tests..."
+	@set DATABASE_PATH=newsbalancer.db && set DB_CONNECTION=newsbalancer.db && $(GO) run ./cmd/seed_test_data
+	@echo "Starting server in background..."
+	@set DATABASE_PATH=newsbalancer.db && set DB_CONNECTION=newsbalancer.db && set NO_AUTO_ANALYZE=true && set PORT=8080 && start /B .\bin\newbalancer_server.exe
+	@echo "Waiting for server to be ready..."
+	@timeout /t 10 /nobreak >nul
+	@echo "Running accessibility tests..."
+	@npm run test:accessibility
+	@echo "Running progress indicator tests..."
+	@npm run test:progress-indicator
+	@echo "Stopping server..."
+	@taskkill /IM newbalancer_server.exe /F 2>nul || echo "Server already stopped."
 
 test: unit integ
 	@echo "All tests complete."
@@ -269,23 +330,21 @@ precommit-check: ## Run the same checks as CI/CD pipeline (for local verificatio
 	@echo "🔍 Step 2: Linting and static analysis (matching CI)..."
 	@echo "✓ Running golangci-lint..."
 	@$(MAKE) lint
-	@echo "✓ Running go vet..."
-	@$(GO) vet -composites=false ./...
-	@echo "✓ Running staticcheck..."
-	@if command -v staticcheck >/dev/null 2>&1; then \
-		staticcheck ./...; \
-	else \
-		echo "⚠ staticcheck not found, skipping (install with: go install honnef.co/go/tools/cmd/staticcheck@latest)"; \
-	fi
+	@echo "✓ Running comprehensive static analysis..."
+	@$(MAKE) static-analysis-ci
 	@echo ""
 	@echo "🏗️ Step 3: Build verification..."
 	@echo "✓ Building application..."
 	@$(GO) build -o test-server-precommit$(if $(filter Windows_NT,$(OS)),.exe,) ./cmd/server
-	@rm -f test-server-precommit$(if $(filter Windows_NT,$(OS)),.exe,)
+ifeq ($(OS),Windows_NT)
+	@del test-server-precommit.exe 2>nul || echo "Build artifact cleaned"
+else
+	@rm -f test-server-precommit
+endif
 	@echo ""
-	@echo "🧪 Step 4: Running unit tests..."
-	@echo "✓ Running unit tests..."
-	@NO_AUTO_ANALYZE=true NO_DOCKER=true $(MAKE) unit ENABLE_RACE_DETECTION=false
+	@echo "🧪 Step 4: Running unit tests (CI-style)..."
+	@echo "✓ Running unit tests with CI configuration..."
+	@$(MAKE) unit-ci
 	@echo ""
 	@echo "🎉 All pre-commit checks passed! Your changes are ready to commit."
 	@echo ""

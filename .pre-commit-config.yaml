@@ -23,22 +23,29 @@ repos:
         args: ["./..."]
         pass_filenames: false
       - id: go-vet
-        name: go vet
+        name: go vet (CI-style)
         entry: go vet
+        language: system
+        files: "^(cmd|internal)/.*\\.go$"
+        args: ["-composites=false", "./..."]
+        pass_filenames: false
+      - id: golangci-lint
+        name: golangci-lint (CI-style)
+        entry: C:\Users\Alexander.Savinov\go\bin\golangci-lint.exe
+        language: system
+        files: "^(cmd|internal)/.*\\.go$"
+        args: ["run", "--timeout=5m", "--skip-files=", "--tests=true"]
+        pass_filenames: false
+      - id: staticcheck
+        name: staticcheck
+        entry: staticcheck
         language: system
         files: "^(cmd|internal)/.*\\.go$"
         args: ["./..."]
         pass_filenames: false
-      - id: golangci-lint
-        name: golangci-lint
-        entry: C:\Users\Alexander.Savinov\go\bin\golangci-lint.exe
-        language: system
-        files: "^(cmd|internal)/.*\\.go$"
-        args: ["run", "--timeout=5m"]
-        pass_filenames: false
       - id: go-unit-tests
-        name: go unit tests
-        entry: make unit ENABLE_RACE_DETECTION=false
+        name: go unit tests (CI-style)
+        entry: make unit-ci
         language: system
         files: "^(cmd|internal)/.*\\.go$"
         pass_filenames: false

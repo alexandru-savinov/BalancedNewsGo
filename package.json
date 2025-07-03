@@ -16,6 +16,9 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
+    "test:e2e:ci": "playwright test tests/e2e/accessibility-pages.spec.ts tests/progress-indicator.spec.ts --reporter=dot",
+    "test:accessibility": "playwright test tests/e2e/accessibility-pages.spec.ts --reporter=dot",
+    "test:progress-indicator": "playwright test tests/progress-indicator.spec.ts --reporter=dot",
     "lint:css": "stylelint \"static/css/**/*.css\""
   },
   "repository": {
