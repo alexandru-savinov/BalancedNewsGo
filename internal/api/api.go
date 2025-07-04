@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -526,7 +527,7 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		limitStr := c.DefaultQuery("limit", "20")
 		offsetStr := c.DefaultQuery("offset", "0")
 
-		log.Printf("[DEBUG] getArticlesHandler: Parsed query params - source: %s, leaning: %s, limit: %s, offset: %s", source, leaning, limitStr, offsetStr)
+		safeLogf("[DEBUG] getArticlesHandler: Parsed query params - source: %s, leaning: %s, limit: %s, offset: %s", source, leaning, limitStr, offsetStr)
 
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
@@ -541,15 +542,15 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[INFO] getArticlesHandler: Fetching articles (source=%s, leaning=%s, limit=%d, offset=%d)", source, leaning, limit, offset)
+		safeLogf("[INFO] getArticlesHandler: Fetching articles (source=%s, leaning=%s, limit=%d, offset=%d)", source, leaning, limit, offset)
 		// Corrected parameters for db.FetchArticles
-		log.Printf("[DEBUG] getArticlesHandler: Calling db.FetchArticles with source: '%s', leaning: '%s', limit: %d, offset: %d", source, leaning, limit, offset)
+		safeLogf("[DEBUG] getArticlesHandler: Calling db.FetchArticles with source: '%s', leaning: '%s', limit: %d, offset: %d", source, leaning, limit, offset)
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		// totalCount is not returned by FetchArticles, so its usage is removed for now.
 		log.Printf("[DEBUG] getArticlesHandler: After db.FetchArticles. Error: %v. Articles count: %d", err, len(articles))
 
 		if err != nil {
-			log.Printf("[ERROR] getArticlesHandler: Raw error from db.FetchArticles: %#v. Params - Source: '%s', Leaning: '%s', Limit: %d, Offset: %d", err, source, leaning, limit, offset)
+			safeLogf("[ERROR] getArticlesHandler: Raw error from db.FetchArticles: %#v. Params - Source: '%s', Leaning: '%s', Limit: %d, Offset: %d", err, source, leaning, limit, offset)
 			RespondError(c, WrapError(err, ErrInternal, fmt.Sprintf("Failed to fetch articles: %v", err)))
 			return
 		}
@@ -1754,6 +1755,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			if errors.Is(err, db.ErrArticleNotFound) {
 				RespondError(c, NewAppError(ErrNotFound, "Article not found"))
 				return
+
 			}
 			RespondError(c, NewAppError(ErrInternal, "Failed to fetch article"))
 			LogError(c, err, "manualScoreHandler: failed to fetch article")
@@ -1788,4 +1790,30 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			"score":      scoreVal,
 		})
 	}
+}
+
+// sanitizeForLog sanitizes user input to prevent log injection attacks
+// It removes or escapes potentially dangerous characters that could be used for log injection
+func sanitizeForLog(input string) string {
+	// Remove newlines and carriage returns to prevent log injection
+	re := regexp.MustCompile(`[\r\n\t]`)
+	sanitized := re.ReplaceAllString(input, "_")
+	
+	// Limit length to prevent log spam
+	if len(sanitized) > 100 {
+		sanitized = sanitized[:100] + "..."
+	}
+	
+	return sanitized
+}
+
+// safeLogf is a secure logging function that sanitizes user input
+func safeLogf(format string, args ...interface{}) {
+	// Sanitize string arguments that might contain user input
+	for i, arg := range args {
+		if str, ok := arg.(string); ok {
+			args[i] = sanitizeForLog(str)
+		}
+	}
+	log.Printf(format, args...)
 }

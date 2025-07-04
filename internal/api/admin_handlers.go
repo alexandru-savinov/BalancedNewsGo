@@ -104,6 +104,48 @@ func adminGetSourcesStatusHandler(rssCollector rss.CollectorInterface) gin.Handl
 // Analysis Control Handlers
 
 // adminReanalyzeRecentHandler handles POST /api/admin/reanalyze-recent
+// getRecentArticleIDs queries for recent article IDs to reanalyze
+func getRecentArticleIDs(dbConn *sqlx.DB) ([]int64, error) {
+	query := `
+		SELECT id FROM articles
+		WHERE created_at >= datetime('now', '-7 days')
+		ORDER BY created_at DESC
+		LIMIT 50
+	`
+	var articleIDs []int64
+	err := dbConn.Select(&articleIDs, query)
+	return articleIDs, err
+}
+
+// reanalyzeArticlesBatch processes a batch of articles for reanalysis
+func reanalyzeArticlesBatch(ctx context.Context, llmClient *llm.LLMClient, scoreManager *llm.ScoreManager, articleIDs []int64) {
+	log.Printf("[ADMIN] Starting reanalysis of %d recent articles", len(articleIDs))
+
+	for _, articleID := range articleIDs {
+		if err := llmClient.ReanalyzeArticle(ctx, articleID, scoreManager); err != nil {
+			log.Printf("[ADMIN] Failed to reanalyze article %d: %v", articleID, err)
+			continue
+		}
+		log.Printf("[ADMIN] Successfully reanalyzed article %d", articleID)
+	}
+
+	log.Printf("[ADMIN] Completed reanalysis of recent articles")
+}
+
+// performAsyncReanalysis handles the async reanalysis workflow
+func performAsyncReanalysis(llmClient *llm.LLMClient, scoreManager *llm.ScoreManager, dbConn *sqlx.DB) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	articleIDs, err := getRecentArticleIDs(dbConn)
+	if err != nil {
+		log.Printf("[ADMIN] Failed to query recent articles: %v", err)
+		return
+	}
+
+	reanalyzeArticlesBatch(ctx, llmClient, scoreManager, articleIDs)
+}
+
 func adminReanalyzeRecentHandler(llmClient *llm.LLMClient, scoreManager *llm.ScoreManager, dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Validate LLM service availability
@@ -113,36 +155,7 @@ func adminReanalyzeRecentHandler(llmClient *llm.LLMClient, scoreManager *llm.Sco
 		}
 
 		// Start async reanalysis of recent articles (last 7 days)
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-
-			// Query for recent articles (last 7 days)
-			query := `
-				SELECT id FROM articles
-				WHERE created_at >= datetime('now', '-7 days')
-				ORDER BY created_at DESC
-				LIMIT 50
-			`
-			var articleIDs []int64
-			if err := dbConn.Select(&articleIDs, query); err != nil {
-				log.Printf("[ADMIN] Failed to query recent articles: %v", err)
-				return
-			}
-
-			log.Printf("[ADMIN] Starting reanalysis of %d recent articles", len(articleIDs))
-
-			// Reanalyze each article
-			for _, articleID := range articleIDs {
-				if err := llmClient.ReanalyzeArticle(ctx, articleID, scoreManager); err != nil {
-					log.Printf("[ADMIN] Failed to reanalyze article %d: %v", articleID, err)
-					continue
-				}
-				log.Printf("[ADMIN] Successfully reanalyzed article %d", articleID)
-			}
-
-			log.Printf("[ADMIN] Completed reanalysis of recent articles")
-		}()
+		go performAsyncReanalysis(llmClient, scoreManager, dbConn)
 
 		response := AdminOperationResponse{
 			Status:    "reanalysis_started",
@@ -394,6 +407,67 @@ func adminCleanupOldArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // Monitoring Handlers
 
 // adminGetMetricsHandler handles GET /api/admin/metrics
+// getBasicCounts retrieves basic article counts
+func getBasicCounts(ctx context.Context, dbConn *sqlx.DB) (totalArticles, articlesToday, pendingAnalysis int) {
+	if err := dbConn.GetContext(ctx, &totalArticles, "SELECT COUNT(*) FROM articles"); err != nil {
+		log.Printf("[ADMIN] Failed to get total articles count: %v", err)
+	}
+
+	if err := dbConn.GetContext(ctx, &articlesToday, 
+		"SELECT COUNT(*) FROM articles WHERE DATE(created_at) = DATE('now')"); err != nil {
+		log.Printf("[ADMIN] Failed to get today's articles count: %v", err)
+	}
+
+	if err := dbConn.GetContext(ctx, &pendingAnalysis, 
+		"SELECT COUNT(*) FROM articles WHERE status = 'pending' OR composite_score IS NULL"); err != nil {
+		log.Printf("[ADMIN] Failed to get pending analysis count: %v", err)
+	}
+
+	return totalArticles, articlesToday, pendingAnalysis
+}
+
+// getBiasDistribution retrieves bias distribution counts
+func getBiasDistribution(ctx context.Context, dbConn *sqlx.DB) (leftCount, centerCount, rightCount int) {
+	if err := dbConn.GetContext(ctx, &leftCount, 
+		"SELECT COUNT(*) FROM articles WHERE composite_score < -0.2"); err != nil {
+		log.Printf("[ADMIN] Failed to get left count: %v", err)
+	}
+
+	if err := dbConn.GetContext(ctx, &centerCount, 
+		"SELECT COUNT(*) FROM articles WHERE composite_score >= -0.2 AND composite_score <= 0.2"); err != nil {
+		log.Printf("[ADMIN] Failed to get center count: %v", err)
+	}
+
+	if err := dbConn.GetContext(ctx, &rightCount, 
+		"SELECT COUNT(*) FROM articles WHERE composite_score > 0.2"); err != nil {
+		log.Printf("[ADMIN] Failed to get right count: %v", err)
+	}
+
+	return leftCount, centerCount, rightCount
+}
+
+// calculatePercentages calculates bias percentages
+func calculatePercentages(leftCount, centerCount, rightCount int) (leftPct, centerPct, rightPct float64) {
+	total := leftCount + centerCount + rightCount
+	if total > 0 {
+		leftPct = float64(leftCount) / float64(total) * 100
+		centerPct = float64(centerCount) / float64(total) * 100
+		rightPct = float64(rightCount) / float64(total) * 100
+	}
+	return leftPct, centerPct, rightPct
+}
+
+// getDatabaseSize retrieves the database size
+func getDatabaseSize(ctx context.Context, dbConn *sqlx.DB) string {
+	var dbSize int64
+	err := dbConn.GetContext(ctx, &dbSize, "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+	if err != nil {
+		log.Printf("[ADMIN] Failed to get database size: %v", err)
+		return "Unknown"
+	}
+	return fmt.Sprintf("%.2f MB", float64(dbSize)/(1024*1024))
+}
+
 func adminGetMetricsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -401,67 +475,20 @@ func adminGetMetricsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		stats := SystemStatsResponse{}
 
-		// Get total articles count
-		err := dbConn.GetContext(ctx, &stats.TotalArticles, "SELECT COUNT(*) FROM articles")
-		if err != nil {
-			log.Printf("[ADMIN] Failed to get total articles count: %v", err)
-		}
+		// Get basic counts
+		stats.TotalArticles, stats.ArticlesToday, stats.PendingAnalysis = getBasicCounts(ctx, dbConn)
 
-		// Get articles today count
-		err = dbConn.GetContext(ctx, &stats.ArticlesToday,
-			"SELECT COUNT(*) FROM articles WHERE DATE(created_at) = DATE('now')")
-		if err != nil {
-			log.Printf("[ADMIN] Failed to get today's articles count: %v", err)
-		}
-
-		// Get pending analysis count
-		err = dbConn.GetContext(ctx, &stats.PendingAnalysis,
-			"SELECT COUNT(*) FROM articles WHERE status = 'pending' OR composite_score IS NULL")
-		if err != nil {
-			log.Printf("[ADMIN] Failed to get pending analysis count: %v", err)
-		}
-
-		// Get bias distribution counts
-		var leftCount, centerCount, rightCount int
-		err = dbConn.GetContext(ctx, &leftCount,
-			"SELECT COUNT(*) FROM articles WHERE composite_score < -0.2")
-		if err != nil {
-			log.Printf("[ADMIN] Failed to get left count: %v", err)
-		}
-
-		err = dbConn.GetContext(ctx, &centerCount,
-			"SELECT COUNT(*) FROM articles WHERE composite_score >= -0.2 AND composite_score <= 0.2")
-		if err != nil {
-			log.Printf("[ADMIN] Failed to get center count: %v", err)
-		}
-
-		err = dbConn.GetContext(ctx, &rightCount,
-			"SELECT COUNT(*) FROM articles WHERE composite_score > 0.2")
-		if err != nil {
-			log.Printf("[ADMIN] Failed to get right count: %v", err)
-		}
-
+		// Get bias distribution
+		leftCount, centerCount, rightCount := getBiasDistribution(ctx, dbConn)
 		stats.LeftCount = leftCount
 		stats.CenterCount = centerCount
 		stats.RightCount = rightCount
 
 		// Calculate percentages
-		total := leftCount + centerCount + rightCount
-		if total > 0 {
-			stats.LeftPercentage = float64(leftCount) / float64(total) * 100
-			stats.CenterPercentage = float64(centerCount) / float64(total) * 100
-			stats.RightPercentage = float64(rightCount) / float64(total) * 100
-		}
+		stats.LeftPercentage, stats.CenterPercentage, stats.RightPercentage = calculatePercentages(leftCount, centerCount, rightCount)
 
-		// Get database size (SQLite specific)
-		var dbSize int64
-		err = dbConn.GetContext(ctx, &dbSize, "SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
-		if err != nil {
-			log.Printf("[ADMIN] Failed to get database size: %v", err)
-			stats.DatabaseSize = "Unknown"
-		} else {
-			stats.DatabaseSize = fmt.Sprintf("%.2f MB", float64(dbSize)/(1024*1024))
-		}
+		// Get database size
+		stats.DatabaseSize = getDatabaseSize(ctx, dbConn)
 
 		// Active sources would need RSS collector integration
 		stats.ActiveSources = 0 // Placeholder
