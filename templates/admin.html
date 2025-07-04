@@ -20,8 +20,8 @@
     </header>
 
     <div class="container">
-        <h1>Dashboard Overview</h1>
-        
+        <h1>Admin Dashboard</h1>
+
         <!-- System Status -->
         <div class="system-status">
             <div class="status-item {{if .SystemStatus.DatabaseOK}}status-good{{else}}status-error{{end}}">
@@ -36,9 +36,9 @@
                 <h4>RSS Feeds</h4>
                 <p>{{if .SystemStatus.RSSServiceOK}}✅ Active{{else}}⚠️ Issues{{end}}</p>
             </div>
-            <div class="status-item status-good">
+            <div class="status-item {{if .SystemStatus.ServerOK}}status-good{{else}}status-warning{{end}}">
                 <h4>Server</h4>
-                <p>✅ Running</p>
+                <p>{{if .SystemStatus.ServerOK}}✅ Running{{else}}⚠️ Issues{{end}}</p>
             </div>
         </div>
 
@@ -96,18 +96,18 @@
             <!-- Admin Controls -->
         <div class="admin-controls">
             <h3>System Controls</h3>
-            
+
             <div class="control-section">
-                <h3>Feed Management</h3>
+                <h4>Feed Management</h4>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="refreshFeeds()">Refresh All Feeds</button>
                     <button class="btn btn-warning" onclick="resetFeedErrors()">Reset Feed Errors</button>
-                    <a href="/api/admin/sources" class="btn btn-primary">View Sources Status</a>
+                    <a href="/api/admin/sources" class="btn btn-info" target="_blank">View Sources Status</a>
                 </div>
             </div>
 
             <div class="control-section">
-                <h3>Analysis Control</h3>
+                <h4>Analysis Control</h4>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="reanalyzeArticles()">Reanalyze Recent Articles</button>
                     <button class="btn btn-warning" onclick="clearAnalysisErrors()">Clear Analysis Errors</button>
@@ -116,19 +116,19 @@
             </div>
 
             <div class="control-section">
-                <h3>Database Management</h3>
+                <h4>Database Management</h4>
                 <div class="btn-group">
                     <button class="btn btn-warning" onclick="optimizeDatabase()">Optimize Database</button>
-                    <button class="btn btn-primary" onclick="exportData()">Export Data</button>
+                    <button class="btn btn-info" onclick="exportData()">Export Data</button>
                     <button class="btn btn-danger" onclick="confirmCleanupOldArticles()" title="Remove articles older than 30 days">Cleanup Old Articles</button>
                 </div>
             </div>
 
             <div class="control-section">
-                <h3>Monitoring</h3>
+                <h4>Monitoring</h4>
                 <div class="btn-group">
-                    <a href="/api/admin/metrics" class="btn btn-primary">View Metrics</a>
-                    <a href="/api/admin/logs" class="btn btn-primary">View Logs</a>
+                    <a href="/api/admin/metrics" class="btn btn-info" target="_blank">View Metrics</a>
+                    <a href="/api/admin/logs" class="btn btn-info" target="_blank">View Logs</a>
                     <button class="btn btn-success" onclick="runHealthCheck()">Run Health Check</button>
                 </div>
             </div>
