@@ -162,3 +162,45 @@ func TestAdminGetLogsHandlerBasic(t *testing.T) {
 	assert.True(t, ok)
 	assert.Greater(t, len(logs), 0) // Should have sample logs
 }
+
+// Test for admin logs endpoint with different scenarios
+func TestAdminGetLogsHandlerBasicScenarios(t *testing.T) {
+	tests := []struct {
+		name           string
+		expectedStatus int
+		checkLogs      bool
+	}{
+		{
+			name:           "successful logs retrieval",
+			expectedStatus: http.StatusOK,
+			checkLogs:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := setupBasicTestRouter()
+			router.GET("/api/admin/logs", adminGetLogsHandler())
+
+			req := httptest.NewRequest("GET", "/api/admin/logs", nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code)
+
+			if tt.checkLogs {
+				var response StandardResponse
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				assert.NoError(t, err)
+				assert.True(t, response.Success)
+
+				data, ok := response.Data.(map[string]interface{})
+				assert.True(t, ok)
+				assert.Contains(t, data, "logs")
+				assert.Contains(t, data, "message")
+				assert.Contains(t, data, "timestamp")
+			}
+		})
+	}
+}
