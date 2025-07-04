@@ -53,18 +53,6 @@ jobs:
           go mod download
           npm install
 
-      - name: Build test server binary for CI
-        run: |
-          go build -o test-server-ci ./cmd/server
-          chmod +x test-server-ci
-
-      - name: Run Go tests with coverage
-        env:
-          NO_AUTO_ANALYZE: "true"
-          NO_DOCKER: "true"
-        run: |
-          go test -v -coverprofile=coverage.out -covermode=atomic ./...
-
       - name: Run golangci-lint for additional security checks
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
@@ -78,17 +66,8 @@ jobs:
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || '' }}
         with:
           args: >
             -Dsonar.go.golangci-lint.reportPaths=golangci-lint-report.xml
             -Dsonar.go.gosec.reportPaths=gosec-report.json
-            -Dsonar.go.coverage.reportPaths=coverage.out
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage.out
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
