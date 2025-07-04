@@ -132,7 +132,7 @@ test.describe('Admin Dashboard Comprehensive E2E Tests', () => {
     await metricsButton.click();
     
     // Test view logs button
-    const logsButton = page.locator('button:has-text("View Logs")');
+    const logsButton = page.locator('a:has-text("View Logs")');
     await expect(logsButton).toBeVisible();
     
     page.on('dialog', async dialog => {
