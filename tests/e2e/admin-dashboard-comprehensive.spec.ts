@@ -108,7 +108,7 @@ test.describe('Admin Dashboard Comprehensive E2E Tests', () => {
     expect(download.suggestedFilename()).toContain('.csv');
     
     // Test cleanup old data button
-    const cleanupButton = page.locator('button:has-text("Cleanup Old Data")');
+    const cleanupButton = page.locator('button:has-text("Cleanup Old Articles")');
     await expect(cleanupButton).toBeVisible();
     
     page.on('dialog', async dialog => {
