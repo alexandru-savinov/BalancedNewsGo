@@ -51,12 +51,13 @@ func adminRefreshFeedsHandler(rssCollector rss.CollectorInterface) gin.HandlerFu
 		// RSS operations are async, start in goroutine
 		go rssCollector.ManualRefresh()
 
-		// Use standard response format
-		RespondSuccess(c, map[string]interface{}{
-			"status":    "refresh_initiated",
-			"message":   "Feed refresh started successfully",
-			"timestamp": time.Now().UTC(),
-		})
+		// Use AdminOperationResponse for consistent format
+		response := AdminOperationResponse{
+			Status:    "refresh_initiated",
+			Message:   "Feed refresh started successfully",
+			Timestamp: time.Now().UTC(),
+		}
+		RespondSuccess(c, response)
 	}
 }
 
@@ -68,11 +69,12 @@ func adminResetFeedErrorsHandler(rssCollector rss.CollectorInterface) gin.Handle
 		// this could clear error counters or reset failed feed states.
 		log.Printf("[ADMIN] Feed errors reset requested")
 
-		RespondSuccess(c, map[string]interface{}{
-			"status":    "errors_reset",
-			"message":   "Feed errors have been reset (logged action)",
-			"timestamp": time.Now().UTC(),
-		})
+		response := AdminOperationResponse{
+			Status:    "errors_reset",
+			Message:   "Feed errors have been reset (logged action)",
+			Timestamp: time.Now().UTC(),
+		}
+		RespondSuccess(c, response)
 	}
 }
 
@@ -106,7 +108,7 @@ func adminReanalyzeRecentHandler(llmClient *llm.LLMClient, scoreManager *llm.Sco
 	return func(c *gin.Context) {
 		// Validate LLM service availability
 		if err := llmClient.ValidateAPIKey(); err != nil {
-			RespondError(c, fmt.Errorf("LLM service unavailable: %w", err))
+			RespondError(c, WrapError(err, ErrLLMService, "LLM service unavailable"))
 			return
 		}
 
@@ -142,11 +144,12 @@ func adminReanalyzeRecentHandler(llmClient *llm.LLMClient, scoreManager *llm.Sco
 			log.Printf("[ADMIN] Completed reanalysis of recent articles")
 		}()
 
-		RespondSuccess(c, map[string]interface{}{
-			"status":    "reanalysis_started",
-			"message":   "Reanalysis of recent articles initiated (last 7 days, max 50 articles)",
-			"timestamp": time.Now().UTC(),
-		})
+		response := AdminOperationResponse{
+			Status:    "reanalysis_started",
+			Message:   "Reanalysis of recent articles initiated (last 7 days, max 50 articles)",
+			Timestamp: time.Now().UTC(),
+		}
+		RespondSuccess(c, response)
 	}
 }
 
@@ -188,10 +191,10 @@ func adminValidateBiasScoresHandler(llmClient *llm.LLMClient, scoreManager *llm.
 
 		// Query for articles with scores to validate
 		query := `
-			SELECT DISTINCT a.id, a.title, a.bias_score, a.confidence
+			SELECT DISTINCT a.id, a.title, a.composite_score, a.confidence
 			FROM articles a
 			INNER JOIN llm_scores ls ON a.id = ls.article_id
-			WHERE a.bias_score IS NOT NULL
+			WHERE a.composite_score IS NOT NULL
 			ORDER BY a.created_at DESC
 			LIMIT 100
 		`
@@ -199,7 +202,7 @@ func adminValidateBiasScoresHandler(llmClient *llm.LLMClient, scoreManager *llm.
 		var results []struct {
 			ID         int64   `db:"id"`
 			Title      string  `db:"title"`
-			BiasScore  float64 `db:"bias_score"`
+			BiasScore  float64 `db:"composite_score"`
 			Confidence float64 `db:"confidence"`
 		}
 
@@ -267,8 +270,8 @@ func adminExportDataHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		// Query for articles with their scores
 		query := `
-			SELECT a.id, a.title, a.source, a.url, a.pub_date, a.bias_score, a.confidence, a.status,
-				   GROUP_CONCAT(ls.model || ':' || ls.score || ':' || ls.confidence) as llm_scores
+			SELECT a.id, a.title, a.source, a.url, a.pub_date, a.composite_score, a.confidence, a.status,
+				   GROUP_CONCAT(ls.model || ':' || ls.score) as llm_scores
 			FROM articles a
 			LEFT JOIN llm_scores ls ON a.id = ls.article_id
 			GROUP BY a.id
@@ -282,7 +285,7 @@ func adminExportDataHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			Source     string   `db:"source"`
 			URL        string   `db:"url"`
 			PubDate    string   `db:"pub_date"`
-			BiasScore  *float64 `db:"bias_score"`
+			BiasScore  *float64 `db:"composite_score"`
 			Confidence *float64 `db:"confidence"`
 			Status     string   `db:"status"`
 			LLMScores  *string  `db:"llm_scores"`
@@ -413,7 +416,7 @@ func adminGetMetricsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		// Get pending analysis count
 		err = dbConn.GetContext(ctx, &stats.PendingAnalysis,
-			"SELECT COUNT(*) FROM articles WHERE status = 'pending' OR bias_score IS NULL")
+			"SELECT COUNT(*) FROM articles WHERE status = 'pending' OR composite_score IS NULL")
 		if err != nil {
 			log.Printf("[ADMIN] Failed to get pending analysis count: %v", err)
 		}
@@ -421,19 +424,19 @@ func adminGetMetricsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		// Get bias distribution counts
 		var leftCount, centerCount, rightCount int
 		err = dbConn.GetContext(ctx, &leftCount,
-			"SELECT COUNT(*) FROM articles WHERE bias_score < -0.2")
+			"SELECT COUNT(*) FROM articles WHERE composite_score < -0.2")
 		if err != nil {
 			log.Printf("[ADMIN] Failed to get left count: %v", err)
 		}
 
 		err = dbConn.GetContext(ctx, &centerCount,
-			"SELECT COUNT(*) FROM articles WHERE bias_score >= -0.2 AND bias_score <= 0.2")
+			"SELECT COUNT(*) FROM articles WHERE composite_score >= -0.2 AND composite_score <= 0.2")
 		if err != nil {
 			log.Printf("[ADMIN] Failed to get center count: %v", err)
 		}
 
 		err = dbConn.GetContext(ctx, &rightCount,
-			"SELECT COUNT(*) FROM articles WHERE bias_score > 0.2")
+			"SELECT COUNT(*) FROM articles WHERE composite_score > 0.2")
 		if err != nil {
 			log.Printf("[ADMIN] Failed to get right count: %v", err)
 		}
