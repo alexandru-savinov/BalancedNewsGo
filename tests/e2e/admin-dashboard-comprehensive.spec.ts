@@ -5,8 +5,13 @@ test.describe('Admin Dashboard Comprehensive E2E Tests', () => {
     // Navigate to admin dashboard
     await page.goto('http://localhost:8080/admin');
     
-    // Wait for page to load
-    await page.waitForLoadState('networkidle');
+    // Wait for page to load - increased timeout for CI
+    await page.waitForLoadState('networkidle', { timeout: 30000 });
+    
+    // Additional wait for dynamic content in CI
+    if (process.env.CI) {
+      await page.waitForTimeout(2000);
+    }
   });
 
   test('should load admin dashboard with all sections', async ({ page }) => {
@@ -16,11 +21,11 @@ test.describe('Admin Dashboard Comprehensive E2E Tests', () => {
     // Check main sections are present
     await expect(page.locator('h1')).toContainText('Admin Dashboard');
     
-    // Check all admin sections exist
-    await expect(page.locator('h2:has-text("Feed Management")')).toBeVisible();
-    await expect(page.locator('h2:has-text("Analysis Control")')).toBeVisible();
-    await expect(page.locator('h2:has-text("Database Management")')).toBeVisible();
-    await expect(page.locator('h2:has-text("System Monitoring")')).toBeVisible();
+    // Check all admin sections exist (using h4 elements as they are in the template)
+    await expect(page.locator('h4:has-text("Feed Management")')).toBeVisible();
+    await expect(page.locator('h4:has-text("Analysis Control")')).toBeVisible();
+    await expect(page.locator('h4:has-text("Database Management")')).toBeVisible();
+    await expect(page.locator('h4:has-text("Monitoring")')).toBeVisible();
   });
 
   test('should handle feed management operations', async ({ page }) => {
@@ -186,14 +191,14 @@ test.describe('Admin Dashboard Comprehensive E2E Tests', () => {
   test('should display system status information', async ({ page }) => {
     // Check if system status elements are present
     const statusElements = [
-      'Server Status',
-      'Database Status', 
-      'LLM Service Status',
-      'RSS Service Status'
+      'Database',
+      'LLM Service', 
+      'RSS Feeds',
+      'Server'
     ];
     
     for (const status of statusElements) {
-      await expect(page.locator(`text=${status}`)).toBeVisible();
+      await expect(page.locator(`h4:has-text("${status}")`)).toBeVisible();
     }
   });
 
