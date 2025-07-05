@@ -413,12 +413,12 @@ func getBasicCounts(ctx context.Context, dbConn *sqlx.DB) (totalArticles, articl
 		log.Printf("[ADMIN] Failed to get total articles count: %v", err)
 	}
 
-	if err := dbConn.GetContext(ctx, &articlesToday, 
+	if err := dbConn.GetContext(ctx, &articlesToday,
 		"SELECT COUNT(*) FROM articles WHERE DATE(created_at) = DATE('now')"); err != nil {
 		log.Printf("[ADMIN] Failed to get today's articles count: %v", err)
 	}
 
-	if err := dbConn.GetContext(ctx, &pendingAnalysis, 
+	if err := dbConn.GetContext(ctx, &pendingAnalysis,
 		"SELECT COUNT(*) FROM articles WHERE status = 'pending' OR composite_score IS NULL"); err != nil {
 		log.Printf("[ADMIN] Failed to get pending analysis count: %v", err)
 	}
@@ -428,17 +428,17 @@ func getBasicCounts(ctx context.Context, dbConn *sqlx.DB) (totalArticles, articl
 
 // getBiasDistribution retrieves bias distribution counts
 func getBiasDistribution(ctx context.Context, dbConn *sqlx.DB) (leftCount, centerCount, rightCount int) {
-	if err := dbConn.GetContext(ctx, &leftCount, 
+	if err := dbConn.GetContext(ctx, &leftCount,
 		"SELECT COUNT(*) FROM articles WHERE composite_score < -0.2"); err != nil {
 		log.Printf("[ADMIN] Failed to get left count: %v", err)
 	}
 
-	if err := dbConn.GetContext(ctx, &centerCount, 
+	if err := dbConn.GetContext(ctx, &centerCount,
 		"SELECT COUNT(*) FROM articles WHERE composite_score >= -0.2 AND composite_score <= 0.2"); err != nil {
 		log.Printf("[ADMIN] Failed to get center count: %v", err)
 	}
 
-	if err := dbConn.GetContext(ctx, &rightCount, 
+	if err := dbConn.GetContext(ctx, &rightCount,
 		"SELECT COUNT(*) FROM articles WHERE composite_score > 0.2"); err != nil {
 		log.Printf("[ADMIN] Failed to get right count: %v", err)
 	}

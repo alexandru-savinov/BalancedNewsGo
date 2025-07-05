@@ -1798,12 +1798,12 @@ func sanitizeForLog(input string) string {
 	// Remove newlines and carriage returns to prevent log injection
 	re := regexp.MustCompile(`[\r\n\t]`)
 	sanitized := re.ReplaceAllString(input, "_")
-	
+
 	// Limit length to prevent log spam
 	if len(sanitized) > 100 {
 		sanitized = sanitized[:100] + "..."
 	}
-	
+
 	return sanitized
 }
 
