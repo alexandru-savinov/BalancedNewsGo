@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -41,8 +42,11 @@ func TestAdminRefreshFeedsHandlerBasic(t *testing.T) {
 	router := setupBasicTestRouter()
 	mockCollector := new(MockRSSCollectorBasic)
 
-	// Setup expectations
-	mockCollector.On("ManualRefresh").Return()
+	// Setup expectations with a channel to wait for the goroutine
+	done := make(chan bool, 1)
+	mockCollector.On("ManualRefresh").Run(func(args mock.Arguments) {
+		done <- true
+	}).Return()
 
 	// Setup route
 	router.POST("/api/admin/refresh-feeds", adminRefreshFeedsHandler(mockCollector))
@@ -66,6 +70,14 @@ func TestAdminRefreshFeedsHandlerBasic(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "refresh_initiated", data["status"])
 	assert.Contains(t, data["message"], "Feed refresh started successfully")
+
+	// Wait for the goroutine to complete with timeout
+	select {
+	case <-done:
+		// Success - the goroutine called ManualRefresh
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout waiting for ManualRefresh to be called")
+	}
 
 	mockCollector.AssertExpectations(t)
 }
