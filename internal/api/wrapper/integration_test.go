@@ -46,7 +46,7 @@ func TestAPIClientIntegration(t *testing.T) {
 		case "/api/articles":
 			// Simulate a delay if the source is specifically for the context cancellation test
 			if r.URL.Query().Get("source") == "context_cancel_test_with_delay" {
-				time.Sleep(200 * time.Millisecond) // Delay for context cancellation test
+				time.Sleep(50 * time.Millisecond) // Reduced delay for faster CI/CD
 			}
 			handleMockArticles(w, r)
 		case "/api/articles/1": // Corrected path from /api/article/1
@@ -143,7 +143,7 @@ func TestAPIClientIntegration(t *testing.T) {
 
 	// Context cancellation test (original, seems correct)
 	t.Run("GetArticles context cancellation", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
 		defer cancel()
 
 		params := ArticlesParams{
@@ -187,7 +187,7 @@ func TestCacheInvalidation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAPIClient(server.URL, WithCacheTTL(100*time.Millisecond)) // Short TTL for testing
+	client := NewAPIClient(server.URL, WithCacheTTL(50*time.Millisecond)) // Shorter TTL for faster CI/CD
 	ctx := context.Background()
 
 	params := ArticlesParams{Limit: 10, Source: "cache_invalidation_test"}
@@ -202,7 +202,7 @@ func TestCacheInvalidation(t *testing.T) {
 	_, found := client.getCached(cacheKey)
 	assert.True(t, found, "Value should be in cache after first call")
 
-	time.Sleep(150 * time.Millisecond) // Wait for cache to expire
+	time.Sleep(75 * time.Millisecond) // Reduced wait time for faster CI/CD
 
 	_, found = client.getCached(cacheKey)
 	assert.False(t, found, "Value should be gone from cache after TTL expiry")
@@ -233,7 +233,7 @@ func TestRetryLogic(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAPIClient(server.URL, WithRetryConfig(3, 20*time.Millisecond)) // Adjusted retry delay
+	client := NewAPIClient(server.URL, WithRetryConfig(3, 10*time.Millisecond)) // Faster retry for CI/CD
 	ctx := context.Background()
 
 	params := ArticlesParams{Limit: 10, Source: "retry_logic_test"}
@@ -250,8 +250,8 @@ func TestRetryLogic(t *testing.T) {
 // TestConcurrentAccess tests that the client is safe for concurrent use
 func TestConcurrentAccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Add small delay to simulate real API
-		time.Sleep(10 * time.Millisecond)
+		// Reduced delay for faster CI/CD
+		time.Sleep(5 * time.Millisecond)
 		handleMockArticles(w, r)
 	}))
 	defer server.Close()

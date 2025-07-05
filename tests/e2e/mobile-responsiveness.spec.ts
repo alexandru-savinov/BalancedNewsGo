@@ -3,6 +3,9 @@ import { test, expect, devices } from '@playwright/test';
 // Helper function to create mobile test with specific device
 async function createMobileTest(browser: any, deviceName: string) {
   const device = devices[deviceName];
+  if (!device) {
+    throw new Error(`Device "${deviceName}" not found in Playwright devices. Available devices: ${Object.keys(devices).join(', ')}`);
+  }
   const context = await browser.newContext(device);
   const page = await context.newPage();
   return { page, context };
@@ -86,7 +89,7 @@ test.describe('Mobile Tests - Pixel 5', () => {
 
 // Configure iPad device at top level
 const mobileTestIPad = test.extend({});
-mobileTestIPad.use(devices['iPad']);
+mobileTestIPad.use(devices['iPad (gen 5)']);
 
 // iPad Tests
 test.describe('Mobile Tests - iPad', () => {

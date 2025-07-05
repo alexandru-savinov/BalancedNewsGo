@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -426,53 +427,160 @@ func (h *TemplateHandlers) getBasicStats(ctx context.Context) (map[string]interf
 }
 
 func (h *TemplateHandlers) getDetailedStats(ctx context.Context) (map[string]interface{}, error) {
-	stats, err := h.getBasicStats(ctx)
+	// Use the new admin metrics endpoint for comprehensive statistics
+	// Since template handlers run on the same server, use localhost
+	metricsURL := "http://localhost:8080/api/admin/metrics"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", metricsURL, nil)
 	if err != nil {
-		return nil, err
+		log.Printf("[TEMPLATE] Failed to create metrics request: %v", err)
+		// Fallback to basic stats
+		return h.getBasicStats(ctx)
 	}
 
-	// Get additional stats that would need new API endpoints
-	// For now, we'll use placeholder values or try to estimate from existing data
-
-	// Articles today - would need a date filter in the API
-	stats["ArticlesToday"] = 0 // Placeholder
-
-	// Pending analysis - would need to check for articles without scores
-	stats["PendingAnalysis"] = 0 // Placeholder
-
-	// Active sources - estimate from sample articles
-	allParams := api.InternalArticlesParams{
-		Limit: 1000,
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[TEMPLATE] Failed to fetch admin metrics: %v", err)
+		// Fallback to basic stats
+		return h.getBasicStats(ctx)
 	}
-	allArticles, err := h.client.GetArticles(ctx, allParams)
-	if err == nil {
-		sourceSet := make(map[string]bool)
-		for _, article := range allArticles {
-			sourceSet[article.Source] = true
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[TEMPLATE] Failed to close response body: %v", err)
 		}
-		stats["ActiveSources"] = len(sourceSet)
-	} else {
-		stats["ActiveSources"] = 0
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[TEMPLATE] Admin metrics endpoint returned status %d", resp.StatusCode)
+		// Fallback to basic stats
+		return h.getBasicStats(ctx)
 	}
 
-	// Database size (approximation)
-	stats["DatabaseSize"] = "~2.5MB" // Placeholder
+	var metricsResponse struct {
+		Success bool `json:"success"`
+		Data    struct {
+			TotalArticles    int     `json:"total_articles"`
+			ArticlesToday    int     `json:"articles_today"`
+			PendingAnalysis  int     `json:"pending_analysis"`
+			ActiveSources    int     `json:"active_sources"`
+			DatabaseSize     string  `json:"database_size"`
+			LeftCount        int     `json:"left_count"`
+			CenterCount      int     `json:"center_count"`
+			RightCount       int     `json:"right_count"`
+			LeftPercentage   float64 `json:"left_percentage"`
+			CenterPercentage float64 `json:"center_percentage"`
+			RightPercentage  float64 `json:"right_percentage"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&metricsResponse); err != nil {
+		log.Printf("[TEMPLATE] Failed to decode metrics response: %v", err)
+		// Fallback to basic stats
+		return h.getBasicStats(ctx)
+	}
+
+	if !metricsResponse.Success {
+		log.Printf("[TEMPLATE] Admin metrics endpoint returned success=false")
+		// Fallback to basic stats
+		return h.getBasicStats(ctx)
+	}
+
+	// Convert to map[string]interface{} for template compatibility
+	stats := map[string]interface{}{
+		"TotalArticles":    metricsResponse.Data.TotalArticles,
+		"ArticlesToday":    metricsResponse.Data.ArticlesToday,
+		"PendingAnalysis":  metricsResponse.Data.PendingAnalysis,
+		"ActiveSources":    metricsResponse.Data.ActiveSources,
+		"DatabaseSize":     metricsResponse.Data.DatabaseSize,
+		"LeftCount":        metricsResponse.Data.LeftCount,
+		"CenterCount":      metricsResponse.Data.CenterCount,
+		"RightCount":       metricsResponse.Data.RightCount,
+		"LeftPercentage":   metricsResponse.Data.LeftPercentage,
+		"CenterPercentage": metricsResponse.Data.CenterPercentage,
+		"RightPercentage":  metricsResponse.Data.RightPercentage,
+	}
 
 	return stats, nil
 }
 
 func (h *TemplateHandlers) getSystemStatus(ctx context.Context) (map[string]bool, error) {
+	// Use the new admin health check endpoint for comprehensive system status
+	// Since template handlers run on the same server, use localhost
+	healthURL := "http://localhost:8080/api/admin/health-check"
+
+	req, err := http.NewRequestWithContext(ctx, "POST", healthURL, nil)
+	if err != nil {
+		log.Printf("[TEMPLATE] Failed to create health check request: %v", err)
+		// Fallback to basic status
+		return h.getBasicSystemStatus(ctx)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[TEMPLATE] Failed to fetch admin health check: %v", err)
+		// Fallback to basic status
+		return h.getBasicSystemStatus(ctx)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("[TEMPLATE] Failed to close response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[TEMPLATE] Admin health check endpoint returned status %d", resp.StatusCode)
+		// Fallback to basic status
+		return h.getBasicSystemStatus(ctx)
+	}
+
+	var healthResponse struct {
+		Success bool `json:"success"`
+		Data    struct {
+			DatabaseOK   bool `json:"database_ok"`
+			LLMServiceOK bool `json:"llm_service_ok"`
+			RSSServiceOK bool `json:"rss_service_ok"`
+			ServerOK     bool `json:"server_ok"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&healthResponse); err != nil {
+		log.Printf("[TEMPLATE] Failed to decode health check response: %v", err)
+		// Fallback to basic status
+		return h.getBasicSystemStatus(ctx)
+	}
+
+	if !healthResponse.Success {
+		log.Printf("[TEMPLATE] Admin health check endpoint returned success=false")
+		// Fallback to basic status
+		return h.getBasicSystemStatus(ctx)
+	}
+
+	// Convert to map[string]bool for template compatibility
+	status := map[string]bool{
+		"DatabaseOK":   healthResponse.Data.DatabaseOK,
+		"LLMServiceOK": healthResponse.Data.LLMServiceOK,
+		"RSSServiceOK": healthResponse.Data.RSSServiceOK,
+		"ServerOK":     healthResponse.Data.ServerOK,
+	}
+
+	return status, nil
+}
+
+// getBasicSystemStatus provides fallback system status checking
+func (h *TemplateHandlers) getBasicSystemStatus(ctx context.Context) (map[string]bool, error) {
 	status := make(map[string]bool)
 
 	// Test API connectivity by making a simple request
 	params := api.InternalArticlesParams{Limit: 1}
 	_, err := h.client.GetArticles(ctx, params)
 	status["DatabaseOK"] = err == nil
-	// Check feed health if available - simplified check
-	status["RSSServiceOK"] = true // Simplified for internal client
 
-	// LLM service check - placeholder
-	status["LLMServiceOK"] = true // Placeholder
+	// Basic checks for other services
+	status["RSSServiceOK"] = true // Simplified for internal client
+	status["LLMServiceOK"] = true // Simplified for internal client
+	status["ServerOK"] = true     // If we're running, server is OK
 
 	return status, nil
 }
