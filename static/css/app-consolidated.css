@@ -8,7 +8,7 @@
   --color-success: #1e7e34;        /* Success green - WCAG AA compliant (4.5:1) */
   --color-warning: #ffc107;        /* Warning yellow */
   --color-danger: #b02a37;         /* Danger red - WCAG AA compliant (4.5:1) */
-  --color-info: #17a2b8;          /* Info cyan */
+  --color-info: #0c7489;          /* Info cyan - WCAG AA compliant (4.5:1) */
 
   /* Neutral Colors */
   --color-white: #fff;
@@ -841,18 +841,18 @@ img {
 
 .btn-info:hover {
   color: var(--color-white, #fff);
-  background-color: #138496;
-  border-color: #117a8b;
+  background-color: #0a5d6e;
+  border-color: #095560;
 }
 
 .btn-info:focus {
-  box-shadow: 0 0 0 0.2rem rgba(23, 162, 184, 0.5);
+  box-shadow: 0 0 0 0.2rem rgba(12, 116, 137, 0.5);
 }
 
 .btn-info:active {
   color: var(--color-white, #fff);
-  background-color: #117a8b;
-  border-color: #10707f;
+  background-color: #095560;
+  border-color: #084d56;
 }
 
 /* Article Cards */
@@ -1260,7 +1260,7 @@ img {
 
 .bias-stat .label {
   font-size: var(--font-size-sm, 0.875rem);
-  color: var(--color-gray-600, #6c757d);
+  color: var(--color-gray-700, #495057);
 }
 
 .bias-left .value {
@@ -1305,7 +1305,7 @@ img {
 
 .activity-time {
   font-size: var(--font-size-sm, 0.875rem);
-  color: var(--color-gray-500, #6c757d);
+  color: var(--color-gray-600, #6c757d);
 }
 
 /* Responsive Design for Admin Dashboard */
