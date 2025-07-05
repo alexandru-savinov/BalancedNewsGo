@@ -1,5 +1,9 @@
 import { test, expect, Page } from '@playwright/test';
 
+// Detect CI environment where NO_AUTO_ANALYZE=true
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+const noAutoAnalyze = process.env.NO_AUTO_ANALYZE === 'true';
+
 /**
  * Real User Experience E2E Test for Reanalysis Button
  * 
@@ -211,6 +215,19 @@ test.describe('Reanalysis Button - Real User Experience', () => {
                text.includes('Network Error') ||
                text.includes('Configuration Error') ||
                text.includes('Analysis Failed');
+      }, { timeout: ANALYSIS_TIMEOUT }),
+
+      // Wait for skipped state (in CI with NO_AUTO_ANALYZE=true)
+      page.waitForFunction(() => {
+        const progressIndicator = document.getElementById('reanalysis-progress');
+        const text = progressIndicator?.textContent ?? '';
+
+        console.log('🔄 Checking skipped condition:', {
+          progressText: text,
+          progressVisible: progressIndicator?.style.display !== 'none'
+        });
+
+        return text.includes('Skipped') || text.includes('skipped');
       }, { timeout: ANALYSIS_TIMEOUT })
     ]).catch((error) => {
       console.log('❌ Promise.race timed out or failed:', error?.message);
@@ -245,6 +262,10 @@ test.describe('Reanalysis Button - Real User Experience', () => {
         // Verify that user gets meaningful error feedback
         expect(progressText).toMatch(/(Invalid API key|Authentication Failed|API Connection Failed|Payment Required|Rate Limited|Service Unavailable|Network Error|Configuration Error|Analysis Failed)/);
         console.log('✅ User received meaningful error feedback');
+      } else if (progressText?.includes('Skipped') || progressText?.includes('skipped')) {
+        console.log('✅ Analysis skipped in CI environment - this is expected with NO_AUTO_ANALYZE=true');
+        expect(finalButtonState).toBe(false); // Button should be re-enabled after skip
+        console.log(`ℹ️ Environment: CI=${isCI}, NO_AUTO_ANALYZE=${noAutoAnalyze}`);
       } else {
         console.log('✅ Analysis completed successfully');
         expect(finalButtonState).toBe(false); // Button should be re-enabled
@@ -349,8 +370,9 @@ test.describe('Reanalysis Button - Real User Experience', () => {
     // Both are acceptable outcomes for this test
     if (progressText?.includes('Error') || progressText?.includes('Failed')) {
       console.log('✅ Error handling working correctly - user sees meaningful error message');
-    } else if (progressText?.includes('Skipped')) {
-      console.log('✅ Analysis skipped in CI environment - this is expected');
+    } else if (progressText?.includes('Skipped') || progressText?.includes('skipped')) {
+      console.log('✅ Analysis skipped in CI environment - this is expected with NO_AUTO_ANALYZE=true');
+      console.log(`ℹ️ Environment: CI=${isCI}, NO_AUTO_ANALYZE=${noAutoAnalyze}`);
     } else {
       console.log('✅ Analysis completed successfully');
     }
