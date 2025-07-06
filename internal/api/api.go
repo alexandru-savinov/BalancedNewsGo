@@ -520,7 +520,7 @@ func createArticleHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 // @ID getArticlesList
 func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] getArticlesHandler: Entered handler. Request: %s", c.Request.URL.String())
+		safeLogf("[DEBUG] getArticlesHandler: Entered handler. Request: %s", c.Request.URL.String())
 
 		source := c.Query("source")
 		leaning := c.Query("leaning")
@@ -531,13 +531,13 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
-			log.Printf("[ERROR] getArticlesHandler: invalid limit parameter: %v. Value: %s", err, limitStr)
+			safeLogf("[ERROR] getArticlesHandler: invalid limit parameter: %v. Value: %s", err, limitStr)
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'limit' parameter"))
 			return
 		}
 		offset, err := strconv.Atoi(offsetStr)
 		if err != nil || offset < 0 {
-			log.Printf("[ERROR] getArticlesHandler: invalid offset parameter: %v. Value: %s", err, offsetStr)
+			safeLogf("[ERROR] getArticlesHandler: invalid offset parameter: %v. Value: %s", err, offsetStr)
 			RespondError(c, NewAppError(ErrValidation, "Invalid 'offset' parameter"))
 			return
 		}
