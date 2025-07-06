@@ -23,7 +23,8 @@ const noAutoAnalyze = process.env.NO_AUTO_ANALYZE === 'true';
 test.describe('Reanalysis Button - Real User Experience', () => {
   const ARTICLE_ID = 5; // Using seeded test article
   const ARTICLE_URL = `/article/${ARTICLE_ID}`;
-  const ANALYSIS_TIMEOUT = 30000; // 30 seconds - realistic timeout
+  // Use shorter timeout in CI environment since analysis should be skipped quickly
+  const ANALYSIS_TIMEOUT = (isCI || noAutoAnalyze) ? 10000 : 30000; // 10s in CI, 30s locally
   const UI_RESPONSE_TIMEOUT = 5000; // 5 seconds for UI responses
 
   let page: Page;
@@ -228,7 +229,36 @@ test.describe('Reanalysis Button - Real User Experience', () => {
         });
 
         return text.includes('Skipped') || text.includes('skipped');
-      }, { timeout: ANALYSIS_TIMEOUT })
+      }, { timeout: ANALYSIS_TIMEOUT }),
+
+      // Polling fallback for CI environment (when SSE might not work)
+      (async () => {
+        if (isCI || noAutoAnalyze) {
+          console.log('🔄 Starting API polling fallback for CI environment');
+          for (let i = 0; i < 20; i++) { // Poll for up to 10 seconds (20 * 500ms)
+            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+              const response = await page.evaluate(async (articleId) => {
+                const res = await fetch(`/api/llm/score-progress/${articleId}`);
+                return res.json();
+              }, ARTICLE_ID);
+
+              console.log(`🔄 Polling attempt ${i + 1}: ${JSON.stringify(response)}`);
+
+              if (response.status === 'Skipped' || response.status === 'Complete' || response.status === 'Error') {
+                console.log('✅ Polling detected completion via API');
+                return 'polling_success';
+              }
+            } catch (error) {
+              console.log(`⚠️ Polling error: ${error}`);
+            }
+          }
+          console.log('❌ Polling timeout');
+          return null;
+        }
+        // For non-CI environments, wait indefinitely (will be resolved by other promises)
+        return new Promise(() => {});
+      })()
     ]).catch((error) => {
       console.log('❌ Promise.race timed out or failed:', error?.message);
       return null;
@@ -309,7 +339,7 @@ test.describe('Reanalysis Button - Real User Experience', () => {
   });
 
   test('should handle API key errors gracefully', async () => {
-    test.setTimeout(30000);
+    test.setTimeout(isCI || noAutoAnalyze ? 15000 : 30000); // Shorter timeout in CI
 
     console.log('🧪 Testing API response handling (success or error)');
 
@@ -333,6 +363,7 @@ test.describe('Reanalysis Button - Real User Experience', () => {
     }
 
     // STEP 4: Wait for completion or error state
+    const timeout = isCI || noAutoAnalyze ? 10000 : 20000; // Shorter timeout in CI
     await Promise.race([
       // Wait for error state in progress indicator
       page.waitForFunction(() => {
@@ -343,20 +374,46 @@ test.describe('Reanalysis Button - Real User Experience', () => {
                text.includes('Invalid API key') ||
                text.includes('Authentication Failed') ||
                text.includes('API Connection Failed');
-      }, { timeout: 20000 }),
+      }, { timeout }),
 
       // Wait for button to be re-enabled (success case)
       page.waitForFunction(() => {
         const btn = document.getElementById('reanalyze-btn') as HTMLButtonElement;
         return !btn?.disabled;
-      }, { timeout: 20000 }),
+      }, { timeout }),
 
       // Wait for analysis completion (in CI with NO_AUTO_ANALYZE, may be skipped)
       page.waitForFunction(() => {
         const progressIndicator = document.getElementById('reanalysis-progress');
         const text = progressIndicator?.textContent ?? '';
         return text.includes('Skipped') || text.includes('Complete');
-      }, { timeout: 20000 })
+      }, { timeout }),
+
+      // API polling fallback for CI environment
+      (async () => {
+        if (isCI || noAutoAnalyze) {
+          console.log('🔄 Starting API polling fallback for second test');
+          for (let i = 0; i < 20; i++) { // Poll for up to 10 seconds
+            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+              const response = await page.evaluate(async (articleId) => {
+                const res = await fetch(`/api/llm/score-progress/${articleId}`);
+                return res.json();
+              }, ARTICLE_ID);
+
+              console.log(`🔄 Polling attempt ${i + 1}: ${JSON.stringify(response)}`);
+
+              if (response.status === 'Skipped' || response.status === 'Complete' || response.status === 'Error') {
+                return 'polling_success';
+              }
+            } catch (error) {
+              console.log(`⚠️ Polling error: ${error}`);
+            }
+          }
+          return null;
+        }
+        return new Promise(() => {});
+      })()
     ]).catch(() => null);
 
     // STEP 5: Verify final state
