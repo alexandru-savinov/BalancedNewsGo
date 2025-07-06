@@ -189,29 +189,12 @@ data: {"progress": 100, "stage": "completed", "status": "completed", "step": "Do
     const isCI = process.env.CI === 'true';
 
     if (isCI) {
-      // In CI, analysis is skipped, button may remain disabled
-      // Wait for SSE connection and check for skipped status
-      await page.waitForTimeout(2000);
-
-      // Check for skipped status in progress text or SSE events
-      const progressElements = await page.locator('.progress-text, .progress-message, [data-testid*="progress"]').all();
-      let foundSkippedStatus = false;
-
-      for (const element of progressElements) {
-        const text = await element.textContent();
-        if (text && text.match(/skipped|Skipped/i)) {
-          foundSkippedStatus = true;
-          break;
-        }
-      }
-
-      // If analysis is skipped, that's acceptable behavior in CI
-      if (foundSkippedStatus) {
-        console.log('Analysis was skipped in CI environment - this is expected');
-      } else {
-        // If no skipped status found, check if button gets re-enabled
-        await expect(reanalyzeBtn).toBeEnabled({ timeout: 5000 });
-      }
+      // In CI, analysis is skipped but button should still be re-enabled
+      // Wait for the button to be re-enabled after skipped analysis
+      console.log('CI environment detected - waiting for button to be re-enabled after skipped analysis');
+      await expect(reanalyzeBtn).toBeEnabled({ timeout: 10000 });
+      await expect(btnText).toBeVisible();
+      await expect(btnLoading).toBeHidden();
     } else {
       // In local environment, analysis should complete normally
       await expect(reanalyzeBtn).toBeEnabled({ timeout: 10000 });
