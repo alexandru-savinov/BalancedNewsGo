@@ -427,8 +427,13 @@ class ProgressIndicator extends HTMLElement {
         return;
       }
 
-      if (progress >= 100 || status === 'completed' || status === 'complete') {
-        this._updateStatus('completed', 'Analysis completed');
+      if (progress >= 100 || status === 'completed' || status === 'complete' || status === 'skipped') {
+        // Handle different completion types
+        if (status === 'skipped') {
+          this._updateStatus('completed', 'Analysis skipped');
+        } else {
+          this._updateStatus('completed', 'Analysis completed');
+        }
         this._dispatchEvent('completed', progressData);
 
         // Delay disconnection and auto-hide to allow users to see completion state
