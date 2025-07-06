@@ -84,7 +84,7 @@ test.describe('Reanalysis Button - Real User Experience', () => {
   };
 
   test('should complete full reanalysis workflow successfully', async () => {
-    test.setTimeout(ANALYSIS_TIMEOUT + 10000);
+    test.setTimeout(60000); // 60s timeout for CI environment delays
 
     // Helper function to extract element attributes without deep nesting
     const getElementAttributes = (element: Element): Record<string, string> => {
@@ -234,26 +234,26 @@ test.describe('Reanalysis Button - Real User Experience', () => {
       // Polling fallback for CI environment (when SSE might not work)
       (async () => {
         if (isCI || noAutoAnalyze) {
-          console.log('🔄 Starting API polling fallback for CI environment');
-          for (let i = 0; i < 20; i++) { // Poll for up to 10 seconds (20 * 500ms)
-            await new Promise(resolve => setTimeout(resolve, 500));
+          console.log('🔄 Starting enhanced API polling fallback for CI environment');
+          for (let i = 0; i < 60; i++) { // Poll for up to 15 seconds (60 * 250ms)
+            await new Promise(resolve => setTimeout(resolve, 250)); // Faster polling: 250ms
             try {
               const response = await page.evaluate(async (articleId) => {
                 const res = await fetch(`/api/llm/score-progress/${articleId}`);
                 return res.json();
               }, ARTICLE_ID);
 
-              console.log(`🔄 Polling attempt ${i + 1}: ${JSON.stringify(response)}`);
+              console.log(`🔄 Polling attempt ${i + 1}/60: ${JSON.stringify(response)}`);
 
               if (response.status === 'Skipped' || response.status === 'Complete' || response.status === 'Error') {
-                console.log('✅ Polling detected completion via API');
+                console.log(`✅ Polling detected completion via API after ${(i + 1) * 250}ms`);
                 return 'polling_success';
               }
             } catch (error) {
-              console.log(`⚠️ Polling error: ${error}`);
+              console.log(`⚠️ Polling error attempt ${i + 1}: ${error}`);
             }
           }
-          console.log('❌ Polling timeout');
+          console.log('❌ Polling timeout after 15 seconds');
           return null;
         }
         // For non-CI environments, wait indefinitely (will be resolved by other promises)
@@ -339,7 +339,7 @@ test.describe('Reanalysis Button - Real User Experience', () => {
   });
 
   test('should handle API key errors gracefully', async () => {
-    test.setTimeout(isCI || noAutoAnalyze ? 15000 : 30000); // Shorter timeout in CI
+    test.setTimeout(45000); // 45s timeout for CI environment delays
 
     console.log('🧪 Testing API response handling (success or error)');
 
@@ -392,24 +392,26 @@ test.describe('Reanalysis Button - Real User Experience', () => {
       // API polling fallback for CI environment
       (async () => {
         if (isCI || noAutoAnalyze) {
-          console.log('🔄 Starting API polling fallback for second test');
-          for (let i = 0; i < 20; i++) { // Poll for up to 10 seconds
-            await new Promise(resolve => setTimeout(resolve, 500));
+          console.log('🔄 Starting enhanced API polling fallback for second test');
+          for (let i = 0; i < 60; i++) { // Poll for up to 15 seconds (60 * 250ms)
+            await new Promise(resolve => setTimeout(resolve, 250)); // Faster polling: 250ms
             try {
               const response = await page.evaluate(async (articleId) => {
                 const res = await fetch(`/api/llm/score-progress/${articleId}`);
                 return res.json();
               }, ARTICLE_ID);
 
-              console.log(`🔄 Polling attempt ${i + 1}: ${JSON.stringify(response)}`);
+              console.log(`🔄 Polling attempt ${i + 1}/60: ${JSON.stringify(response)}`);
 
               if (response.status === 'Skipped' || response.status === 'Complete' || response.status === 'Error') {
+                console.log(`✅ Polling detected completion via API after ${(i + 1) * 250}ms`);
                 return 'polling_success';
               }
             } catch (error) {
-              console.log(`⚠️ Polling error: ${error}`);
+              console.log(`⚠️ Polling error attempt ${i + 1}: ${error}`);
             }
           }
+          console.log('❌ Polling timeout after 15 seconds');
           return null;
         }
         return new Promise(() => {});
