@@ -943,9 +943,11 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 				log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping background reanalysis.", articleID)
 				// Optionally, set progress to complete or a specific "skipped" state
 				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Status:  "Skipped", // Ensure this status is handled by SSE or test
-					Step:    "Skipped",
-					Message: "Automatic reanalysis skipped by test configuration.",
+					Status:      "Skipped", // Ensure this status is handled by SSE or test
+					Step:        "Skipped",
+					Message:     "Automatic reanalysis skipped by test configuration.",
+					Percent:     100,
+					LastUpdated: time.Now().Unix(),
 				})
 			}
 		} else {
