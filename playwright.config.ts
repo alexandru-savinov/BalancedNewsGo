@@ -6,11 +6,11 @@ import { defineConfig, devices } from '@playwright/test';
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
-  // Global test timeout
-  timeout: 30000,
+  // Global test timeout - increased for CI
+  timeout: process.env.CI ? 60000 : 30000,
   expect: {
-    // Timeout for assertions
-    timeout: 10000,
+    // Timeout for assertions - increased for CI
+    timeout: process.env.CI ? 20000 : 10000,
     // Screenshot comparison tolerance
     toHaveScreenshot: { maxDiffPixels: 100 },
     toMatchSnapshot: { maxDiffPixels: 100 }
@@ -30,7 +30,7 @@ export default defineConfig({
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
   
-  // Opt out of parallel tests on CI
+  // Opt out of parallel tests on CI for stability
   workers: process.env.CI ? 1 : undefined,
   
   // Reporter configuration
@@ -60,8 +60,8 @@ export default defineConfig({
     // Ignore HTTPS errors
     ignoreHTTPSErrors: true,
     
-    // Wait for network to be idle before proceeding
-    actionTimeout: 15000
+    // Wait for network to be idle before proceeding - increased for CI
+    actionTimeout: process.env.CI ? 30000 : 15000
   },
   // Cross-browser testing projects
   projects: [

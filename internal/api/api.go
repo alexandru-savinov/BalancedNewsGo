@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -211,6 +212,118 @@ func RegisterRoutes(
 	// @Router /api/llm/score-progress/{id} [get]
 	// @ID getScoreProgress
 	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler(scoreManager)))
+
+	// Admin endpoints
+	// @Summary Refresh all RSS feeds
+	// @Description Triggers a manual refresh of all configured RSS feeds
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/admin/refresh-feeds [post]
+	router.POST("/api/admin/refresh-feeds", SafeHandler(adminRefreshFeedsHandler(rssCollector)))
+
+	// @Summary Reset feed errors
+	// @Description Resets error states for RSS feeds
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Router /api/admin/reset-feed-errors [post]
+	router.POST("/api/admin/reset-feed-errors", SafeHandler(adminResetFeedErrorsHandler(rssCollector)))
+
+	// @Summary Get sources status
+	// @Description Returns health status of all RSS feed sources
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Router /api/admin/sources [get]
+	router.GET("/api/admin/sources", SafeHandler(adminGetSourcesStatusHandler(rssCollector)))
+
+	// @Summary Reanalyze recent articles
+	// @Description Triggers reanalysis of recent articles using LLM
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Failure 503 {object} ErrorResponse
+	// @Router /api/admin/reanalyze-recent [post]
+	router.POST("/api/admin/reanalyze-recent", SafeHandler(adminReanalyzeRecentHandler(llmClient, scoreManager, dbConn)))
+
+	// @Summary Clear analysis errors
+	// @Description Clears error states for articles with failed analysis
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Router /api/admin/clear-analysis-errors [post]
+	router.POST("/api/admin/clear-analysis-errors", SafeHandler(adminClearAnalysisErrorsHandler(dbConn)))
+
+	// @Summary Validate bias scores
+	// @Description Validates consistency and validity of bias scores
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Router /api/admin/validate-scores [post]
+	router.POST("/api/admin/validate-scores", SafeHandler(adminValidateBiasScoresHandler(llmClient, scoreManager, dbConn)))
+
+	// @Summary Optimize database
+	// @Description Runs database optimization (VACUUM and ANALYZE)
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/admin/optimize-db [post]
+	router.POST("/api/admin/optimize-db", SafeHandler(adminOptimizeDatabaseHandler(dbConn)))
+
+	// @Summary Export data
+	// @Description Exports articles and scores as CSV
+	// @Tags Admin
+	// @Produce text/csv
+	// @Success 200 {string} string "CSV file download"
+	// @Router /api/admin/export [get]
+	router.GET("/api/admin/export", SafeHandler(adminExportDataHandler(dbConn)))
+
+	// @Summary Cleanup old articles
+	// @Description Deletes articles older than 30 days
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/admin/cleanup-old [delete]
+	router.DELETE("/api/admin/cleanup-old", SafeHandler(adminCleanupOldArticlesHandler(dbConn)))
+
+	// @Summary Get system metrics
+	// @Description Returns system statistics and metrics
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} SystemStatsResponse
+	// @Router /api/admin/metrics [get]
+	router.GET("/api/admin/metrics", SafeHandler(adminGetMetricsHandler(dbConn)))
+
+	// @Summary Get system logs
+	// @Description Returns recent system log entries
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} StandardResponse
+	// @Router /api/admin/logs [get]
+	router.GET("/api/admin/logs", SafeHandler(adminGetLogsHandler()))
+
+	// @Summary Run health check
+	// @Description Performs comprehensive system health check
+	// @Tags Admin
+	// @Accept json
+	// @Produce json
+	// @Success 200 {object} SystemHealthResponse
+	// @Router /api/admin/health-check [post]
+	router.POST("/api/admin/health-check", SafeHandler(adminRunHealthCheckHandler(dbConn, llmClient, rssCollector)))
 }
 
 // SafeHandler wraps a handler function with panic recovery to prevent server crashes
@@ -414,7 +527,7 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		limitStr := c.DefaultQuery("limit", "20")
 		offsetStr := c.DefaultQuery("offset", "0")
 
-		log.Printf("[DEBUG] getArticlesHandler: Parsed query params - source: %s, leaning: %s, limit: %s, offset: %s", source, leaning, limitStr, offsetStr)
+		safeLogf("[DEBUG] getArticlesHandler: Parsed query params - source: %s, leaning: %s, limit: %s, offset: %s", source, leaning, limitStr, offsetStr)
 
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 || limit > 100 {
@@ -429,15 +542,15 @@ func getArticlesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[INFO] getArticlesHandler: Fetching articles (source=%s, leaning=%s, limit=%d, offset=%d)", source, leaning, limit, offset)
+		safeLogf("[INFO] getArticlesHandler: Fetching articles (source=%s, leaning=%s, limit=%d, offset=%d)", source, leaning, limit, offset)
 		// Corrected parameters for db.FetchArticles
-		log.Printf("[DEBUG] getArticlesHandler: Calling db.FetchArticles with source: '%s', leaning: '%s', limit: %d, offset: %d", source, leaning, limit, offset)
+		safeLogf("[DEBUG] getArticlesHandler: Calling db.FetchArticles with source: '%s', leaning: '%s', limit: %d, offset: %d", source, leaning, limit, offset)
 		articles, err := db.FetchArticles(dbConn, source, leaning, limit, offset)
 		// totalCount is not returned by FetchArticles, so its usage is removed for now.
 		log.Printf("[DEBUG] getArticlesHandler: After db.FetchArticles. Error: %v. Articles count: %d", err, len(articles))
 
 		if err != nil {
-			log.Printf("[ERROR] getArticlesHandler: Raw error from db.FetchArticles: %#v. Params - Source: '%s', Leaning: '%s', Limit: %d, Offset: %d", err, source, leaning, limit, offset)
+			safeLogf("[ERROR] getArticlesHandler: Raw error from db.FetchArticles: %#v. Params - Source: '%s', Leaning: '%s', Limit: %d, Offset: %d", err, source, leaning, limit, offset)
 			RespondError(c, WrapError(err, ErrInternal, fmt.Sprintf("Failed to fetch articles: %v", err)))
 			return
 		}
@@ -830,9 +943,11 @@ func reanalyzeHandler(llmClient *llm.LLMClient, dbConn *sqlx.DB, scoreManager *l
 				log.Printf("[reanalyzeHandler %d] NO_AUTO_ANALYZE is set, skipping background reanalysis.", articleID)
 				// Optionally, set progress to complete or a specific "skipped" state
 				scoreManager.SetProgress(articleID, &models.ProgressState{
-					Status:  "Skipped", // Ensure this status is handled by SSE or test
-					Step:    "Skipped",
-					Message: "Automatic reanalysis skipped by test configuration.",
+					Status:      "Skipped", // Ensure this status is handled by SSE or test
+					Step:        "Skipped",
+					Message:     "Automatic reanalysis skipped by test configuration.",
+					Percent:     100,
+					LastUpdated: time.Now().Unix(),
 				})
 			}
 		} else {
@@ -1642,6 +1757,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			if errors.Is(err, db.ErrArticleNotFound) {
 				RespondError(c, NewAppError(ErrNotFound, "Article not found"))
 				return
+
 			}
 			RespondError(c, NewAppError(ErrInternal, "Failed to fetch article"))
 			LogError(c, err, "manualScoreHandler: failed to fetch article")
@@ -1676,4 +1792,30 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			"score":      scoreVal,
 		})
 	}
+}
+
+// sanitizeForLog sanitizes user input to prevent log injection attacks
+// It removes or escapes potentially dangerous characters that could be used for log injection
+func sanitizeForLog(input string) string {
+	// Remove newlines and carriage returns to prevent log injection
+	re := regexp.MustCompile(`[\r\n\t]`)
+	sanitized := re.ReplaceAllString(input, "_")
+
+	// Limit length to prevent log spam
+	if len(sanitized) > 100 {
+		sanitized = sanitized[:100] + "..."
+	}
+
+	return sanitized
+}
+
+// safeLogf is a secure logging function that sanitizes user input
+func safeLogf(format string, args ...interface{}) {
+	// Sanitize string arguments that might contain user input
+	for i, arg := range args {
+		if str, ok := arg.(string); ok {
+			args[i] = sanitizeForLog(str)
+		}
+	}
+	log.Printf(format, args...)
 }
