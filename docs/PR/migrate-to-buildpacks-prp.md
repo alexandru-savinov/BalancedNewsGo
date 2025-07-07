@@ -146,8 +146,14 @@ uri = "gcr.io/paketo-buildpacks/ca-certificates"
 BP_GO_VERSION = "1.23.*"
 BP_GO_TARGETS = "./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data"
 BP_GO_BUILD_LDFLAGS = "-w -s"
-BP_KEEP_FILES = "templates/*:static/*:configs/*"
+BP_KEEP_FILES = "templates/*:static/*:configs/*:.env:*.db"
 CGO_ENABLED = "0"
+
+# Environment Variable Considerations:
+# - PORT: Auto-set by buildpack, app defaults to 8080 (compatible)
+# - DB_CONNECTION: SQLite file path, needs persistence strategy
+# - LLM_API_KEY: From .env file, consider runtime injection for security
+# - LOG_FILE_PATH: File logging vs stdout/stderr for cloud-native approach
 ```
 
 ### List of tasks to be completed to fulfill the PRP in the order they should be completed
@@ -172,31 +178,48 @@ Task 3: Configure Multi-Process Support (Hybrid Approach)
   - EXCLUDE development tools (benchmark, clear_articles, tools/*) from buildpack image
   - TEST each included process type builds and runs correctly
 
-Task 4: Handle Static Assets and Templates
-  - ENSURE static/ and templates/ directories are included in build
-  - CONFIGURE buildpack to preserve directory structure
-  - TEST web application serves static assets correctly
-  - VALIDATE template rendering works
+Task 4: Validate File System Dependencies
+  - VERIFY BP_KEEP_FILES preserves templates/, static/, configs/, .env files
+  - TEST all 8+ HTML templates load correctly in buildpack environment
+  - VALIDATE 5 JSON config files (feed_sources.json, bias_config.json, etc.) are accessible
+  - ENSURE .env file loading works for LLM_API_KEY and other variables
+  - TEST static asset serving from ./static directory works with Gin
+  - VALIDATE database file persistence strategy (*.db files)
 
-Task 5: Update Build Scripts and Makefile
+Task 5: Validate Environment Variable Handling
+  - TEST PORT binding works with buildpack auto-detection (defaults to 8080)
+  - VERIFY DB_CONNECTION environment variable for SQLite file path
+  - VALIDATE LLM_API_KEY loading from .env file in buildpack environment
+  - TEST LOG_FILE_PATH configuration and file writing permissions
+  - ENSURE TEST_MODE and DOCKER environment flags work correctly
+  - VALIDATE all environment variables accessible at runtime
+
+Task 6: Update Build Scripts and Makefile
   - MODIFY Makefile to use pack commands instead of docker
   - UPDATE build targets for different environments
   - CREATE development build with live reload capability
   - TEST all make targets work with buildpacks
 
-Task 6: Update CI/CD Pipeline
+Task 7: Validate Database Persistence Strategy
+  - DEFINE SQLite file storage location in production environment
+  - TEST database file persistence across container restarts
+  - VALIDATE database initialization works in buildpack environment
+  - ENSURE database migrations work with new deployment method
+  - TEST volume mounting for database persistence
+
+Task 8: Update CI/CD Pipeline
   - MODIFY .github/workflows/ci.yml to use pack CLI
   - REPLACE docker build steps with pack build
   - UPDATE image registry push commands
   - TEST CI/CD pipeline builds successfully
 
-Task 7: Remove Docker Configuration
+Task 9: Remove Docker Configuration
   - DELETE Dockerfile and Dockerfile.app
   - REMOVE docker-related scripts and configurations
   - CLEAN UP docker references in documentation
   - VERIFY no docker dependencies remain
 
-Task 8: Update Documentation
+Task 10: Update Documentation
   - UPDATE README.md with buildpack instructions
   - CREATE deployment guide for buildpacks
   - DOCUMENT development workflow changes
@@ -226,6 +249,8 @@ uri = "gcr.io/paketo-buildpacks/go"
 
 [build.env]
 BP_GO_VERSION = "1.23.*"
+BP_GO_TARGETS = "./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data"
+BP_KEEP_FILES = "templates/*:static/*:configs/*:.env:*.db"
 CGO_ENABLED = "0"
 EOF
 
@@ -275,55 +300,94 @@ pack config validate project.toml     # Validate buildpack config
 go mod verify                         # Verify Go modules
 pack build balanced-news-go --dry-run # Dry run build
 
+# Validate file preservation configuration
+echo "Checking BP_KEEP_FILES configuration..."
+ls -la templates/ static/ configs/ .env *.db 2>/dev/null || echo "Files to preserve identified"
+
 # Expected: No errors. If errors, READ the error and fix.
 ```
 
-### Level 2: Unit Tests - Ensure buildpack preserves functionality
+### Level 2: File System & Environment Validation
 ```bash
-# Test basic build
-pack build balanced-news-go --path .
+# Test basic build with file preservation
+pack build balanced-news-go --path . \
+  --env BP_GO_TARGETS="./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data" \
+  --env BP_KEEP_FILES="templates/*:static/*:configs/*:.env:*.db"
 
-# Test application starts
-docker run --rm -p 8080:8080 balanced-news-go &
-sleep 5
-curl -f http://localhost:8080/api/articles || exit 1
+# Validate file preservation
+echo "Checking preserved files..."
+docker run --rm balanced-news-go ls -la templates/ static/ configs/ .env 2>/dev/null || echo "Files preserved"
 
-# Test static assets
-curl -f http://localhost:8080/static/css/main.css || exit 1
+# Test application starts with environment variables
+docker run --rm -d --name test-app -p 8080:8080 \
+  -e DB_CONNECTION="/tmp/test.db" \
+  -e LLM_API_KEY="test-key" \
+  -e LOG_FILE_PATH="/tmp/app.log" \
+  balanced-news-go
 
-# Test templates
-curl -f http://localhost:8080/ | grep -q "html" || exit 1
+sleep 10
+
+# Test static assets serving
+curl -f http://localhost:8080/static/css/main.css || echo "Static assets test failed"
+
+# Test templates rendering
+curl -f http://localhost:8080/ | grep -q "html" || echo "Template rendering test failed"
+
+# Test API endpoints
+curl -f http://localhost:8080/api/articles || echo "API test failed"
+curl -f http://localhost:8080/healthz || echo "Health check failed"
 
 # Clean up
-docker stop $(docker ps -q --filter ancestor=balanced-news-go)
+docker stop test-app && docker rm test-app
 ```
 
-### Level 3: Integration Test
+### Level 3: Multi-Process & Database Persistence Test
 ```bash
-# Build all process types
-pack build balanced-news-go:web --path . --env BP_GO_TARGETS="./cmd/server"
-pack build balanced-news-go:benchmark --path . --env BP_GO_TARGETS="./cmd/benchmark"
+# Build with hybrid configuration (all production processes)
+pack build balanced-news-go --path . \
+  --env BP_GO_TARGETS="./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data" \
+  --env BP_KEEP_FILES="templates/*:static/*:configs/*:.env:*.db"
 
-# Test web process
-docker run --rm -d -p 8080:8080 --name test-web balanced-news-go:web
-sleep 10
-curl -f http://localhost:8080/api/articles
-docker stop test-web
+# Test database persistence with volume mount
+mkdir -p ./test-data
+docker run --rm -d --name test-persistence \
+  -v $(pwd)/test-data:/data \
+  -e DB_CONNECTION="/data/news.db" \
+  -p 8080:8080 balanced-news-go
 
-# Test benchmark process
-docker run --rm balanced-news-go:benchmark --help
+sleep 15
 
-# Expected: All processes build and run successfully
+# Test web process functionality
+curl -f http://localhost:8080/healthz || echo "Health check failed"
+curl -f http://localhost:8080/api/articles || echo "Articles API failed"
+
+# Test database file creation
+docker exec test-persistence ls -la /data/ || echo "Database persistence check"
+
+# Test different process types
+docker exec test-persistence ./cmd/fetch_articles --help || echo "Fetch articles process test"
+docker exec test-persistence ./cmd/score_articles --help || echo "Score articles process test"
+docker exec test-persistence ./cmd/seed_test_data --help || echo "Seed test data process test"
+
+# Clean up
+docker stop test-persistence
+ls -la ./test-data/ # Verify database file persisted
+
+# Expected: All processes build, run successfully, and database persists
 ```
 
 ## Final validation Checklist
 - [ ] Pack CLI installed and configured: `pack version`
 - [ ] Basic build works: `pack build balanced-news-go --path .`
+- [ ] File preservation verified: `docker run balanced-news-go ls -la templates/ static/ configs/`
+- [ ] Environment variables work: Test with DB_CONNECTION, LLM_API_KEY, PORT
 - [ ] Application starts: `docker run balanced-news-go`
 - [ ] Web endpoints respond: `curl http://localhost:8080/api/articles`
 - [ ] Static assets served: `curl http://localhost:8080/static/css/main.css`
 - [ ] Templates render: `curl http://localhost:8080/`
-- [ ] Benchmark builds: `pack build balanced-news-go:benchmark`
+- [ ] Config files accessible: JSON configs load correctly
+- [ ] Database persistence: SQLite file persists across restarts
+- [ ] Multi-process support: All 4 production binaries work
 - [ ] CI/CD pipeline passes: GitHub Actions green
 - [ ] Docker files removed: `ls Dockerfile*` returns nothing
 - [ ] Documentation updated: README.md reflects buildpack usage
@@ -335,8 +399,11 @@ docker run --rm balanced-news-go:benchmark --help
 ### High Risk Areas
 1. **✅ Pure Go SQLite**: VERIFIED - All files now consistently use modernc.org/sqlite (pure Go)
 2. **🔍 Multi-Binary Challenge**: ANALYZED - 11 binary entry points create buildpack complexity (see detailed analysis)
-3. **Static Asset Serving**: Templates and static files must be preserved in build
-4. **CI/CD Integration**: GitHub Actions must be updated without breaking deployment
+3. **🚨 File System Dependencies**: Complex file requirements (templates/, static/, configs/, .env) need validation
+4. **🚨 Environment Variable Handling**: Critical env vars (PORT, DB_CONNECTION, LLM_API_KEY) handled differently in buildpacks
+5. **🚨 Database Persistence Strategy**: SQLite file location and persistence across deployments undefined
+6. **🚨 Static Asset Serving**: Gin static file serving from ./static must work in buildpack containers
+7. **CI/CD Integration**: GitHub Actions must be updated without breaking deployment
 
 ### Rollback Plan
 1. **Immediate Rollback**: Keep Docker files in a backup branch until validation complete
@@ -350,19 +417,22 @@ docker run --rm balanced-news-go:benchmark --help
 3. **Feature Flags**: Use environment variables to switch between build methods
 4. **Monitoring**: Verify application metrics remain stable post-migration
 
-## PRP Confidence Score: 9/10
+## PRP Confidence Score: 7/10
 
-**Reasoning for 9/10 Score:**
-- **Very High Confidence (9)**: Buildpacks are mature technology with strong Go support
+**Reasoning for 7/10 Score:**
+- **High Confidence (7)**: Buildpacks are mature technology with strong Go support
 - **Well-Defined Requirements**: Clear understanding of current Docker setup and needs
 - **Proven Technology**: CNB is CNCF project with production usage
 - **Good Documentation**: Extensive buildpack documentation and examples available
 - **✅ Validated Pure Go**: All SQLite drivers now consistently use pure Go (no CGO)
 - **✅ Test Coverage**: Comprehensive test suite passes with pure Go drivers
+- **✅ Multi-Binary Analysis**: Hybrid approach provides clear solution path
 
-**Risk Factors (-1 point):**
+**Risk Factors (-2 points):**
 - **🔍 Multi-Binary Challenge**: ANALYZED - 11 binaries require hybrid approach (production + utilities)
-- **Static Asset Handling**: Need to ensure templates/static files are properly included
+- **🚨 File System Dependencies**: Complex file preservation requirements (templates, static, configs, .env)
+- **🚨 Environment Variable Complexity**: Critical env vars handled differently in buildpacks
+- **🚨 Database Persistence**: SQLite file persistence strategy needs definition
 
 **Risk Mitigation Completed:**
 - **✅ Driver Consistency**: All SQLite drivers now consistently use pure Go (modernc.org/sqlite)
@@ -453,3 +523,204 @@ seed: ./cmd/seed_test_data
 - **Clear Separation**: Production vs development tool distinction
 
 **📋 Detailed Analysis**: See `docs/PR/multi-binary-challenge-analysis.md`
+
+---
+
+## Pre-Implementation Validation Plan
+
+### Phase 1: Local Buildpack Testing
+
+**Objective**: Validate basic buildpack functionality and file preservation
+
+```bash
+# 1. Install and configure pack CLI
+curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.38.2/pack-v0.38.2-windows.zip" -o pack.zip
+# Extract and add to PATH
+pack version
+pack config default-builder gcr.io/paketo-buildpacks/builder:base
+
+# 2. Test basic build
+pack build balanced-news-go --path .
+
+# 3. Test with hybrid configuration
+pack build balanced-news-go --path . \
+  --env BP_GO_TARGETS="./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data" \
+  --env BP_KEEP_FILES="templates/*:static/*:configs/*:.env:*.db"
+
+# 4. Validate file preservation
+echo "=== Checking File Preservation ==="
+docker run --rm balanced-news-go ls -la templates/
+docker run --rm balanced-news-go ls -la static/
+docker run --rm balanced-news-go ls -la configs/
+docker run --rm balanced-news-go ls -la .env 2>/dev/null || echo ".env not found"
+
+# 5. Test application startup
+docker run --rm -d --name test-startup -p 8080:8080 balanced-news-go
+sleep 10
+
+# 6. Test static assets
+curl -f http://localhost:8080/static/css/main.css || echo "FAIL: Static CSS not served"
+curl -f http://localhost:8080/static/assets/css/main.css || echo "FAIL: Static assets not served"
+
+# 7. Test templates
+curl -f http://localhost:8080/ | grep -q "html" || echo "FAIL: Templates not rendering"
+
+# 8. Test API endpoints
+curl -f http://localhost:8080/api/articles || echo "FAIL: Articles API not working"
+curl -f http://localhost:8080/healthz || echo "FAIL: Health check not working"
+
+# Clean up
+docker stop test-startup && docker rm test-startup
+
+# Expected Results:
+# - All files preserved in buildpack image
+# - Application starts successfully
+# - Static assets served correctly
+# - Templates render properly
+# - API endpoints respond
+```
+
+### Phase 2: Environment Variable Testing
+
+**Objective**: Validate environment variable handling and configuration loading
+
+```bash
+# 1. Test with production-like environment variables
+docker run --rm -d --name test-env -p 8080:8080 \
+  -e PORT=8080 \
+  -e DB_CONNECTION="/tmp/test.db" \
+  -e LLM_API_KEY="test-key-12345" \
+  -e LOG_FILE_PATH="/tmp/app.log" \
+  -e TEST_MODE="false" \
+  balanced-news-go
+
+sleep 15
+
+# 2. Verify environment variables are accessible
+docker exec test-env env | grep -E "(PORT|DB_CONNECTION|LLM_API_KEY|LOG_FILE_PATH)"
+
+# 3. Test application responds with custom env vars
+curl -f http://localhost:8080/healthz || echo "FAIL: Health check with custom env vars"
+
+# 4. Check log file creation
+docker exec test-env ls -la /tmp/app.log || echo "Log file not created"
+
+# 5. Test database file creation
+docker exec test-env ls -la /tmp/test.db || echo "Database file not created"
+
+# 6. Test .env file loading (if preserved)
+docker exec test-env cat .env || echo ".env file not accessible"
+
+# Clean up
+docker stop test-env && docker rm test-env
+
+# Expected Results:
+# - All environment variables accessible
+# - Application uses custom PORT, DB_CONNECTION, etc.
+# - Log files created successfully
+# - Database initialization works
+# - .env file loading functional
+```
+
+### Phase 3: Database Persistence Testing
+
+**Objective**: Validate SQLite database persistence and multi-process functionality
+
+```bash
+# 1. Create test data directory
+mkdir -p ./test-data
+
+# 2. Test database persistence with volume mount
+docker run --rm -d --name test-persistence \
+  -v $(pwd)/test-data:/data \
+  -e DB_CONNECTION="/data/news.db" \
+  -e LLM_API_KEY="test-key" \
+  -p 8080:8080 balanced-news-go
+
+sleep 20
+
+# 3. Test database file creation and persistence
+ls -la ./test-data/ | grep news.db || echo "FAIL: Database file not created"
+
+# 4. Test web process functionality
+curl -f http://localhost:8080/healthz || echo "FAIL: Health check"
+curl -f http://localhost:8080/api/articles || echo "FAIL: Articles API"
+
+# 5. Test multi-process support (all included binaries)
+echo "=== Testing Multi-Process Support ==="
+docker exec test-persistence ./cmd/server --help || echo "FAIL: Server binary"
+docker exec test-persistence ./cmd/fetch_articles --help || echo "FAIL: Fetch articles binary"
+docker exec test-persistence ./cmd/score_articles --help || echo "FAIL: Score articles binary"
+docker exec test-persistence ./cmd/seed_test_data --help || echo "FAIL: Seed test data binary"
+
+# 6. Test configuration file access
+docker exec test-persistence cat configs/feed_sources.json || echo "FAIL: Config file access"
+docker exec test-persistence cat configs/bias_config.json || echo "FAIL: Bias config access"
+
+# 7. Stop container and verify persistence
+docker stop test-persistence
+
+# 8. Verify database file persisted
+ls -la ./test-data/ | grep news.db || echo "FAIL: Database not persisted"
+file ./test-data/news.db || echo "Database file type check"
+
+# Clean up
+rm -rf ./test-data/
+
+# Expected Results:
+# - Database file created and persisted
+# - All 4 production binaries functional
+# - Configuration files accessible
+# - Volume mounting works correctly
+# - Data survives container restart
+```
+
+### Validation Success Criteria
+
+**Phase 1 Success Criteria:**
+- [ ] Pack CLI builds image successfully
+- [ ] All required files preserved (templates/, static/, configs/, .env)
+- [ ] Application starts without errors
+- [ ] Static assets served correctly
+- [ ] Templates render properly
+- [ ] API endpoints respond
+
+**Phase 2 Success Criteria:**
+- [ ] Environment variables accessible in container
+- [ ] Custom PORT, DB_CONNECTION work
+- [ ] Log file creation successful
+- [ ] Database initialization works
+- [ ] .env file loading functional
+
+**Phase 3 Success Criteria:**
+- [ ] Database file persists across container lifecycle
+- [ ] All 4 production binaries work (server, fetch_articles, score_articles, seed_test_data)
+- [ ] Configuration files accessible
+- [ ] Volume mounting functional
+- [ ] Multi-process support verified
+
+### Failure Response Plan
+
+**If Phase 1 Fails:**
+- Review BP_KEEP_FILES configuration
+- Check buildpack logs for file preservation issues
+- Validate Go module compatibility
+- Consider alternative file preservation strategies
+
+**If Phase 2 Fails:**
+- Review environment variable injection methods
+- Check .env file loading in buildpack environment
+- Validate PORT binding with buildpack auto-detection
+- Consider runtime environment variable injection
+
+**If Phase 3 Fails:**
+- Review database persistence strategy
+- Check volume mounting compatibility
+- Validate multi-binary build configuration
+- Consider separate database initialization approach
+
+**Proceed to Implementation Only If:**
+- All 3 phases pass successfully
+- All success criteria met
+- No critical failures identified
+- Performance acceptable compared to Docker approach
