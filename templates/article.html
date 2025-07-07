@@ -134,47 +134,27 @@
                         console.warn('ProgressIndicator reset method not available');
                     }
 
-                    // Connect to SSE for progress updates
-                    if (progressIndicator && typeof progressIndicator.connect === 'function') {
-                        console.log('🔌 Connecting ProgressIndicator to SSE');
-                        progressIndicator.connect(articleId);
-                    } else {
-                        console.warn('ProgressIndicator connect method not available');
-                    }
-
-                    // Disable button and show loading state
-                    this.disabled = true;
-                    btnText.style.display = 'none';
-                    btnLoading.style.display = 'inline';
-                    
-                    try {
-                        // Trigger reanalysis
-                        const response = await fetch(`/api/llm/reanalyze/${articleId}`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            }
-                        });
-                        
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-
-                        // Set up progress indicator event listeners BEFORE showing it
-                        // This prevents race condition where completion event fires before listeners are attached
+                    // Set up event handlers BEFORE connecting to SSE to prevent race conditions
+                    if (progressIndicator) {
+                        console.log('🎧 Setting up ProgressIndicator event listeners');
 
                         // Remove any existing listeners to prevent duplicates
-                        progressIndicator.removeEventListener('completed', progressIndicator._completedHandler);
-                        progressIndicator.removeEventListener('error', progressIndicator._errorHandler);
-                        progressIndicator.removeEventListener('connectionerror', progressIndicator._connectionErrorHandler);
-                        progressIndicator.removeEventListener('autohide', progressIndicator._autoHideHandler);
+                        if (progressIndicator._completedHandler) {
+                            progressIndicator.removeEventListener('completed', progressIndicator._completedHandler);
+                        }
+                        if (progressIndicator._errorHandler) {
+                            progressIndicator.removeEventListener('error', progressIndicator._errorHandler);
+                        }
+                        if (progressIndicator._connectionErrorHandler) {
+                            progressIndicator.removeEventListener('connectionerror', progressIndicator._connectionErrorHandler);
+                        }
+                        if (progressIndicator._autoHideHandler) {
+                            progressIndicator.removeEventListener('autohide', progressIndicator._autoHideHandler);
+                        }
 
                         // Define and store event handlers for cleanup
                         progressIndicator._completedHandler = async (event) => {
                             console.log('Analysis completed:', event.detail);
-
-                            // Don't hide progress indicator immediately - let users see completion state
-                            // The ProgressIndicator will auto-hide after a delay via the 'autohide' event
 
                             // Reset button state
                             btnText.style.display = 'inline';
@@ -208,15 +188,8 @@
                         progressIndicator._connectionErrorHandler = (event) => {
                             console.error('Connection error:', event.detail);
 
-                            // Don't hide progress indicator if analysis completed successfully
-                            // Check if the progress indicator shows completion
-                            const isCompleted = progressIndicator._status === 'completed' ||
-                                              progressIndicator._progressValue >= 100;
-
-                            if (!isCompleted) {
-                                // Hide progress indicator only if analysis didn't complete
-                                progressIndicator.style.display = 'none';
-
+                            // Only reset button if analysis hasn't completed
+                            if (reanalyzeBtn.disabled) {
                                 // Reset button state
                                 btnText.textContent = 'Connection Error - Try Again';
                                 btnText.style.display = 'inline';
@@ -244,6 +217,33 @@
                         progressIndicator.addEventListener('error', progressIndicator._errorHandler);
                         progressIndicator.addEventListener('connectionerror', progressIndicator._connectionErrorHandler);
                         progressIndicator.addEventListener('autohide', progressIndicator._autoHideHandler);
+                    }
+
+                    // Connect to SSE for progress updates AFTER event listeners are set up
+                    if (progressIndicator && typeof progressIndicator.connect === 'function') {
+                        console.log('🔌 Connecting ProgressIndicator to SSE');
+                        progressIndicator.connect(articleId);
+                    } else {
+                        console.warn('ProgressIndicator connect method not available');
+                    }
+
+                    // Disable button and show loading state
+                    this.disabled = true;
+                    btnText.style.display = 'none';
+                    btnLoading.style.display = 'inline';
+                    
+                    try {
+                        // Trigger reanalysis
+                        const response = await fetch(`/api/llm/reanalyze/${articleId}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
 
                         // Show progress indicator AFTER event listeners are set up
                         // This prevents race condition with auto-connect="true"
