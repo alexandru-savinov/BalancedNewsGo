@@ -144,7 +144,9 @@ uri = "gcr.io/paketo-buildpacks/ca-certificates"
 
 [build.env]
 BP_GO_VERSION = "1.23.*"
+BP_GO_TARGETS = "./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data"
 BP_GO_BUILD_LDFLAGS = "-w -s"
+BP_KEEP_FILES = "templates/*:static/*:configs/*"
 CGO_ENABLED = "0"
 ```
 
@@ -163,11 +165,12 @@ Task 2: Create Basic Buildpack Configuration
   - TEST basic build with `pack build balanced-news-go`
   - VALIDATE application starts correctly
 
-Task 3: Configure Multi-Process Support
-  - CREATE Procfile for different process types (web, worker, benchmark)
-  - DEFINE web process for main server application
-  - DEFINE benchmark process for performance testing
-  - TEST each process type builds and runs correctly
+Task 3: Configure Multi-Process Support (Hybrid Approach)
+  - CREATE Procfile for production processes (web, fetch, score, seed)
+  - DEFINE web process for main server application (cmd/server)
+  - DEFINE utility processes for production tools (fetch_articles, score_articles, seed_test_data)
+  - EXCLUDE development tools (benchmark, clear_articles, tools/*) from buildpack image
+  - TEST each included process type builds and runs correctly
 
 Task 4: Handle Static Assets and Templates
   - ENSURE static/ and templates/ directories are included in build
@@ -230,14 +233,16 @@ EOF
 pack build balanced-news-go --path .
 
 # Task 3: Multi-Process Configuration
-# Create Procfile for different process types
+# Create Procfile for production processes (hybrid approach)
 cat > Procfile << EOF
-web: ./cmd/server/main
-benchmark: ./cmd/benchmark/main
+web: ./cmd/server
+fetch: ./cmd/fetch_articles
+score: ./cmd/score_articles
+seed: ./cmd/seed_test_data
 EOF
 
-# Build with specific process
-pack build balanced-news-go:web --path . --env BP_GO_TARGETS="./cmd/server"
+# Build with multiple production targets
+pack build balanced-news-go --path . --env BP_GO_TARGETS="./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data"
 ```
 
 ### Integration Points
@@ -329,8 +334,8 @@ docker run --rm balanced-news-go:benchmark --help
 
 ### High Risk Areas
 1. **✅ Pure Go SQLite**: VERIFIED - All files now consistently use modernc.org/sqlite (pure Go)
-2. **Static Asset Serving**: Templates and static files must be preserved in build
-3. **Multi-Binary Builds**: Different entry points (server, benchmark, tools) need separate builds
+2. **🔍 Multi-Binary Challenge**: ANALYZED - 11 binary entry points create buildpack complexity (see detailed analysis)
+3. **Static Asset Serving**: Templates and static files must be preserved in build
 4. **CI/CD Integration**: GitHub Actions must be updated without breaking deployment
 
 ### Rollback Plan
@@ -356,13 +361,14 @@ docker run --rm balanced-news-go:benchmark --help
 - **✅ Test Coverage**: Comprehensive test suite passes with pure Go drivers
 
 **Risk Factors (-1 point):**
-- **Multi-Binary Challenge**: Multiple entry points may need custom buildpack configuration
+- **🔍 Multi-Binary Challenge**: ANALYZED - 11 binaries require hybrid approach (production + utilities)
 - **Static Asset Handling**: Need to ensure templates/static files are properly included
 
 **Risk Mitigation Completed:**
 - **✅ Driver Consistency**: All SQLite drivers now consistently use pure Go (modernc.org/sqlite)
 - **✅ Test Validation**: All unit, integration, and E2E tests pass with pure Go driver
 - **✅ Build Verification**: Main application builds and runs correctly
+- **🔍 Multi-Binary Analysis**: Comprehensive analysis completed with hybrid solution recommended
 
 **Confidence Boosters:**
 - **Incremental Approach**: Can test locally before CI/CD changes
@@ -397,3 +403,53 @@ docker run --rm balanced-news-go:benchmark --help
 - **Faster Builds**: Pure Go compilation is faster than CGO
 - **Better Portability**: No C compiler dependencies
 - **Reduced Risk**: Eliminates cross-compilation complexity
+
+---
+
+## Multi-Binary Challenge Analysis (COMPLETED)
+
+### Problem Identified
+The BalancedNewsGo project has **11 distinct binary entry points**:
+- **1 Primary Application**: `cmd/server` (web server)
+- **10 Utility Tools**: benchmark, fetch_articles, score_articles, clear_articles, etc.
+
+### Buildpack Limitations
+- **Single Binary Focus**: Buildpacks expect one main application
+- **Auto-Detection Conflicts**: Multiple main.go files confuse buildpack detection
+- **Process Definition**: Default process assumes single primary binary
+
+### Recommended Solution: Hybrid Approach
+**Production Image Includes:**
+- ✅ `cmd/server` - Primary web application
+- ✅ `cmd/fetch_articles` - Production RSS fetching
+- ✅ `cmd/score_articles` - Production article scoring
+- ✅ `cmd/seed_test_data` - E2E testing in CI/CD
+
+**Built Locally/Separately:**
+- 🏠 `cmd/benchmark` - Performance testing (development)
+- 🏠 `cmd/clear_articles` - Database maintenance (development)
+- 🏠 `tools/*` - Development utilities
+
+### Configuration Strategy
+```toml
+# project.toml
+[build.env]
+BP_GO_TARGETS = "./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data"
+BP_KEEP_FILES = "templates/*:static/*:configs/*"
+```
+
+```
+# Procfile
+web: ./cmd/server
+fetch: ./cmd/fetch_articles
+score: ./cmd/score_articles
+seed: ./cmd/seed_test_data
+```
+
+### Benefits
+- **Optimized Production Image**: Only essential binaries included
+- **Development Flexibility**: Local tools remain available
+- **Manageable Complexity**: Single buildpack configuration
+- **Clear Separation**: Production vs development tool distinction
+
+**📋 Detailed Analysis**: See `docs/PR/multi-binary-challenge-analysis.md`
