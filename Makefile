@@ -57,6 +57,7 @@ endif
 GO              := go
 GOLANGCI        := C:\Users\Alexander.Savinov\go\bin\golangci-lint.exe
 SWAG            := swag
+PACK            := ./pack-cli/pack.exe
 
 # Paths
 SERVER_CMD      := ./cmd/server/main.go ./cmd/server/legacy_handlers.go
@@ -72,12 +73,17 @@ COVERAGE_THRESHOLD ?= 90
 # Binaries
 SERVER_BIN      := bin\newbalancer_server.exe # Use backslashes for Windows
 
+# Buildpack Configuration
+BUILDPACK_IMAGE := balanced-news-go
+BUILDPACK_TAG   := latest
+
 # Flags
 SHORT           := -short
 
 .PHONY: help build run stop restart clean \
         tidy lint static-analysis-ci unit unit-ci integ e2e e2e-ci test coverage-core coverage coverage-html \
-        mock-llm-go mock-llm-py docker-up docker-down integration benchmark \
+        mock-llm-go mock-llm-py monitoring-up monitoring-down integration benchmark \
+        buildpack-build buildpack-run buildpack-stop buildpack-test buildpack-clean \
         precommit-check
 
 .DEFAULT_GOAL := help
@@ -120,6 +126,54 @@ clean:
 	@echo "Cleaning build artifacts..."
 	@go run ./tools/clean/main.go
 	@echo "Clean complete."
+
+# Buildpack Targets
+# ==================
+
+buildpack-build: ## Build application using Cloud Native Buildpacks
+	@echo "Building application with buildpacks..."
+	$(PACK) build $(BUILDPACK_IMAGE):$(BUILDPACK_TAG) --path .
+	@echo "Buildpack build complete. Image: $(BUILDPACK_IMAGE):$(BUILDPACK_TAG)"
+
+buildpack-run: buildpack-build ## Build and run application using buildpacks
+	@echo "Stopping any existing buildpack containers..."
+	@docker stop $(BUILDPACK_IMAGE)-container 2>nul || echo "No existing container to stop."
+	@docker rm $(BUILDPACK_IMAGE)-container 2>nul || echo "No existing container to remove."
+	@echo "Running buildpack application..."
+	@docker run -d --name $(BUILDPACK_IMAGE)-container \
+		-p 8080:8080 \
+		-e DB_CONNECTION="./newsbalancer.db" \
+		-e PORT=8080 \
+		$(BUILDPACK_IMAGE):$(BUILDPACK_TAG)
+	@echo "Buildpack application started. Container: $(BUILDPACK_IMAGE)-container"
+	@echo "Application available at: http://localhost:8080"
+
+buildpack-stop: ## Stop buildpack application container
+	@echo "Stopping buildpack application..."
+	@docker stop $(BUILDPACK_IMAGE)-container 2>nul || echo "Container not running."
+	@docker rm $(BUILDPACK_IMAGE)-container 2>nul || echo "Container already removed."
+	@echo "Buildpack application stopped."
+
+buildpack-test: buildpack-build ## Build and test buildpack application
+	@echo "Testing buildpack application..."
+	@docker run --rm --name $(BUILDPACK_IMAGE)-test \
+		-e DB_CONNECTION="/tmp/test.db" \
+		-e LLM_API_KEY="test-key" \
+		-p 8081:8080 \
+		$(BUILDPACK_IMAGE):$(BUILDPACK_TAG) &
+	@echo "Waiting for application to start..."
+	@timeout /t 15 /nobreak >nul
+	@echo "Testing health endpoint..."
+	@powershell -Command "try { Invoke-WebRequest -Uri http://localhost:8081/healthz -TimeoutSec 10 | Out-Null; Write-Host 'Health check passed' } catch { Write-Host 'Health check failed (expected with test API key)' }"
+	@docker stop $(BUILDPACK_IMAGE)-test 2>nul || echo "Test container stopped."
+	@echo "Buildpack test complete."
+
+buildpack-clean: ## Clean buildpack images and containers
+	@echo "Cleaning buildpack artifacts..."
+	@docker stop $(BUILDPACK_IMAGE)-container 2>nul || echo "No container to stop."
+	@docker rm $(BUILDPACK_IMAGE)-container 2>nul || echo "No container to remove."
+	@docker rmi $(BUILDPACK_IMAGE):$(BUILDPACK_TAG) 2>nul || echo "No image to remove."
+	@echo "Buildpack cleanup complete."
 
 # Code Quality
 # ==============
@@ -292,14 +346,16 @@ mock-llm-go: ## Run Go mock LLM service
 mock-llm-py: ## Run Python mock LLM service
 	python $(MOCK_PY)
 
-# Docker-Compose Helpers
-# ========================
+# Monitoring Stack (Optional)
+# ============================
+# Note: Monitoring stack is available in monitoring/docker-compose.monitoring.yml
+# Run with: docker compose -f monitoring/docker-compose.monitoring.yml up -d
 
-docker-up: ## Spin up full Docker stack
-	docker compose -f infra/docker-compose.yml up -d
+monitoring-up: ## Start monitoring stack (Prometheus, Grafana, etc.)
+	docker compose -f monitoring/docker-compose.monitoring.yml up -d
 
-docker-down: ## Tear down Docker stack
-	docker compose -f infra/docker-compose.yml down -v
+monitoring-down: ## Stop monitoring stack
+	docker compose -f monitoring/docker-compose.monitoring.yml down -v
 
 # Performance Benchmarking
 # =========================

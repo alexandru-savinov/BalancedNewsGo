@@ -1811,11 +1811,14 @@ func sanitizeForLog(input string) string {
 
 // safeLogf is a secure logging function that sanitizes user input
 func safeLogf(format string, args ...interface{}) {
+	// Sanitize the format string to prevent log injection through format parameter
+	sanitizedFormat := sanitizeForLog(format)
+
 	// Sanitize string arguments that might contain user input
 	for i, arg := range args {
 		if str, ok := arg.(string); ok {
 			args[i] = sanitizeForLog(str)
 		}
 	}
-	log.Printf(format, args...)
+	log.Printf(sanitizedFormat, args...)
 }

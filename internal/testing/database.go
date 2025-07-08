@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // DatabaseContainer wraps database functionality for testing
@@ -23,7 +23,7 @@ func NewSQLiteTestDatabase(t *testing.T) *DatabaseContainer {
 	t.Helper()
 
 	// Create in-memory SQLite database
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create SQLite test database: %v", err)
 	}

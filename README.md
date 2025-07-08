@@ -387,6 +387,7 @@ Regularly running `make contract` and using the pre-commit hook helps catch API 
 
 ### Running Locally
 
+#### Traditional Go Development
 Start the server using the Go command:
 ```
 go run cmd/server/main.go
@@ -398,6 +399,208 @@ make run
 
 This will start the server on port 8080 by default. You can then access the web interface at http://localhost:8080.
 *Note: If you encounter a "port already in use" error (e.g., `listen tcp :8080: bind: Only one usage of each socket address...`), ensure no other processes are using port 8080. See "Port Conflicts" under "Common Test Issues and Solutions" above.*
+
+#### Cloud Native Buildpack Development
+
+**✅ RECOMMENDED FOR PRODUCTION-LIKE TESTING**
+
+NewsBalancer now supports Cloud Native Buildpacks for containerized deployment that closely matches production environments.
+
+**Prerequisites:**
+- Docker installed and running
+- Pack CLI installed (see [Installation Guide](#buildpack-installation))
+
+**Quick Start:**
+```bash
+# Build and run with buildpacks (recommended)
+make buildpack-run
+
+# Or build and test separately
+make buildpack-build
+make buildpack-test
+```
+
+**Available Buildpack Commands:**
+```bash
+make buildpack-build    # Build application image with buildpacks
+make buildpack-run      # Build and run application container
+make buildpack-test     # Build and test application functionality
+make buildpack-stop     # Stop running buildpack container
+make buildpack-clean    # Clean buildpack images and containers
+```
+
+**Benefits of Buildpack Development:**
+- **Production Parity**: Identical runtime environment to production deployment
+- **Dependency Management**: Automatic Go version and dependency resolution
+- **File Preservation**: Templates, static assets, and configs properly included
+- **Multi-Process Support**: All application binaries (server, fetch_articles, etc.) available
+- **Performance**: Optimized builds with layer caching and minimal image size
+- **Security**: Distroless runtime with minimal attack surface
+
+The buildpack approach is recommended for final testing before deployment as it provides the most accurate representation of the production environment.
+
+## Deployment
+
+### Cloud Native Buildpack Deployment
+
+NewsBalancer uses **Cloud Native Buildpacks** for production deployment, providing a modern, secure, and efficient containerization approach.
+
+#### Buildpack Installation
+
+**Install Pack CLI:**
+
+**Windows (PowerShell):**
+```powershell
+# Download and extract Pack CLI
+$packVersion = "v0.38.2"
+$packUrl = "https://github.com/buildpacks/pack/releases/download/$packVersion/pack-$packVersion-windows.zip"
+Invoke-WebRequest -Uri $packUrl -OutFile "pack.zip"
+Expand-Archive -Path "pack.zip" -DestinationPath "./pack-cli"
+Remove-Item "pack.zip"
+
+# Set default builder
+./pack-cli/pack.exe config default-builder paketobuildpacks/builder-jammy-base
+```
+
+**Linux/macOS:**
+```bash
+# Install Pack CLI
+curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.38.2/pack-v0.38.2-linux.tgz" | sudo tar -C /usr/local/bin/ --no-same-owner -xzv pack
+
+# Set default builder
+pack config default-builder paketobuildpacks/builder-jammy-base
+```
+
+#### Production Build Process
+
+**1. Build Production Image:**
+```bash
+# Build optimized production image
+pack build newsbalancer:latest --path .
+
+# Or using Makefile
+make buildpack-build
+```
+
+**2. Deploy to Container Platform:**
+
+**Docker/Podman:**
+```bash
+# Run production container
+docker run -d --name newsbalancer-prod \
+  -p 8080:8080 \
+  -e DB_CONNECTION="/data/newsbalancer.db" \
+  -e LLM_API_KEY="your-api-key" \
+  -e PORT=8080 \
+  -v /host/data:/data \
+  newsbalancer:latest
+```
+
+**Kubernetes:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: newsbalancer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: newsbalancer
+  template:
+    metadata:
+      labels:
+        app: newsbalancer
+    spec:
+      containers:
+      - name: newsbalancer
+        image: newsbalancer:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: PORT
+          value: "8080"
+        - name: DB_CONNECTION
+          value: "/data/newsbalancer.db"
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: newsbalancer-secrets
+              key: llm-api-key
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: newsbalancer-data
+```
+
+#### Buildpack Configuration
+
+The application uses `project.toml` for buildpack configuration:
+
+```toml
+schema-version = "0.2"
+
+[project]
+id = "balanced-news-go"
+name = "BalancedNewsGo"
+version = "1.0.0"
+
+# Buildpack configuration
+[[build.buildpacks]]
+uri = "docker://paketobuildpacks/go"
+
+# Build environment
+[[build.env]]
+name = "BP_GO_VERSION"
+value = "1.23.*"
+
+[[build.env]]
+name = "BP_GO_TARGETS"
+value = "./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data"
+
+[[build.env]]
+name = "BP_KEEP_FILES"
+value = "templates/*:static/*:configs/*:.env:*.db"
+```
+
+#### Environment Variables
+
+**Required:**
+- `LLM_API_KEY`: API key for LLM service
+- `DB_CONNECTION`: Database file path (e.g., `/data/newsbalancer.db`)
+
+**Optional:**
+- `PORT`: Server port (default: 8080)
+- `LLM_API_KEY_SECONDARY`: Secondary LLM API key
+- `LLM_BASE_URL`: Custom LLM service URL
+- `NO_AUTO_ANALYZE`: Disable automatic analysis (testing only)
+
+#### Production Considerations
+
+**Performance:**
+- Buildpack images are optimized with layer caching
+- Static assets are efficiently served from `/workspace/static/`
+- Database persistence via volume mounts recommended
+
+**Security:**
+- Distroless runtime environment with minimal attack surface
+- No shell access in production containers
+- Secrets should be managed via container orchestration platform
+
+**Monitoring:**
+- Health check endpoint: `/healthz`
+- Metrics available via API endpoints
+- Optional monitoring stack in `monitoring/docker-compose.monitoring.yml`
+
+**Scaling:**
+- Stateless application design supports horizontal scaling
+- Database should be externalized for multi-instance deployments
+- Consider read replicas for high-traffic scenarios
+
+For detailed deployment guides and troubleshooting, see the [Deployment Documentation](docs/deployment.md).
 
 ## License
 

@@ -6,11 +6,11 @@ import (
 	"os"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func main() {
-	db, err := sqlx.Open("sqlite3", "news.db")
+	db, err := sqlx.Open("sqlite", "news.db")
 	if err != nil {
 		log.Printf("ERROR: Failed to open database: %v", err)
 		os.Exit(1)
