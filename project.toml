@@ -1,0 +1,36 @@
+schema-version = "0.2"
+
+[project]
+id = "balanced-news-go"
+name = "BalancedNewsGo"
+version = "1.0.0"
+
+# Buildpack configuration for Go application with multi-process support
+[[build.buildpacks]]
+uri = "docker://paketobuildpacks/go"
+
+# Build environment configuration
+[[build.env]]
+name = "BP_GO_VERSION"
+value = "1.23.*"
+
+[[build.env]]
+name = "BP_GO_TARGETS"
+value = "./cmd/server:./cmd/fetch_articles:./cmd/score_articles:./cmd/seed_test_data"
+
+[[build.env]]
+name = "BP_GO_BUILD_LDFLAGS"
+value = "-w -s"
+
+[[build.env]]
+name = "BP_KEEP_FILES"
+value = "templates/*:static/*:configs/*:.env:*.db"
+
+[[build.env]]
+name = "CGO_ENABLED"
+value = "0"
+
+# Runtime environment defaults
+[[build.env]]
+name = "PORT"
+value = "8080"

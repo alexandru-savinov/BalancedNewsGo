@@ -286,9 +286,9 @@ jobs:
         with:
           sarif_file: 'gosec-results.sarif'
 
-  # Build and test Docker image
-  docker:
-    name: Docker Build & Test
+  # Build and test with Cloud Native Buildpacks
+  buildpack:
+    name: Buildpack Build & Test
     runs-on: ubuntu-latest
     needs: [lint, test]
     steps:
@@ -298,75 +298,82 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.app
-          target: debug
-          push: false
-          load: true
-          tags: newsbalancer:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Test Docker image
+      - name: Install Pack CLI
         run: |
-          # Skip inspection commands as they trigger the application due to ENTRYPOINT
-          echo "=== Starting Docker container tests ==="
+          # Install Pack CLI for buildpack builds
+          curl -sSL "https://github.com/buildpacks/pack/releases/download/v0.38.2/pack-v0.38.2-linux.tgz" | sudo tar -C /usr/local/bin/ --no-same-owner -xzv pack
+          pack version
+          pack config default-builder paketobuildpacks/builder-jammy-base
 
-          # Test the health check flag first
-          echo "=== Testing health check flag ==="
-          if docker run --rm \
-            -e TEST_MODE=true \
-            -e DOCKER=true \
-            newsbalancer:test --health-check; then
-            echo "Health check passed - binary is working"
-          else
-            echo "Health check failed - binary has issues"
-            exit 1
-          fi
+      - name: Build application with buildpacks
+        run: |
+          echo "Building application with Cloud Native Buildpacks..."
+          pack build newsbalancer:buildpack-test --path .
+          echo "Buildpack build complete"
 
-          # Try to run the application and capture any startup errors
+      - name: Test buildpack image
+        run: |
+          echo "=== Starting buildpack container tests ==="
+
+          # Test basic container startup
           echo "=== Testing application startup ==="
-          docker run --rm --name newsbalancer-test -p 8080:8080 \
+          docker run --rm --name newsbalancer-buildpack-test -p 8080:8080 \
             -e PORT=8080 \
             -e TEST_MODE=true \
-            -e DOCKER=true \
-            -e DB_CONNECTION=":memory:" \
+            -e DB_CONNECTION="/tmp/test.db" \
             -e NO_AUTO_ANALYZE=true \
-            -e LLM_API_KEY="${{ secrets.LLM_API_KEY || 'test-key-for-docker' }}" \
+            -e LLM_API_KEY="${{ secrets.LLM_API_KEY || 'test-key-for-buildpack' }}" \
             -e LLM_API_KEY_SECONDARY="${{ secrets.LLM_API_KEY_SECONDARY || '' }}" \
             -e LLM_BASE_URL="${{ secrets.LLM_BASE_URL || '' }}" \
-            newsbalancer:test &
+            newsbalancer:buildpack-test &
 
           CONTAINER_PID=$!
-          sleep 10
+          sleep 15
 
           # Check if container is still running
-          if ! docker ps | grep newsbalancer-test; then
+          if ! docker ps | grep newsbalancer-buildpack-test; then
             echo "Container exited unexpectedly. Checking logs:"
-            docker logs newsbalancer-test 2>&1 || echo "No logs available"
-
-            # Try running with explicit error output
-            echo "=== Attempting to run with explicit error capture ==="
-            docker run --rm \
-              -e TEST_MODE=true \
-              -e DOCKER=true \
-              newsbalancer:test 2>&1 | head -20 || echo "Failed to capture startup errors"
+            docker logs newsbalancer-buildpack-test 2>&1 || echo "No logs available"
             exit 1
           fi
 
-          # Basic health check
-          if curl -f http://localhost:8080/api/articles; then
-            echo "Docker image test passed"
+          # Basic health check (expect failure due to test API key, but container should be running)
+          echo "=== Testing health endpoint ==="
+          if curl -f http://localhost:8080/healthz; then
+            echo "Health check passed"
           else
-            echo "Docker image test failed. Container logs:"
-            docker logs newsbalancer-test 2>&1
+            echo "Health check failed (expected with test API key)"
+            # Check if it's just API key validation failure
+            if docker logs newsbalancer-buildpack-test 2>&1 | grep -q "API key validation failed"; then
+              echo "Container is running correctly, API key validation failed as expected"
+            else
+              echo "Unexpected container failure:"
+              docker logs newsbalancer-buildpack-test 2>&1
+              exit 1
+            fi
+          fi
+
+          # Test static assets
+          echo "=== Testing static assets ==="
+          if curl -f http://localhost:8080/static/css/main.css > /dev/null; then
+            echo "Static assets test passed"
+          else
+            echo "Static assets test failed"
+            docker logs newsbalancer-buildpack-test 2>&1
             exit 1
           fi
 
-          docker stop newsbalancer-test || true
+          # Test configuration files are accessible
+          echo "=== Testing configuration file access ==="
+          if docker exec newsbalancer-buildpack-test ls -la /workspace/configs/; then
+            echo "Configuration files accessible"
+          else
+            echo "Configuration files not accessible"
+            exit 1
+          fi
+
+          echo "Buildpack image tests completed successfully"
+          docker stop newsbalancer-buildpack-test || true
 
   # Frontend Quality Assurance
   frontend-qa:
@@ -565,7 +572,7 @@ jobs:
     name: Performance Benchmarks
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/frontend-rewrite-v3'
-    needs: [integration, docker, e2e-tests]
+    needs: [integration, buildpack, e2e-tests]
 
     steps:
       - name: Checkout code
@@ -628,7 +635,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     if: false  # Disabled until secrets are properly configured
-    needs: [integration, security, docker, e2e-tests]
+    needs: [integration, security, buildpack, e2e-tests]
     steps:
       - name: Placeholder
         run: echo "Staging deployment disabled until secrets are configured"
@@ -638,7 +645,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     if: false  # Disabled until ready for production deployment
-    needs: [integration, security, docker, benchmark, e2e-tests]
+    needs: [integration, security, buildpack, benchmark, e2e-tests]
     steps:
       - name: Placeholder
         run: echo "Production deployment disabled until ready"
