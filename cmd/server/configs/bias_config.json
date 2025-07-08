@@ -1,9 +1,4 @@
 {
   "categories": ["left", "center", "right"],
-  "confidence_threshold": 0.6,
-  "keyword_heuristics": {
-    "left": ["progressive", "climate change", "social justice", "unions", "Medicare for All"],
-    "right": ["tax cuts", "border security", "Second Amendment", "pro-life", "traditional values"],
-    "center": ["bipartisan", "moderate", "centrist", "compromise", "balanced approach"]
-  }
+  "confidence_threshold": 0.6
 }
