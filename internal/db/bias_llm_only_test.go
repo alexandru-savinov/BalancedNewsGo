@@ -43,7 +43,7 @@ func TestBiasDetectionLLMOnly(t *testing.T) {
 
 			// Verify the result
 			if article.Bias != tc.expectedBias {
-				t.Errorf("Expected bias %s, got %s for score %v", 
+				t.Errorf("Expected bias %s, got %s for score %v",
 					tc.expectedBias, article.Bias, tc.compositeScore)
 			}
 		})

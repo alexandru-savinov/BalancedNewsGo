@@ -19,8 +19,6 @@ type CollectorInterface interface {
 	CheckFeedHealth() map[string]bool
 }
 
-
-
 type Collector struct {
 	DB        *sqlx.DB
 	FeedURLs  []string
