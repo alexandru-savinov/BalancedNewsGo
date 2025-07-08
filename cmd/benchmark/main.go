@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/benchmark"
 )
@@ -37,19 +36,10 @@ func main() {
 	// Setup database connection if provided
 	var db *sqlx.DB
 	if *dbURL != "" {
-		db, err = sqlx.Connect("postgres", *dbURL)
-		if err != nil {
-			log.Printf("Warning: Failed to connect to database: %v", err)
-		} else {
-			defer func() {
-				if closeErr := db.Close(); closeErr != nil {
-					log.Printf("Warning: Failed to close database: %v", closeErr)
-				}
-			}()
-			if err := createBenchmarkTable(db); err != nil {
-				log.Printf("Warning: Failed to create benchmark table: %v", err)
-			}
-		}
+		// Note: PostgreSQL driver (github.com/lib/pq) removed to reduce dependencies
+		// The benchmark tool can still function without database storage
+		log.Printf("Warning: Database URL provided but PostgreSQL driver not available")
+		log.Printf("Benchmark results will not be saved to database")
 	}
 
 	// Create benchmark suite
