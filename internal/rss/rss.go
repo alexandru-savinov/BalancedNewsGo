@@ -19,22 +19,6 @@ type CollectorInterface interface {
 	CheckFeedHealth() map[string]bool
 }
 
-func detectPartisanCues(text string) []string {
-	cues := []string{
-		"radical left", "far-left", "far right", "fake news", "patriotic", "woke", "social justice",
-		"deep state", "mainstream media", "liberal agenda", "conservative values", "culture war",
-		"globalist", "elitist", "freedom-loving", "authoritarian", "biased media",
-	}
-	var found = make([]string, 0, len(cues))
-	lower := strings.ToLower(text)
-	for _, cue := range cues {
-		if strings.Contains(lower, cue) {
-			found = append(found, cue)
-		}
-	}
-	return found
-}
-
 type Collector struct {
 	DB        *sqlx.DB
 	FeedURLs  []string
@@ -187,11 +171,6 @@ func (c *Collector) createArticle(feed *gofeed.Feed, item *gofeed.Item) *db.Arti
 }
 
 func (c *Collector) storeArticle(article *db.Article) error {
-	cues := detectPartisanCues(article.Title + " " + article.Content)
-	if len(cues) > 0 {
-		log.Printf("[RSS] Partisan cues detected in article: %s | Cues: %v", article.Title, cues)
-	}
-
 	_, err := db.InsertArticle(c.DB, article)
 	if err != nil {
 		return err
