@@ -129,8 +129,6 @@ func loadConfig(configFile, baseURL string, users, requests int, duration time.D
 	return config, nil
 }
 
-
-
 func outputConsole(result *benchmark.BenchmarkResult) {
 	fmt.Println("\n=== BENCHMARK RESULTS ===")
 	fmt.Printf("Test Name: %s\n", result.TestName)

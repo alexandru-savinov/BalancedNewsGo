@@ -32,8 +32,10 @@ jobs:
         run: |
           # Clear any potential cache conflicts by ensuring clean workspace
           echo "Clearing potential cache conflicts for run ${{ github.run_number }}-${{ github.run_attempt }}"
-          # Remove any existing Go module cache to prevent conflicts
-          rm -rf ~/go/pkg/mod/* || true
+          # Remove the entire Go module cache directory to prevent tar conflicts
+          rm -rf ~/go/pkg/mod || true
+          # Ensure the directory structure exists for cache restoration
+          mkdir -p ~/go/pkg/mod
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -83,6 +85,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Clear potential cache conflicts
+        run: |
+          # Clear any potential cache conflicts by ensuring clean workspace
+          echo "Clearing potential cache conflicts for run ${{ github.run_number }}-${{ github.run_attempt }}"
+          # Remove the entire Go module cache directory to prevent tar conflicts
+          rm -rf ~/go/pkg/mod || true
+          # Ensure the directory structure exists for cache restoration
+          mkdir -p ~/go/pkg/mod
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -161,6 +172,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Clear potential cache conflicts
+        run: |
+          # Clear any potential cache conflicts by ensuring clean workspace
+          echo "Clearing potential cache conflicts for run ${{ github.run_number }}-${{ github.run_attempt }}"
+          # Remove the entire Go module cache directory to prevent tar conflicts
+          rm -rf ~/go/pkg/mod || true
+          # Ensure the directory structure exists for cache restoration
+          mkdir -p ~/go/pkg/mod
 
       - name: Set up Go
         uses: actions/setup-go@v5
