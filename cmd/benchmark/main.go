@@ -129,29 +129,7 @@ func loadConfig(configFile, baseURL string, users, requests int, duration time.D
 	return config, nil
 }
 
-func createBenchmarkTable(db *sqlx.DB) error {
-	query := `
-		CREATE TABLE IF NOT EXISTS benchmark_results (
-			id SERIAL PRIMARY KEY,
-			test_name VARCHAR(255) NOT NULL,
-			timestamp TIMESTAMP NOT NULL,
-			total_requests INTEGER NOT NULL,
-			successful_requests INTEGER NOT NULL,
-			failed_requests INTEGER NOT NULL,
-			average_latency_ms BIGINT NOT NULL,
-			min_latency_ms BIGINT NOT NULL,
-			max_latency_ms BIGINT NOT NULL,
-			p95_latency_ms BIGINT NOT NULL,
-			p99_latency_ms BIGINT NOT NULL,
-			requests_per_second DECIMAL(10,2) NOT NULL,
-			error_rate DECIMAL(5,2) NOT NULL,
-			total_duration_ms BIGINT NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-	`
-	_, err := db.Exec(query)
-	return err
-}
+
 
 func outputConsole(result *benchmark.BenchmarkResult) {
 	fmt.Println("\n=== BENCHMARK RESULTS ===")
