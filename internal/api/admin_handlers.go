@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/db"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/llm"
+	"github.com/alexandru-savinov/BalancedNewsGo/internal/models"
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/rss"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -560,5 +563,155 @@ func adminRunHealthCheckHandler(dbConn *sqlx.DB, llmClient *llm.LLMClient, rssCo
 		}
 
 		RespondSuccess(c, health)
+	}
+}
+
+// Source Management Admin Handlers for HTMX
+
+// adminSourcesListHandler handles GET /htmx/sources
+func adminSourcesListHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Fetch all sources with stats
+		sources, err := db.FetchSources(dbConn, nil, "", "", 0, 0)
+		if err != nil {
+			log.Printf("[ERROR] Failed to fetch sources for admin: %v", err)
+			c.HTML(500, "fragments/sources.html", gin.H{
+				"Error": "Failed to load sources",
+			})
+			return
+		}
+
+		// Convert to SourceWithStats for template
+		sourcesWithStats := make([]models.SourceWithStats, len(sources))
+		for i, source := range sources {
+			sourcesWithStats[i] = models.SourceWithStats{
+				Source: models.Source{
+					ID:            source.ID,
+					Name:          source.Name,
+					ChannelType:   source.ChannelType,
+					FeedURL:       source.FeedURL,
+					Category:      source.Category,
+					Enabled:       source.Enabled,
+					DefaultWeight: source.DefaultWeight,
+					LastFetchedAt: source.LastFetchedAt,
+					ErrorStreak:   source.ErrorStreak,
+					Metadata:      source.Metadata,
+					CreatedAt:     source.CreatedAt,
+					UpdatedAt:     source.UpdatedAt,
+				},
+				// TODO: Add stats aggregation
+			}
+		}
+
+		c.HTML(200, "source-list-fragment", gin.H{
+			"Sources": sourcesWithStats,
+		})
+	}
+}
+
+// adminSourceFormHandler handles GET /htmx/sources/new and GET /htmx/sources/:id/edit
+func adminSourceFormHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idParam := c.Param("id")
+
+		var source *db.Source
+		var err error
+
+		// If ID is provided and not "new", fetch the source for editing
+		if idParam != "" && idParam != "new" {
+			id, parseErr := strconv.ParseInt(idParam, 10, 64)
+			if parseErr != nil {
+				c.HTML(400, "source-form-fragment", gin.H{
+					"Error": "Invalid source ID",
+				})
+				return
+			}
+
+			source, err = db.FetchSourceByID(dbConn, id)
+			if err != nil {
+				log.Printf("[ERROR] Failed to fetch source for editing: %v", err)
+				c.HTML(404, "source-form-fragment", gin.H{
+					"Error": "Source not found",
+				})
+				return
+			}
+		}
+
+		// Convert to models.Source if editing
+		var modelSource *models.Source
+		if source != nil {
+			modelSource = &models.Source{
+				ID:            source.ID,
+				Name:          source.Name,
+				ChannelType:   source.ChannelType,
+				FeedURL:       source.FeedURL,
+				Category:      source.Category,
+				Enabled:       source.Enabled,
+				DefaultWeight: source.DefaultWeight,
+				LastFetchedAt: source.LastFetchedAt,
+				ErrorStreak:   source.ErrorStreak,
+				Metadata:      source.Metadata,
+				CreatedAt:     source.CreatedAt,
+				UpdatedAt:     source.UpdatedAt,
+			}
+		}
+
+		c.HTML(200, "source-form-fragment", gin.H{
+			"Source": modelSource,
+		})
+	}
+}
+
+// adminSourceStatsHandler handles GET /htmx/sources/:id/stats
+func adminSourceStatsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			c.HTML(400, "source-stats-fragment", gin.H{
+				"Error": "Invalid source ID",
+			})
+			return
+		}
+
+		// Fetch source
+		source, err := db.FetchSourceByID(dbConn, id)
+		if err != nil {
+			log.Printf("[ERROR] Failed to fetch source for stats: %v", err)
+			c.HTML(404, "source-stats-fragment", gin.H{
+				"Error": "Source not found",
+			})
+			return
+		}
+
+		// Convert to models.Source
+		modelSource := models.Source{
+			ID:            source.ID,
+			Name:          source.Name,
+			ChannelType:   source.ChannelType,
+			FeedURL:       source.FeedURL,
+			Category:      source.Category,
+			Enabled:       source.Enabled,
+			DefaultWeight: source.DefaultWeight,
+			LastFetchedAt: source.LastFetchedAt,
+			ErrorStreak:   source.ErrorStreak,
+			Metadata:      source.Metadata,
+			CreatedAt:     source.CreatedAt,
+			UpdatedAt:     source.UpdatedAt,
+		}
+
+		// TODO: Implement real stats aggregation
+		// For now, create placeholder stats
+		stats := models.SourceStats{
+			SourceID:     id,
+			ArticleCount: 0, // TODO: Count articles from this source
+			AvgScore:     nil,
+			ComputedAt:   time.Now(),
+		}
+
+		c.HTML(200, "source-stats-fragment", gin.H{
+			"Source": modelSource,
+			"Stats":  stats,
+		})
 	}
 }

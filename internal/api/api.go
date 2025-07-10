@@ -213,6 +213,92 @@ func RegisterRoutes(
 	// @ID getScoreProgress
 	router.GET("/api/llm/score-progress/:id", SafeHandler(scoreProgressSSEHandler(scoreManager)))
 
+	// Source management endpoints
+	// @Summary Get all sources
+	// @Description Get a list of all sources with optional filtering and pagination
+	// @Tags Sources
+	// @Accept json
+	// @Produce json
+	// @Param enabled query boolean false "Filter by enabled status"
+	// @Param channel_type query string false "Filter by channel type"
+	// @Param category query string false "Filter by category (left, center, right)"
+	// @Param include_stats query boolean false "Include source statistics"
+	// @Param limit query integer false "Number of items per page (default: 50, max: 100)"
+	// @Param offset query integer false "Pagination offset (default: 0)"
+	// @Success 200 {object} StandardResponse{data=models.SourceListResponse}
+	// @Failure 400 {object} ErrorResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/sources [get]
+	router.GET("/api/sources", SafeHandler(getSourcesHandler(dbConn)))
+
+	// @Summary Create a new source
+	// @Description Create a new news source
+	// @Tags Sources
+	// @Accept json
+	// @Produce json
+	// @Param source body models.CreateSourceRequest true "Source object"
+	// @Success 201 {object} StandardResponse{data=models.Source}
+	// @Failure 400 {object} ErrorResponse
+	// @Failure 409 {object} ErrorResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/sources [post]
+	router.POST("/api/sources", SafeHandler(createSourceHandler(dbConn)))
+
+	// @Summary Get source by ID
+	// @Description Get a specific source by its ID
+	// @Tags Sources
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Source ID"
+	// @Param include_stats query boolean false "Include source statistics"
+	// @Success 200 {object} StandardResponse{data=models.SourceWithStats}
+	// @Failure 400 {object} ErrorResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/sources/{id} [get]
+	router.GET("/api/sources/:id", SafeHandler(getSourceByIDHandler(dbConn)))
+
+	// @Summary Update source
+	// @Description Update an existing source
+	// @Tags Sources
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Source ID"
+	// @Param source body models.UpdateSourceRequest true "Source update object"
+	// @Success 200 {object} StandardResponse{data=models.Source}
+	// @Failure 400 {object} ErrorResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Failure 409 {object} ErrorResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/sources/{id} [put]
+	router.PUT("/api/sources/:id", SafeHandler(updateSourceHandler(dbConn)))
+
+	// @Summary Delete source (soft delete)
+	// @Description Disable a source (soft delete)
+	// @Tags Sources
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Source ID"
+	// @Success 200 {object} StandardResponse{data=string}
+	// @Failure 400 {object} ErrorResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/sources/{id} [delete]
+	router.DELETE("/api/sources/:id", SafeHandler(deleteSourceHandler(dbConn)))
+
+	// @Summary Get source statistics
+	// @Description Get detailed statistics for a specific source
+	// @Tags Sources
+	// @Accept json
+	// @Produce json
+	// @Param id path integer true "Source ID"
+	// @Success 200 {object} StandardResponse{data=models.SourceStats}
+	// @Failure 400 {object} ErrorResponse
+	// @Failure 404 {object} ErrorResponse
+	// @Failure 500 {object} ErrorResponse
+	// @Router /api/sources/{id}/stats [get]
+	router.GET("/api/sources/:id/stats", SafeHandler(getSourceStatsHandler(dbConn)))
+
 	// Admin endpoints
 	// @Summary Refresh all RSS feeds
 	// @Description Triggers a manual refresh of all configured RSS feeds
@@ -324,6 +410,12 @@ func RegisterRoutes(
 	// @Success 200 {object} SystemHealthResponse
 	// @Router /api/admin/health-check [post]
 	router.POST("/api/admin/health-check", SafeHandler(adminRunHealthCheckHandler(dbConn, llmClient, rssCollector)))
+
+	// HTMX Admin Source Management Routes
+	router.GET("/htmx/sources", SafeHandler(adminSourcesListHandler(dbConn)))
+	router.GET("/htmx/sources/new", SafeHandler(adminSourceFormHandler(dbConn)))
+	router.GET("/htmx/sources/:id/edit", SafeHandler(adminSourceFormHandler(dbConn)))
+	router.GET("/htmx/sources/:id/stats", SafeHandler(adminSourceStatsHandler(dbConn)))
 }
 
 // SafeHandler wraps a handler function with panic recovery to prevent server crashes
