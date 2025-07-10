@@ -53,6 +53,10 @@ junk/
 # *.exe is already covered above
 /bin/
 /build/
+# Add common Go binary names
+benchmark
+newsbalancer
+test-server*
 
 # Windows reserved device name
 nul
@@ -68,6 +72,8 @@ news.db-wal
 !templates/**/*.html
 # /test-results/ is already covered above
 # /playwright-report/ is already covered above
+test-results.json
+playwright-results.json
 
 # IDE / OS / Project Junk (extending existing)
 # /junk/ is already covered above

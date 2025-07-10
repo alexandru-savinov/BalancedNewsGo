@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jmoiron/sqlx"
-	_ "github.com/lib/pq"
 
 	"github.com/alexandru-savinov/BalancedNewsGo/internal/benchmark"
 )
@@ -37,19 +36,10 @@ func main() {
 	// Setup database connection if provided
 	var db *sqlx.DB
 	if *dbURL != "" {
-		db, err = sqlx.Connect("postgres", *dbURL)
-		if err != nil {
-			log.Printf("Warning: Failed to connect to database: %v", err)
-		} else {
-			defer func() {
-				if closeErr := db.Close(); closeErr != nil {
-					log.Printf("Warning: Failed to close database: %v", closeErr)
-				}
-			}()
-			if err := createBenchmarkTable(db); err != nil {
-				log.Printf("Warning: Failed to create benchmark table: %v", err)
-			}
-		}
+		// Note: PostgreSQL driver (github.com/lib/pq) removed to reduce dependencies
+		// The benchmark tool can still function without database storage
+		log.Printf("Warning: Database URL provided but PostgreSQL driver not available")
+		log.Printf("Benchmark results will not be saved to database")
 	}
 
 	// Create benchmark suite
@@ -137,30 +127,6 @@ func loadConfig(configFile, baseURL string, users, requests int, duration time.D
 	}
 
 	return config, nil
-}
-
-func createBenchmarkTable(db *sqlx.DB) error {
-	query := `
-		CREATE TABLE IF NOT EXISTS benchmark_results (
-			id SERIAL PRIMARY KEY,
-			test_name VARCHAR(255) NOT NULL,
-			timestamp TIMESTAMP NOT NULL,
-			total_requests INTEGER NOT NULL,
-			successful_requests INTEGER NOT NULL,
-			failed_requests INTEGER NOT NULL,
-			average_latency_ms BIGINT NOT NULL,
-			min_latency_ms BIGINT NOT NULL,
-			max_latency_ms BIGINT NOT NULL,
-			p95_latency_ms BIGINT NOT NULL,
-			p99_latency_ms BIGINT NOT NULL,
-			requests_per_second DECIMAL(10,2) NOT NULL,
-			error_rate DECIMAL(5,2) NOT NULL,
-			total_duration_ms BIGINT NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-	`
-	_, err := db.Exec(query)
-	return err
 }
 
 func outputConsole(result *benchmark.BenchmarkResult) {
