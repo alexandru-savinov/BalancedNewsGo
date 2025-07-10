@@ -46,8 +46,7 @@
     "newman": "^6.2.0",
     "stylelint": "^16.21.0",
     "stylelint-config-standard": "^38.0.0",
-    "typescript": "^5.8.3",
-    "undici-types": "^7.10.0"
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

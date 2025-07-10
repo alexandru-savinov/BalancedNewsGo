@@ -30,8 +30,12 @@ jobs:
 
       - name: Clear potential cache conflicts
         run: |
-          # Clear any potential cache conflicts by removing old cache entries
-          echo "Clearing potential cache conflicts for run ${{ github.run_id }}"
+          # Clear any potential cache conflicts by ensuring clean workspace
+          echo "Clearing potential cache conflicts for run ${{ github.run_number }}-${{ github.run_attempt }}"
+          # Remove the entire Go module cache directory to prevent tar conflicts
+          rm -rf ~/go/pkg/mod || true
+          # Ensure the directory structure exists for cache restoration
+          mkdir -p ~/go/pkg/mod
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -42,7 +46,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-lint-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+          key: ${{ runner.os }}-go-lint-${{ hashFiles('**/go.sum') }}-${{ github.run_number }}-${{ github.run_attempt }}
           restore-keys: |
             ${{ runner.os }}-go-lint-${{ hashFiles('**/go.sum') }}-
             ${{ runner.os }}-go-lint-
@@ -82,6 +86,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clear potential cache conflicts
+        run: |
+          # Clear any potential cache conflicts by ensuring clean workspace
+          echo "Clearing potential cache conflicts for run ${{ github.run_number }}-${{ github.run_attempt }}"
+          # Remove the entire Go module cache directory to prevent tar conflicts
+          rm -rf ~/go/pkg/mod || true
+          # Ensure the directory structure exists for cache restoration
+          mkdir -p ~/go/pkg/mod
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -91,7 +104,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-test-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+          key: ${{ runner.os }}-go-test-${{ hashFiles('**/go.sum') }}-${{ github.run_number }}-${{ github.run_attempt }}
           restore-keys: |
             ${{ runner.os }}-go-test-${{ hashFiles('**/go.sum') }}-
             ${{ runner.os }}-go-test-
@@ -160,6 +173,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clear potential cache conflicts
+        run: |
+          # Clear any potential cache conflicts by ensuring clean workspace
+          echo "Clearing potential cache conflicts for run ${{ github.run_number }}-${{ github.run_attempt }}"
+          # Remove the entire Go module cache directory to prevent tar conflicts
+          rm -rf ~/go/pkg/mod || true
+          # Ensure the directory structure exists for cache restoration
+          mkdir -p ~/go/pkg/mod
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -174,7 +196,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-integration-${{ hashFiles('**/go.sum') }}-${{ github.run_id }}
+          key: ${{ runner.os }}-go-integration-${{ hashFiles('**/go.sum') }}-${{ github.run_number }}-${{ github.run_attempt }}
           restore-keys: |
             ${{ runner.os }}-go-integration-${{ hashFiles('**/go.sum') }}-
             ${{ runner.os }}-go-integration-
@@ -184,7 +206,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-integration-${{ hashFiles('**/package-lock.json') }}-${{ github.run_id }}
+          key: ${{ runner.os }}-node-integration-${{ hashFiles('**/package-lock.json') }}-${{ github.run_number }}-${{ github.run_attempt }}
           restore-keys: |
             ${{ runner.os }}-node-integration-${{ hashFiles('**/package-lock.json') }}-
             ${{ runner.os }}-node-integration-
