@@ -97,7 +97,3 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || '' }}
-        with:
-          args: >
-            -Dsonar.go.golangci-lint.reportPaths=golangci-lint-report.xml
-            -Dsonar.go.gosec.reportPaths=gosec-report.json
