@@ -1,10 +1,7 @@
 name: SonarCloud Security Analysis
 
 on:
-  push:
-    branches: [ main, develop, frontend-rewrite-v3 ]
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
   schedule:
     # Run security analysis daily at 3 AM UTC
     - cron: '0 3 * * *'
