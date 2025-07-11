@@ -116,7 +116,11 @@ func CleanupTestData(db *sql.DB) error {
 			continue
 		}
 
-		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+		// Use quoted identifier to prevent SQL injection while maintaining functionality
+		// Table names cannot be parameterized in SQL, so we use quoted identifiers with validation
+		quotedTable := fmt.Sprintf(`"%s"`, table)
+		query := fmt.Sprintf("DELETE FROM %s", quotedTable)
+		if _, err := db.Exec(query); err != nil {
 			return fmt.Errorf("failed to delete from table %s: %w", table, err)
 		}
 	}
