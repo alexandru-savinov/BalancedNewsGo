@@ -1877,7 +1877,7 @@ func manualScoreHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 			LogError(c, err, "manualScoreHandler: failed to update article score")
 			return
 		}
-		log.Printf("[manualScoreHandler] Article score updated successfully: articleID=%d, score=%f", articleID, scoreVal)
+		safeLogf("[manualScoreHandler] Article score updated successfully: articleID=%d, score=%f", articleID, scoreVal)
 		RespondSuccess(c, map[string]interface{}{
 			"status":     "score updated",
 			"article_id": articleID,
