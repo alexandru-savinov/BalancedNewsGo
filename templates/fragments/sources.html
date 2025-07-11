@@ -14,13 +14,12 @@
         <!-- Form will be loaded here via HTMX -->
     </div>
 
-    <div class="source-list" role="list" aria-label="News sources">
+    <ul class="source-list" aria-label="News sources">
         {{if .Sources}}
         {{range .Sources}}
-        <div class="source-item" 
-             role="listitem" 
-             data-source-id="{{.ID}}"
-             data-testid="source-card-{{.ID}}">
+        <li class="source-item"
+            data-source-id="{{.ID}}"
+            data-testid="source-card-{{.ID}}">
             <div class="source-info">
                 <div class="source-name">
                     <strong>{{.Name}}</strong>
@@ -85,20 +84,27 @@
                     Stats
                 </button>
             </div>
-        </div>
+        </li>
         {{end}}
         {{else}}
-        <div class="no-sources">
+        <li class="no-sources">
             <p>No sources configured. Add your first source to get started.</p>
-        </div>
+        </li>
         {{end}}
-    </div>
+    </ul>
 </div>
 
 <!-- Source Stats Modal -->
 <div id="source-stats-modal" class="modal" style="display: none;">
     <div class="modal-content">
-        <span class="close" onclick="hideSourceStatsModal()">&times;</span>
+        <button type="button"
+                class="close"
+                onclick="hideSourceStatsModal()"
+                onkeydown="if(event.key==='Enter'||event.key===' ') hideSourceStatsModal()"
+                aria-label="Close modal"
+                tabindex="0">
+            &times;
+        </button>
         <!-- Stats content will be loaded here -->
     </div>
 </div>
