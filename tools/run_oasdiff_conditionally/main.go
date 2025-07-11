@@ -11,6 +11,19 @@ import (
 
 // getGoEnvVar executes "go env <var_name>" and returns its output.
 func getGoEnvVar(varName string) (string, error) {
+	// Validate varName to prevent command injection - only allow known safe values
+	allowedVars := map[string]bool{
+		"GOBIN":  true,
+		"GOPATH": true,
+		"GOROOT": true,
+		"GOOS":   true,
+		"GOARCH": true,
+	}
+	if !allowedVars[varName] {
+		return "", fmt.Errorf("invalid go env variable name: %s", varName)
+	}
+
+	// #nosec G204 - varName is validated against allowlist, go command is standard development tool
 	cmd := exec.Command("go", "env", varName)
 	output, err := cmd.Output()
 	if err != nil {

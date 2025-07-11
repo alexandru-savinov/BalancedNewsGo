@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"testing"
 	"time"
@@ -95,9 +96,31 @@ func CleanupTestData(db *sql.DB) error {
 		tables = append(tables, tableName)
 	}
 
-	// Delete data from all tables
+	// Delete data from all tables (using whitelist for security)
+	allowedTables := map[string]bool{
+		"articles":        true,
+		"llm_scores":      true,
+		"feedback":        true,
+		"sources":         true,
+		"source_errors":   true,
+		"sqlite_sequence": true,
+	}
+
 	for _, table := range tables {
-		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+		// Skip system tables and validate against whitelist
+		if table == "sqlite_master" || table == "sqlite_temp_master" {
+			continue
+		}
+		if !allowedTables[table] {
+			log.Printf("Warning: Skipping unknown table '%s' for security", table)
+			continue
+		}
+
+		// Use quoted identifier to prevent SQL injection while maintaining functionality
+		// Table names cannot be parameterized in SQL, so we use quoted identifiers with validation
+		quotedTable := fmt.Sprintf(`"%s"`, table)
+		query := fmt.Sprintf("DELETE FROM %s", quotedTable)
+		if _, err := db.Exec(query); err != nil {
 			return fmt.Errorf("failed to delete from table %s: %w", table, err)
 		}
 	}

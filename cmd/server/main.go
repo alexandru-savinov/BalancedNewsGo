@@ -142,6 +142,7 @@ func main() {
 			"templates/fragments/article-detail.html",
 			"templates/fragments/error.html",
 			"templates/fragments/summary.html",
+			"templates/fragments/sources.html",
 		) // Load specific files
 	} else {
 		log.Println("TEST_MODE: Skipping template loading")
@@ -308,36 +309,60 @@ func initServices() (*sqlx.DB, *llm.LLMClient, *rss.Collector, *llm.ScoreManager
 		os.Exit(1)
 	}
 
-	// Initialize RSS collector from external config
-	// Load feed URLs from config file first
-	feedConfigData, err := loadFeedSourcesConfig()
+	// Initialize RSS collector with database sources
+	log.Println("Initializing RSS collector...")
+
+	// Try to load sources from database first
+	var feedURLs []string
+	sources, err := db.FetchEnabledSources(dbConn)
 	if err != nil {
-		// In test mode, create minimal config if file doesn't exist
-		if os.Getenv("TEST_MODE") == "true" {
-			log.Printf("WARNING: Feed sources config not found in test mode, using empty config")
-			feedConfigData = []byte(`{"sources": []}`)
-		} else {
-			log.Printf("ERROR: Failed to read feed sources config: %v", err)
+		log.Printf("WARNING: Failed to load sources from database: %v", err)
+		log.Println("Falling back to JSON config...")
+
+		// Fallback to JSON config
+		feedConfigData, err := loadFeedSourcesConfig()
+		if err != nil {
+			// In test mode, create minimal config if file doesn't exist
+			if os.Getenv("TEST_MODE") == "true" {
+				log.Printf("WARNING: Feed sources config not found in test mode, using empty config")
+				feedConfigData = []byte(`{"sources": []}`)
+			} else {
+				log.Printf("ERROR: Failed to read feed sources config: %v", err)
+				os.Exit(1)
+			}
+		}
+		var feedConfig struct { // Use anonymous struct for local parsing
+			Sources []struct {
+				URL string `json:"url"`
+			} `json:"sources"`
+		}
+		if err := json.Unmarshal(feedConfigData, &feedConfig); err != nil {
+			log.Printf("ERROR: Failed to parse feed sources config: %v", err)
 			os.Exit(1)
 		}
-	}
-	var feedConfig struct { // Use anonymous struct for local parsing
-		Sources []struct {
-			URL string `json:"url"`
-		} `json:"sources"`
-	}
-	if err := json.Unmarshal(feedConfigData, &feedConfig); err != nil {
-		log.Printf("ERROR: Failed to parse feed sources config: %v", err)
-		os.Exit(1)
-	}
-	feedURLs := make([]string, 0, len(feedConfig.Sources))
-	for _, src := range feedConfig.Sources {
-		feedURLs = append(feedURLs, src.URL)
+		feedURLs = make([]string, 0, len(feedConfig.Sources))
+		for _, src := range feedConfig.Sources {
+			feedURLs = append(feedURLs, src.URL)
+		}
+		log.Printf("Loaded %d sources from JSON config", len(feedURLs))
+	} else {
+		// Successfully loaded from database
+		feedURLs = make([]string, 0, len(sources))
+		for _, source := range sources {
+			if source.ChannelType == "rss" && source.FeedURL != "" {
+				feedURLs = append(feedURLs, source.FeedURL)
+			}
+		}
+		log.Printf("Loaded %d RSS sources from database", len(feedURLs))
 	}
 
 	// Now initialize the collector with DB, URLs, and LLM client
 	collector := rss.NewCollector(dbConn, feedURLs, llmClient)
-	// Assuming NewCollector does not return an error based on previous usage
+
+	// Load sources from database on startup to ensure fresh data
+	if err := collector.LoadSourcesFromDB(); err != nil {
+		log.Printf("WARNING: Failed to refresh sources from database on startup: %v", err)
+	}
 
 	// Set HTTP client timeout if configured
 	if timeoutStr := os.Getenv("LLM_HTTP_TIMEOUT"); timeoutStr != "" {

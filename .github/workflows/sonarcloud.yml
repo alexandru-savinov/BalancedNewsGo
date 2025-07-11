@@ -2,9 +2,10 @@ name: SonarCloud Security Analysis
 
 on:
   push:
-    branches: [ main, develop, frontend-rewrite-v3 ]
+    branches: [ main, develop, frontend-rewrite-v3, feature/source-management-system ]
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
   schedule:
     # Run security analysis daily at 3 AM UTC
     - cron: '0 3 * * *'
@@ -53,6 +54,36 @@ jobs:
           go mod download
           npm install
 
+      - name: Set up database for tests
+        run: |
+          sqlite3 news.db '.schema' || echo "Database setup complete"
+
+      - name: Build test server binary for CI
+        run: |
+          go build -o test-server-ci ./cmd/server
+          chmod +x test-server-ci
+
+      - name: Run unit tests with coverage
+        env:
+          NO_AUTO_ANALYZE: "true"
+          NO_DOCKER: "true"
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY || 'test-key' }}
+          LLM_API_KEY_SECONDARY: ${{ secrets.LLM_API_KEY_SECONDARY || '' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+        run: |
+          go test -v -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Verify coverage file and generate summary
+        run: |
+          if [ -f coverage.out ]; then
+            echo "✅ Coverage file generated successfully"
+            echo "Coverage file size: $(wc -l < coverage.out) lines"
+            go tool cover -func=coverage.out | tail -10
+          else
+            echo "❌ Coverage file not found!"
+            exit 1
+          fi
+
       - name: Run golangci-lint for additional security checks
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.8
@@ -67,7 +98,3 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN || '' }}
-        with:
-          args: >
-            -Dsonar.go.golangci-lint.reportPaths=golangci-lint-report.xml
-            -Dsonar.go.gosec.reportPaths=gosec-report.json

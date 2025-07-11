@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "sonarqube": {
+      "command": "npx",
+      "args": ["-y", "sonarqube-mcp-server@latest"],
+      "env": {
+        "SONARQUBE_URL": "https://sonarcloud.io",
+        "SONARQUBE_TOKEN": "YOUR_SONARCLOUD_TOKEN_HERE",
+        "SONARQUBE_ORGANIZATION": "alexandru-savinov"
+      }
+    }
+  }
+}

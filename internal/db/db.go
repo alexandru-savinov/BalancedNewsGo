@@ -93,6 +93,31 @@ type Label struct {
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 }
 
+// Source represents a news source with channel-specific configuration
+type Source struct {
+	ID            int64      `db:"id" json:"id"`
+	Name          string     `db:"name" json:"name"`
+	ChannelType   string     `db:"channel_type" json:"channel_type"`
+	FeedURL       string     `db:"feed_url" json:"feed_url"`
+	Category      string     `db:"category" json:"category"`
+	Enabled       bool       `db:"enabled" json:"enabled"`
+	DefaultWeight float64    `db:"default_weight" json:"default_weight"`
+	LastFetchedAt *time.Time `db:"last_fetched_at" json:"last_fetched_at,omitempty"`
+	ErrorStreak   int        `db:"error_streak" json:"error_streak"`
+	Metadata      *string    `db:"metadata" json:"metadata,omitempty"`
+	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time  `db:"updated_at" json:"updated_at"`
+}
+
+// SourceStats represents aggregated statistics for a source
+type SourceStats struct {
+	SourceID      int64      `db:"source_id" json:"source_id"`
+	ArticleCount  int64      `db:"article_count" json:"article_count"`
+	AvgScore      *float64   `db:"avg_score" json:"avg_score,omitempty"`
+	LastArticleAt *time.Time `db:"last_article_at" json:"last_article_at,omitempty"`
+	ComputedAt    time.Time  `db:"computed_at" json:"computed_at"`
+}
+
 // ArticleFilter defines filters for retrieving articles
 type ArticleFilter struct {
 	Source  string
@@ -280,7 +305,7 @@ func handleError(err error, msg string) error {
 // validateDBSchema ensures critical tables exist. It returns an error if any
 // required table is missing, providing clearer diagnostics for test failures.
 func validateDBSchema(db *sqlx.DB) error {
-	required := []string{"articles", "llm_scores", "feedback", "labels"}
+	required := []string{"articles", "llm_scores", "feedback", "labels", "sources", "source_stats"}
 	for _, table := range required {
 		var name string
 		err := db.Get(&name, "SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
@@ -761,6 +786,226 @@ func ArticleExistsByURL(db *sqlx.DB, url string) (bool, error) {
 	return exists, nil
 }
 
+// Source CRUD Operations
+
+// InsertSource creates a new source record with retry logic for SQLITE_BUSY errors
+func InsertSource(db *sqlx.DB, source *Source) (int64, error) {
+	var resultID int64
+
+	// Prepare source fields with defaults if not set
+	if source.CreatedAt.IsZero() {
+		source.CreatedAt = time.Now()
+	}
+	if source.UpdatedAt.IsZero() {
+		source.UpdatedAt = time.Now()
+	}
+
+	// Execute the transaction with retry logic
+	config := DefaultRetryConfig()
+	err := WithRetry(config, func() error {
+		return insertSourceTransaction(db, source, &resultID)
+	})
+
+	if err != nil {
+		log.Printf("[ERROR] InsertSource failed after retries: %v", err)
+		return 0, err
+	}
+
+	log.Printf("[INFO] Source inserted successfully with ID: %d", resultID)
+	return resultID, nil
+}
+
+// insertSourceTransaction performs the actual database transaction for source insertion
+func insertSourceTransaction(db *sqlx.DB, source *Source, resultID *int64) error {
+	tx, err := db.Beginx()
+	if err != nil {
+		return handleError(err, "failed to begin transaction for source insert")
+	}
+
+	// Check if source with same name already exists
+	var exists bool
+	err = tx.Get(&exists, "SELECT EXISTS(SELECT 1 FROM sources WHERE name = ?)", source.Name)
+	if err != nil && err != sql.ErrNoRows {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
+		return handleError(err, "failed to check source name existence in transaction")
+	}
+
+	if exists {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
+		return errors.New("source with this name already exists")
+	}
+
+	// Insert the source
+	result, err := tx.NamedExec(`
+        INSERT INTO sources (name, channel_type, feed_url, category, enabled, default_weight,
+                           last_fetched_at, error_streak, metadata, created_at, updated_at)
+        VALUES (:name, :channel_type, :feed_url, :category, :enabled, :default_weight,
+                :last_fetched_at, :error_streak, :metadata, :created_at, :updated_at)`,
+		source)
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
+		log.Printf("[ERROR] Failed to insert source in transaction: %v", err)
+		return handleError(err, "failed to insert source")
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			log.Printf("[ERROR] Failed to rollback transaction: %v", rollbackErr)
+		}
+		return handleError(err, "failed to get last insert ID for source")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return handleError(err, "failed to commit source insert transaction")
+	}
+
+	*resultID = id
+	return nil
+}
+
+// FetchSources retrieves sources with optional filters
+func FetchSources(db *sqlx.DB, enabled *bool, channelType string, category string, limit int, offset int) ([]Source, error) {
+	query := `SELECT * FROM sources WHERE 1=1`
+	var args []interface{}
+
+	if enabled != nil {
+		query += " AND enabled = ?"
+		args = append(args, *enabled)
+	}
+	if channelType != "" {
+		query += " AND channel_type = ?"
+		args = append(args, channelType)
+	}
+	if category != "" {
+		query += " AND category = ?"
+		args = append(args, category)
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+		if offset > 0 {
+			query += " OFFSET ?"
+			args = append(args, offset)
+		}
+	}
+
+	var sources []Source
+	err := db.Select(&sources, query, args...)
+	if err != nil {
+		log.Printf("[ERROR] FetchSources failed: %v", err)
+		return nil, handleError(err, "failed to fetch sources")
+	}
+
+	log.Printf("[INFO] FetchSources found %d sources", len(sources))
+	return sources, nil
+}
+
+// FetchSourceByID retrieves a single source by ID
+func FetchSourceByID(db *sqlx.DB, id int64) (*Source, error) {
+	log.Printf("[DEBUG] FetchSourceByID called with id: %d", id)
+	if db == nil {
+		log.Printf("[ERROR] Database connection is nil")
+		return nil, errors.New("database connection is nil")
+	}
+
+	var source Source
+	err := db.Get(&source, "SELECT * FROM sources WHERE id = ?", id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[DEBUG] FetchSourceByID: No source found with id: %d", id)
+			return nil, errors.New("source not found")
+		}
+		log.Printf("[ERROR] FetchSourceByID failed with database error: %v", err)
+		return nil, handleError(err, "failed to fetch source")
+	}
+
+	log.Printf("[DEBUG] FetchSourceByID successfully found source: %s", source.Name)
+	return &source, nil
+}
+
+// UpdateSource updates an existing source with retry logic
+func UpdateSource(db *sqlx.DB, id int64, updates map[string]interface{}) error {
+	if len(updates) == 0 {
+		return errors.New("no updates provided")
+	}
+
+	// Always update the updated_at timestamp
+	updates["updated_at"] = time.Now()
+
+	// Build dynamic query
+	setParts := make([]string, 0, len(updates))
+	args := make([]interface{}, 0, len(updates)+1)
+
+	for field, value := range updates {
+		setParts = append(setParts, field+" = ?")
+		args = append(args, value)
+	}
+	args = append(args, id) // Add ID for WHERE clause
+
+	query := fmt.Sprintf("UPDATE sources SET %s WHERE id = ?", strings.Join(setParts, ", "))
+
+	config := DefaultRetryConfig()
+	err := WithRetry(config, func() error {
+		result, err := db.Exec(query, args...)
+		if err != nil {
+			return err
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+
+		if rowsAffected == 0 {
+			return errors.New("source not found")
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("[ERROR] UpdateSource failed: %v", err)
+		return handleError(err, "failed to update source")
+	}
+
+	log.Printf("[INFO] Source updated successfully with ID: %d", id)
+	return nil
+}
+
+// SoftDeleteSource disables a source (soft delete)
+func SoftDeleteSource(db *sqlx.DB, id int64) error {
+	updates := map[string]interface{}{
+		"enabled": false,
+	}
+	return UpdateSource(db, id, updates)
+}
+
+// FetchEnabledSources retrieves all enabled sources for RSS collection
+func FetchEnabledSources(db *sqlx.DB) ([]Source, error) {
+	enabled := true
+	return FetchSources(db, &enabled, "", "", 0, 0)
+}
+
+// SourceExistsByName checks if a source exists with the given name
+func SourceExistsByName(db *sqlx.DB, name string) (bool, error) {
+	var exists bool
+	err := db.Get(&exists, "SELECT EXISTS(SELECT 1 FROM sources WHERE name = ?)", name)
+	if err != nil {
+		return false, handleError(err, "failed to check source name existence")
+	}
+	return exists, nil
+}
+
 // InitDB initializes and returns a database connection to the specified SQLite database file
 func InitDB(dbPath string) (*sqlx.DB, error) {
 	// Open SQLite database connection
@@ -874,6 +1119,34 @@ func InitDB(dbPath string) (*sqlx.DB, error) {
 		labeler TEXT NOT NULL,
 		confidence REAL,
 		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS sources (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL UNIQUE,
+		channel_type TEXT NOT NULL DEFAULT 'rss',
+		feed_url TEXT NOT NULL,
+		category TEXT NOT NULL,
+		enabled BOOLEAN NOT NULL DEFAULT 1,
+		default_weight REAL NOT NULL DEFAULT 1.0,
+		last_fetched_at TIMESTAMP,
+		error_streak INTEGER NOT NULL DEFAULT 0,
+		metadata TEXT,
+		created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_sources_enabled ON sources(enabled);
+	CREATE INDEX IF NOT EXISTS idx_sources_channel_type ON sources(channel_type);
+	CREATE INDEX IF NOT EXISTS idx_sources_category ON sources(category);
+
+	CREATE TABLE IF NOT EXISTS source_stats (
+		source_id INTEGER PRIMARY KEY,
+		article_count INTEGER NOT NULL DEFAULT 0,
+		avg_score REAL,
+		last_article_at TIMESTAMP,
+		computed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (source_id) REFERENCES sources (id)
 	);
 	`
 
