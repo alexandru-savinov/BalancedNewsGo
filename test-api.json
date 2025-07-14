@@ -1,0 +1,7 @@
+{
+  "name": "API Test Source",
+  "channel_type": "rss", 
+  "feed_url": "https://example.com/api-test.xml",
+  "category": "center",
+  "default_weight": 1.0
+}

@@ -202,6 +202,23 @@ func setupIntegrationTestServer(t *testing.T) (*gin.Engine, *MockDBOperations,
 	*MockProgressManager, *MockCache, *MockScoreCalculator, *IntegrationMockLLMClient) {
 	gin.SetMode(gin.TestMode)
 
+	// Set NO_AUTO_ANALYZE for test environment to ensure consistent behavior
+	originalValue := os.Getenv("NO_AUTO_ANALYZE")
+	if err := os.Setenv("NO_AUTO_ANALYZE", "true"); err != nil {
+		t.Fatalf("Failed to set NO_AUTO_ANALYZE environment variable: %v", err)
+	}
+	t.Cleanup(func() {
+		if originalValue == "" {
+			if err := os.Unsetenv("NO_AUTO_ANALYZE"); err != nil {
+				t.Logf("Failed to unset NO_AUTO_ANALYZE: %v", err)
+			}
+		} else {
+			if err := os.Setenv("NO_AUTO_ANALYZE", originalValue); err != nil {
+				t.Logf("Failed to restore NO_AUTO_ANALYZE: %v", err)
+			}
+		}
+	})
+
 	// Create all our mocks
 	mockDB := new(MockDBOperations)
 	mockProgress := new(MockProgressManager)
