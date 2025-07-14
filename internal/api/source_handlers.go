@@ -132,7 +132,7 @@ func getSourcesHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 func createSourceHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req models.CreateSourceRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
+		if err := c.ShouldBind(&req); err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid request body: "+err.Error()))
 			return
 		}
@@ -288,7 +288,7 @@ func updateSourceHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		}
 
 		var req models.UpdateSourceRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
+		if err := c.ShouldBind(&req); err != nil {
 			RespondError(c, NewAppError(ErrValidation, "Invalid request body: "+err.Error()))
 			return
 		}

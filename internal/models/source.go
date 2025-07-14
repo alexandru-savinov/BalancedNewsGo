@@ -43,24 +43,24 @@ type SourceWithStats struct {
 // @Description Request body for creating a new news source
 // swagger:model CreateSourceRequest
 type CreateSourceRequest struct {
-	Name          string  `json:"name" binding:"required" example:"CNN Politics"`                                // Display name (required)
-	ChannelType   string  `json:"channel_type" binding:"required" example:"rss"`                                 // Channel type (required)
-	FeedURL       string  `json:"feed_url" binding:"required,url" example:"https://rss.cnn.com/rss/edition.rss"` // Feed URL (required, must be valid URL)
-	Category      string  `json:"category" binding:"required,oneof=left center right" example:"center"`          // Political category (required)
-	DefaultWeight float64 `json:"default_weight,omitempty" example:"1.0"`                                        // Scoring weight (optional, defaults to 1.0)
-	Metadata      *string `json:"metadata,omitempty"`                                                            // Channel-specific configuration (optional)
+	Name          string  `json:"name" form:"name" binding:"required" example:"CNN Politics"`                                    // Display name (required)
+	ChannelType   string  `json:"channel_type" form:"channel_type" binding:"required" example:"rss"`                             // Channel type (required)
+	FeedURL       string  `json:"feed_url" form:"feed_url" binding:"required,url" example:"https://rss.cnn.com/rss/edition.rss"` // Feed URL (required, must be valid URL)
+	Category      string  `json:"category" form:"category" binding:"required,oneof=left center right" example:"center"`          // Political category (required)
+	DefaultWeight float64 `json:"default_weight" form:"default_weight" example:"1.0"`                                            // Scoring weight (optional, defaults to 1.0)
+	Metadata      *string `json:"metadata" form:"metadata"`                                                                      // Channel-specific configuration (optional)
 }
 
 // UpdateSourceRequest represents a request to update an existing source
 // @Description Request body for updating an existing news source
 // swagger:model UpdateSourceRequest
 type UpdateSourceRequest struct {
-	Name          *string  `json:"name,omitempty" example:"Updated CNN Politics"`                     // Display name (optional)
-	FeedURL       *string  `json:"feed_url,omitempty" example:"https://rss.cnn.com/rss/politics.rss"` // Feed URL (optional, must be valid URL if provided)
-	Category      *string  `json:"category,omitempty" example:"center"`                               // Political category (optional)
-	Enabled       *bool    `json:"enabled,omitempty" example:"true"`                                  // Active status (optional)
-	DefaultWeight *float64 `json:"default_weight,omitempty" example:"1.5"`                            // Scoring weight (optional)
-	Metadata      *string  `json:"metadata,omitempty"`                                                // Channel-specific configuration (optional)
+	Name          *string  `json:"name,omitempty" form:"name" example:"Updated CNN Politics"`                         // Display name (optional)
+	FeedURL       *string  `json:"feed_url,omitempty" form:"feed_url" example:"https://rss.cnn.com/rss/politics.rss"` // Feed URL (optional, must be valid URL if provided)
+	Category      *string  `json:"category,omitempty" form:"category" example:"center"`                               // Political category (optional)
+	Enabled       *bool    `json:"enabled,omitempty" form:"enabled" example:"true"`                                   // Active status (optional)
+	DefaultWeight *float64 `json:"default_weight,omitempty" form:"default_weight" example:"1.5"`                      // Scoring weight (optional)
+	Metadata      *string  `json:"metadata,omitempty" form:"metadata"`                                                // Channel-specific configuration (optional)
 }
 
 // SourceListResponse represents a paginated list of sources

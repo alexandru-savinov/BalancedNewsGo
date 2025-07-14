@@ -78,7 +78,7 @@ test.describe('Source Management - Comprehensive E2E Tests', () => {
       await expect(page.locator('input[name="feed_url"]')).toBeVisible();
       await expect(page.locator('select[name="category"]')).toBeVisible();
       await expect(page.locator('input[name="default_weight"]')).toBeVisible();
-      await expect(page.locator('input[name="enabled"]')).toBeVisible();
+      // Note: enabled checkbox is only present in edit form, not add form (new sources are enabled by default)
       
       // Verify form buttons
       await expect(page.locator('button:has-text("Add Source")')).toBeVisible();
@@ -112,7 +112,7 @@ test.describe('Source Management - Comprehensive E2E Tests', () => {
       await page.fill('input[name="feed_url"]', 'https://example.com/test-feed.xml');
       await page.selectOption('select[name="category"]', 'center');
       await page.fill('input[name="default_weight"]', '1.2');
-      await page.check('input[name="enabled"]');
+      // Note: No enabled checkbox in add form - new sources are enabled by default
       
       // Submit the form
       await page.click('button:has-text("Add Source")');

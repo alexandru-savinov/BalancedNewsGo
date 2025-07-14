@@ -1,5 +1,5 @@
 {{define "source-list-fragment"}}
-<div class="source-management-container">
+<div class="source-management-container" data-testid="source-management-container">
     <div class="source-header">
         <h4>Source Management</h4>
         <button class="btn btn-primary" 
@@ -57,27 +57,28 @@
                     Edit
                 </button>
                 {{if .Enabled}}
-                <button class="btn btn-sm btn-warning" 
-                        hx-delete="/api/sources/{{.ID}}" 
+                <button class="btn btn-sm btn-warning"
+                        hx-put="/htmx/sources/{{.ID}}"
+                        hx-vals='{"enabled": false}'
                         hx-confirm="Disable this source? It will stop fetching new articles."
-                        hx-target="closest .source-item"
-                        hx-swap="outerHTML"
+                        hx-target="#source-list-container"
+                        hx-swap="innerHTML"
                         data-testid="disable-source-{{.ID}}">
                     Disable
                 </button>
                 {{else}}
-                <button class="btn btn-sm btn-success" 
-                        hx-put="/api/sources/{{.ID}}" 
+                <button class="btn btn-sm btn-success"
+                        hx-put="/htmx/sources/{{.ID}}"
                         hx-vals='{"enabled": true}'
-                        hx-target="closest .source-item"
-                        hx-swap="outerHTML"
+                        hx-target="#source-list-container"
+                        hx-swap="innerHTML"
                         data-testid="enable-source-{{.ID}}">
                     Enable
                 </button>
                 {{end}}
-                <button class="btn btn-sm btn-info" 
-                        hx-get="/htmx/sources/{{.ID}}/stats" 
-                        hx-target="#source-stats-modal"
+                <button class="btn btn-sm btn-info"
+                        hx-get="/htmx/sources/{{.ID}}/stats"
+                        hx-target="#source-stats-content"
                         hx-swap="innerHTML"
                         onclick="showSourceStatsModal()"
                         data-testid="stats-source-{{.ID}}">
@@ -105,7 +106,9 @@
                 tabindex="0">
             &times;
         </button>
-        <!-- Stats content will be loaded here -->
+        <div id="source-stats-content">
+            <!-- Stats content will be loaded here via HTMX -->
+        </div>
     </div>
 </div>
 {{end}}
@@ -114,9 +117,9 @@
 <div class="source-form">
     <h5>{{if .Source}}Edit Source{{else}}Add New Source{{end}}</h5>
     <form {{if .Source}}
-          hx-put="/api/sources/{{.Source.ID}}"
+          hx-put="/htmx/sources/{{.Source.ID}}"
           {{else}}
-          hx-post="/api/sources"
+          hx-post="/htmx/sources"
           {{end}}
           hx-target="#source-list-container"
           hx-swap="innerHTML"

@@ -575,7 +575,7 @@ func adminSourcesListHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		sources, err := db.FetchSources(dbConn, nil, "", "", 0, 0)
 		if err != nil {
 			log.Printf("[ERROR] Failed to fetch sources for admin: %v", err)
-			c.HTML(500, "fragments/sources.html", gin.H{
+			c.HTML(500, "source-list-fragment", gin.H{
 				"Error": "Failed to load sources",
 			})
 			return
@@ -712,6 +712,183 @@ func adminSourceStatsHandler(dbConn *sqlx.DB) gin.HandlerFunc {
 		c.HTML(200, "source-stats-fragment", gin.H{
 			"Source": modelSource,
 			"Stats":  stats,
+		})
+	}
+}
+
+// adminCreateSourceHandler handles POST /htmx/sources - creates source and returns updated source list HTML
+func adminCreateSourceHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req models.CreateSourceRequest
+		if err := c.ShouldBind(&req); err != nil {
+			log.Printf("[ERROR] Failed to bind create source request: %v", err)
+			c.HTML(400, "source-list-fragment", gin.H{
+				"Error": "Invalid request data: " + err.Error(),
+			})
+			return
+		}
+
+		// Validate request
+		if err := req.Validate(); err != nil {
+			log.Printf("[ERROR] Create source validation failed: %v", err)
+			c.HTML(400, "source-list-fragment", gin.H{
+				"Error": "Validation failed: " + err.Error(),
+			})
+			return
+		}
+
+		// Create source using the same logic as the API handler
+		source := &db.Source{
+			Name:          req.Name,
+			ChannelType:   req.ChannelType,
+			FeedURL:       req.FeedURL,
+			Category:      req.Category,
+			DefaultWeight: req.DefaultWeight,
+			Enabled:       true, // New sources are enabled by default
+			Metadata:      req.Metadata,
+		}
+
+		id, err := db.InsertSource(dbConn, source)
+		if err != nil {
+			log.Printf("[ERROR] Failed to create source: %v", err)
+			c.HTML(500, "source-list-fragment", gin.H{
+				"Error": "Failed to create source: " + err.Error(),
+			})
+			return
+		}
+		source.ID = id
+
+		// Return updated source list HTML
+		sources, err := db.FetchSources(dbConn, nil, "", "", 0, 0)
+		if err != nil {
+			log.Printf("[ERROR] Failed to fetch sources after creation: %v", err)
+			c.HTML(500, "source-list-fragment", gin.H{
+				"Error": "Source created but failed to refresh list",
+			})
+			return
+		}
+
+		// Convert to SourceWithStats for template
+		sourcesWithStats := make([]models.SourceWithStats, len(sources))
+		for i, source := range sources {
+			sourcesWithStats[i] = models.SourceWithStats{
+				Source: models.Source{
+					ID:            source.ID,
+					Name:          source.Name,
+					ChannelType:   source.ChannelType,
+					FeedURL:       source.FeedURL,
+					Category:      source.Category,
+					DefaultWeight: source.DefaultWeight,
+					Enabled:       source.Enabled,
+					CreatedAt:     source.CreatedAt,
+					UpdatedAt:     source.UpdatedAt,
+					Metadata:      source.Metadata,
+				},
+			}
+		}
+
+		c.HTML(200, "source-list-fragment", gin.H{
+			"Sources": sourcesWithStats,
+		})
+	}
+}
+
+// adminUpdateSourceHandler handles PUT /htmx/sources/:id - updates source and returns updated source list HTML
+func adminUpdateSourceHandler(dbConn *sqlx.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			c.HTML(400, "source-list-fragment", gin.H{
+				"Error": "Invalid source ID",
+			})
+			return
+		}
+
+		var req models.UpdateSourceRequest
+
+		// Debug: Log the raw request data
+		log.Printf("[DEBUG] HTMX Update Source - Content-Type: %s", c.GetHeader("Content-Type"))
+		log.Printf("[DEBUG] HTMX Update Source - Method: %s", c.Request.Method)
+
+		if err := c.ShouldBind(&req); err != nil {
+			log.Printf("[ERROR] Failed to bind update source request: %v", err)
+			log.Printf("[DEBUG] Request body: %+v", c.Request.Body)
+			c.HTML(400, "source-list-fragment", gin.H{
+				"Error": "Invalid request data: " + err.Error(),
+			})
+			return
+		}
+
+		// Debug: Log the parsed request
+		log.Printf("[DEBUG] HTMX Update Source - Parsed request: %+v", req)
+
+		// Validate request
+		if err := req.Validate(); err != nil {
+			log.Printf("[ERROR] Update source validation failed: %v", err)
+			c.HTML(400, "source-list-fragment", gin.H{
+				"Error": "Validation failed: " + err.Error(),
+			})
+			return
+		}
+
+		// Check if source exists
+		_, err = db.FetchSourceByID(dbConn, id)
+		if err != nil {
+			if err.Error() == "source not found" {
+				c.HTML(404, "source-list-fragment", gin.H{
+					"Error": "Source not found",
+				})
+				return
+			}
+			c.HTML(500, "source-list-fragment", gin.H{
+				"Error": "Failed to fetch source",
+			})
+			return
+		}
+
+		// Update source
+		updates := req.ToUpdateMap()
+		err = db.UpdateSource(dbConn, id, updates)
+		if err != nil {
+			log.Printf("[ERROR] Failed to update source: %v", err)
+			c.HTML(500, "source-list-fragment", gin.H{
+				"Error": "Failed to update source: " + err.Error(),
+			})
+			return
+		}
+
+		// Return updated source list HTML
+		sources, err := db.FetchSources(dbConn, nil, "", "", 0, 0)
+		if err != nil {
+			log.Printf("[ERROR] Failed to fetch sources after update: %v", err)
+			c.HTML(500, "source-list-fragment", gin.H{
+				"Error": "Source updated but failed to refresh list",
+			})
+			return
+		}
+
+		// Convert to SourceWithStats for template
+		sourcesWithStats := make([]models.SourceWithStats, len(sources))
+		for i, source := range sources {
+			sourcesWithStats[i] = models.SourceWithStats{
+				Source: models.Source{
+					ID:            source.ID,
+					Name:          source.Name,
+					ChannelType:   source.ChannelType,
+					FeedURL:       source.FeedURL,
+					Category:      source.Category,
+					DefaultWeight: source.DefaultWeight,
+					Enabled:       source.Enabled,
+					CreatedAt:     source.CreatedAt,
+					UpdatedAt:     source.UpdatedAt,
+					Metadata:      source.Metadata,
+				},
+			}
+		}
+
+		c.HTML(200, "source-list-fragment", gin.H{
+			"Sources": sourcesWithStats,
 		})
 	}
 }

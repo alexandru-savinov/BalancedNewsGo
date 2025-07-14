@@ -416,6 +416,9 @@ func RegisterRoutes(
 	router.GET("/htmx/sources/new", SafeHandler(adminSourceFormHandler(dbConn)))
 	router.GET("/htmx/sources/:id/edit", SafeHandler(adminSourceFormHandler(dbConn)))
 	router.GET("/htmx/sources/:id/stats", SafeHandler(adminSourceStatsHandler(dbConn)))
+	// HTMX endpoints for source CRUD operations that return HTML
+	router.POST("/htmx/sources", SafeHandler(adminCreateSourceHandler(dbConn)))
+	router.PUT("/htmx/sources/:id", SafeHandler(adminUpdateSourceHandler(dbConn)))
 }
 
 // SafeHandler wraps a handler function with panic recovery to prevent server crashes
