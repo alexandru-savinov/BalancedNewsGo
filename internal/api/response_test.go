@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +17,13 @@ import (
 
 func TestRespondError_LLMErrors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
+	// Set up logger to prevent nil pointer dereference
+	var logBuffer bytes.Buffer
+	log.SetOutput(&logBuffer)
+	defer func() {
+		log.SetOutput(nil) // Reset to default
+	}()
 
 	testCases := []struct {
 		name                  string
@@ -142,6 +151,13 @@ func TestRespondError_LLMErrors(t *testing.T) {
 func TestRespondError_AppErrors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// Set up logger to prevent nil pointer dereference
+	var logBuffer bytes.Buffer
+	log.SetOutput(&logBuffer)
+	defer func() {
+		log.SetOutput(nil) // Reset to default
+	}()
+
 	testCases := []struct {
 		name               string
 		err                error
@@ -184,6 +200,13 @@ func TestRespondError_AppErrors(t *testing.T) {
 }
 
 func TestLogError(t *testing.T) {
+	// Set up logger to prevent nil pointer dereference
+	var logBuffer bytes.Buffer
+	log.SetOutput(&logBuffer)
+	defer func() {
+		log.SetOutput(nil) // Reset to default
+	}()
+
 	// This is more of a smoke test since we can't easily test logging output
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 

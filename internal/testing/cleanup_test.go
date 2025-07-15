@@ -108,7 +108,7 @@ func TestDeleteFromTableValidation(t *testing.T) {
 
 	// Test invalid table names
 	invalidTables := []string{
-		"",                    // empty
+		"",                   // empty
 		"123table",           // starts with number
 		"table-name",         // contains dash
 		"table name",         // contains space
