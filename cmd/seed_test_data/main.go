@@ -34,7 +34,21 @@ func main() {
 
 	fmt.Println("Database initialized successfully")
 
-	// Seed test articles for accessibility tests
+	// Load seed data from SQL file
+	fmt.Println("Loading seed data from SQL file...")
+	seedSQL, err := os.ReadFile("testdata/seed/sources.sql")
+	if err != nil {
+		log.Fatalf("Failed to read seed data file: %v", err)
+	}
+
+	// Execute the seed SQL
+	_, err = database.Exec(string(seedSQL))
+	if err != nil {
+		log.Fatalf("Failed to execute seed data: %v", err)
+	}
+	fmt.Println("✓ Seed data loaded successfully")
+
+	// Seed additional test articles for accessibility tests
 	testArticles := []struct {
 		title   string
 		content string
@@ -44,20 +58,12 @@ func main() {
 			content: "This is test content for accessibility testing. It ensures that H1 elements have proper content and are visible to screen readers.",
 		},
 		{
-			title:   "Test Article 1 for Accessibility",
-			content: "Test content for article 1 to ensure proper page rendering.",
-		},
-		{
-			title:   "Test Article 2 for Accessibility",
-			content: "Test content for article 2 to ensure proper page rendering.",
-		},
-		{
-			title:   "Test Article 3 for Accessibility",
-			content: "Test content for article 3 to ensure proper page rendering.",
+			title:   "Test Article 4 for Additional Testing",
+			content: "Additional test content for comprehensive testing.",
 		},
 	}
 
-	fmt.Printf("Inserting %d test articles...\n", len(testArticles))
+	fmt.Printf("Inserting %d additional test articles...\n", len(testArticles))
 
 	var insertedIDs []int64
 	for i, article := range testArticles {
