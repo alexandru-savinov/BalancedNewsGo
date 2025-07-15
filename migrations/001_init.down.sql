@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS source_stats;
+DROP TABLE IF EXISTS sources;
 DROP TABLE IF EXISTS llm_scores;
 DROP TABLE IF EXISTS articles;
 DROP TABLE IF EXISTS feedback;
