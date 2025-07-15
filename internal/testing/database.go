@@ -130,8 +130,8 @@ func CleanupTestData(db *sql.DB) error {
 }
 
 // deleteFromTable safely deletes all data from a specific table
-// This function isolates the SQL construction to address SonarQube security concerns
-// while maintaining proper validation and quoting
+// This function uses a predefined query map to completely avoid SQL construction
+// and address security scanner concerns about string concatenation
 func deleteFromTable(db *sql.DB, tableName string) error {
 	// Additional validation: ensure table name contains only valid characters
 	// This prevents any potential injection even though we already validate against whitelist
@@ -139,10 +139,23 @@ func deleteFromTable(db *sql.DB, tableName string) error {
 		return fmt.Errorf("invalid table name format: %s", tableName)
 	}
 
-	// Use proper SQL identifier quoting for SQLite
-	// Double quotes are the standard SQL way to quote identifiers
-	quotedTable := `"` + tableName + `"`
-	query := "DELETE FROM " + quotedTable
+	// Use predefined queries to avoid any string concatenation
+	// This satisfies security scanners while maintaining functionality
+	queries := map[string]string{
+		"articles":        `DELETE FROM "articles"`,
+		"llm_scores":      `DELETE FROM "llm_scores"`,
+		"feedback":        `DELETE FROM "feedback"`,
+		"sources":         `DELETE FROM "sources"`,
+		"source_errors":   `DELETE FROM "source_errors"`,
+		"scores":          `DELETE FROM "scores"`,
+		"users":           `DELETE FROM "users"`,
+		"sqlite_sequence": `DELETE FROM "sqlite_sequence"`,
+	}
+
+	query, exists := queries[tableName]
+	if !exists {
+		return fmt.Errorf("no predefined query for table: %s", tableName)
+	}
 
 	_, err := db.Exec(query)
 	return err
