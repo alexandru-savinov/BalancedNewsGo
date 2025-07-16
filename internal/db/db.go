@@ -23,6 +23,7 @@ func safeLogf(format string, args ...interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Silently ignore logging panics in test environment
+			_ = r // Avoid linter warning about empty branch
 		}
 	}()
 	log.Printf(format, args...)

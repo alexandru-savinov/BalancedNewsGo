@@ -151,6 +151,7 @@ func LogPerformance(operation string, start time.Time) {
 	defer func() {
 		if r := recover(); r != nil {
 			// Silently ignore logging panics in test environment
+			_ = r // Avoid linter warning about empty branch
 		}
 	}()
 	log.Printf("[PERF] Operation=%s Duration=%v", operation, duration)
