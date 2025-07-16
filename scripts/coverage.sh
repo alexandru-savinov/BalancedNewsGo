@@ -36,7 +36,9 @@ export NO_AUTO_ANALYZE=true
 export DATABASE_URL="${DATABASE_URL:-postgres://localhost:5432/newsbalancer_test?sslmode=disable}"
 
 # Run tests with coverage
-go test -v -race -coverprofile="$COVERAGE_FILE" -covermode=atomic ./... 2>&1 | tee "$COVERAGE_DIR/test-output.log"
+# Allow specifying packages via PACKAGES env var, defaulting to all packages
+PACKAGES=${PACKAGES:-./...}
+go test -v -race -coverprofile="$COVERAGE_FILE" -covermode=atomic $PACKAGES 2>&1 | tee "$COVERAGE_DIR/test-output.log"
 
 if [ ! -f "$COVERAGE_FILE" ]; then
     echo -e "${RED}Error: Coverage file not generated${NC}"

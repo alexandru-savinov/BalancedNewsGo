@@ -322,6 +322,10 @@ Additionally, the database schema includes a `UNIQUE(article_id, model)` constra
   # Linux/macOS
   scripts/test.sh clean
   ```
+- Run coverage analysis (supports custom packages):
+  ```bash
+  PACKAGES="./internal/models ./internal/tests/unit" bash scripts/coverage.sh
+  ```
 
 See `scripts/test.cmd help` or `scripts/test.sh help` for all available commands.
 
