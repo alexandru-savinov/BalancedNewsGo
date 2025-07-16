@@ -18,13 +18,23 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// safeLogf provides safe logging that won't panic in test environments
+func safeLogf(format string, args ...interface{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently ignore logging panics in test environment
+		}
+	}()
+	log.Printf(format, args...)
+}
+
 // secureFloat64 generates a cryptographically secure random float64 between 0.0 and 1.0
 func secureFloat64() float64 {
 	var b [8]byte
 	_, err := rand.Read(b[:])
 	if err != nil {
 		// Fallback to a simple deterministic value if crypto/rand fails
-		log.Printf("[WARN] Failed to generate secure random number: %v", err)
+		safeLogf("[WARN] Failed to generate secure random number: %v", err)
 		return 0.5
 	}
 	// Convert bytes to uint64, then to float64 in range [0, 1)
@@ -807,11 +817,11 @@ func InsertSource(db *sqlx.DB, source *Source) (int64, error) {
 	})
 
 	if err != nil {
-		log.Printf("[ERROR] InsertSource failed after retries: %v", err)
+		safeLogf("[ERROR] InsertSource failed after retries: %v", err)
 		return 0, err
 	}
 
-	log.Printf("[INFO] Source inserted successfully with ID: %d", resultID)
+	safeLogf("[INFO] Source inserted successfully with ID: %d", resultID)
 	return resultID, nil
 }
 
@@ -902,19 +912,19 @@ func FetchSources(db *sqlx.DB, enabled *bool, channelType string, category strin
 	var sources []Source
 	err := db.Select(&sources, query, args...)
 	if err != nil {
-		log.Printf("[ERROR] FetchSources failed: %v", err)
+		safeLogf("[ERROR] FetchSources failed: %v", err)
 		return nil, handleError(err, "failed to fetch sources")
 	}
 
-	log.Printf("[INFO] FetchSources found %d sources", len(sources))
+	safeLogf("[INFO] FetchSources found %d sources", len(sources))
 	return sources, nil
 }
 
 // FetchSourceByID retrieves a single source by ID
 func FetchSourceByID(db *sqlx.DB, id int64) (*Source, error) {
-	log.Printf("[DEBUG] FetchSourceByID called with id: %d", id)
+	safeLogf("[DEBUG] FetchSourceByID called with id: %d", id)
 	if db == nil {
-		log.Printf("[ERROR] Database connection is nil")
+		safeLogf("[ERROR] Database connection is nil")
 		return nil, errors.New("database connection is nil")
 	}
 
@@ -922,14 +932,14 @@ func FetchSourceByID(db *sqlx.DB, id int64) (*Source, error) {
 	err := db.Get(&source, "SELECT * FROM sources WHERE id = ?", id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("[DEBUG] FetchSourceByID: No source found with id: %d", id)
+			safeLogf("[DEBUG] FetchSourceByID: No source found with id: %d", id)
 			return nil, errors.New("source not found")
 		}
-		log.Printf("[ERROR] FetchSourceByID failed with database error: %v", err)
+		safeLogf("[ERROR] FetchSourceByID failed with database error: %v", err)
 		return nil, handleError(err, "failed to fetch source")
 	}
 
-	log.Printf("[DEBUG] FetchSourceByID successfully found source: %s", source.Name)
+	safeLogf("[DEBUG] FetchSourceByID successfully found source: %s", source.Name)
 	return &source, nil
 }
 
@@ -974,11 +984,11 @@ func UpdateSource(db *sqlx.DB, id int64, updates map[string]interface{}) error {
 	})
 
 	if err != nil {
-		log.Printf("[ERROR] UpdateSource failed: %v", err)
+		safeLogf("[ERROR] UpdateSource failed: %v", err)
 		return handleError(err, "failed to update source")
 	}
 
-	log.Printf("[INFO] Source updated successfully with ID: %d", id)
+	safeLogf("[INFO] Source updated successfully with ID: %d", id)
 	return nil
 }
 
