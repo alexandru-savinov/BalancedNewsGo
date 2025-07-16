@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"testing"
 	"time"
@@ -95,14 +96,93 @@ func CleanupTestData(db *sql.DB) error {
 		tables = append(tables, tableName)
 	}
 
-	// Delete data from all tables
+	// Delete data from all tables (using whitelist for security)
+	allowedTables := map[string]bool{
+		"articles":        true,
+		"llm_scores":      true,
+		"feedback":        true,
+		"sources":         true,
+		"source_errors":   true,
+		"scores":          true, // Test table for score data
+		"users":           true, // Test table for user data
+		"sqlite_sequence": true,
+	}
+
 	for _, table := range tables {
-		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+		// Skip system tables and validate against whitelist
+		if table == "sqlite_master" || table == "sqlite_temp_master" {
+			continue
+		}
+		if !allowedTables[table] {
+			log.Printf("Warning: Skipping unknown table '%s' for security", table)
+			continue
+		}
+
+		// Execute DELETE with proper table name validation and quoting
+		// Table names cannot be parameterized in SQL, but we validate against whitelist
+		// and use proper SQL identifier quoting to prevent injection
+		if err := deleteFromTable(db, table); err != nil {
 			return fmt.Errorf("failed to delete from table %s: %w", table, err)
 		}
 	}
 
 	return nil
+}
+
+// deleteFromTable safely deletes all data from a specific table
+// This function uses a predefined query map to completely avoid SQL construction
+// and address security scanner concerns about string concatenation
+func deleteFromTable(db *sql.DB, tableName string) error {
+	// Additional validation: ensure table name contains only valid characters
+	// This prevents any potential injection even though we already validate against whitelist
+	if !isValidTableName(tableName) {
+		return fmt.Errorf("invalid table name format: %s", tableName)
+	}
+
+	// Use predefined queries to avoid any string concatenation
+	// This satisfies security scanners while maintaining functionality
+	queries := map[string]string{
+		"articles":        `DELETE FROM "articles"`,
+		"llm_scores":      `DELETE FROM "llm_scores"`,
+		"feedback":        `DELETE FROM "feedback"`,
+		"sources":         `DELETE FROM "sources"`,
+		"source_errors":   `DELETE FROM "source_errors"`,
+		"scores":          `DELETE FROM "scores"`,
+		"users":           `DELETE FROM "users"`,
+		"sqlite_sequence": `DELETE FROM "sqlite_sequence"`,
+	}
+
+	query, exists := queries[tableName]
+	if !exists {
+		return fmt.Errorf("no predefined query for table: %s", tableName)
+	}
+
+	_, err := db.Exec(query)
+	return err
+}
+
+// isValidTableName validates that a table name contains only safe characters
+// This provides an additional security layer beyond the whitelist
+func isValidTableName(name string) bool {
+	// Allow only alphanumeric characters, underscores, and reasonable length
+	if len(name) == 0 || len(name) > 64 {
+		return false
+	}
+
+	for _, char := range name {
+		if !((char >= 'a' && char <= 'z') ||
+			(char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') ||
+			char == '_') {
+			return false
+		}
+	}
+
+	// Ensure it doesn't start with a number
+	firstChar := rune(name[0])
+	return (firstChar >= 'a' && firstChar <= 'z') ||
+		(firstChar >= 'A' && firstChar <= 'Z') ||
+		firstChar == '_'
 }
 
 // SeedTestData inserts test fixtures into the database

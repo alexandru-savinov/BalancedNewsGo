@@ -1,0 +1,7 @@
+{
+  "name": "HTMX Test Source",
+  "channel_type": "rss", 
+  "feed_url": "https://example.com/htmx-test.xml",
+  "category": "center",
+  "default_weight": 1.5
+}

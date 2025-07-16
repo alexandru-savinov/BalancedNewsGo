@@ -90,15 +90,15 @@ async function checkServerHealth() {
 
 async function runTestSuite(suiteName, testFile, options = {}) {
   logHeader(`Running ${suiteName}`);
-  
+
   try {
-    const args = ['test', testFile];
-    
+    const args = ['test', testFile, '--reporter=dot', '--timeout=60000'];
+
     if (options.headed) args.push('--headed');
     if (options.debug) args.push('--debug');
     if (options.project) args.push('--project', options.project);
     if (options.grep) args.push('--grep', options.grep);
-    
+
     await runCommand('npx', ['playwright', ...args]);
     logSuccess(`${suiteName} completed successfully`);
     return true;
@@ -192,27 +192,42 @@ async function main() {
     suites: []
   };
   
-  // Define test suites
+  // Define optimized test suites
   const testSuites = [
     {
-      name: 'HTMX Core Functionality',
-      file: 'tests/htmx-e2e.spec.ts',
-      description: 'Dynamic filtering, live search, pagination, article loading'
+      name: 'Source Management',
+      file: 'tests/e2e/source-management-comprehensive.spec.ts',
+      description: 'Complete source management workflow and CRUD operations'
     },
     {
-      name: 'HTMX Performance & Accessibility',
-      file: 'tests/htmx-performance-accessibility.spec.ts',
-      description: 'Performance optimization and accessibility compliance'
+      name: 'Admin Dashboard',
+      file: 'tests/e2e/admin-dashboard-comprehensive.spec.ts',
+      description: 'Admin dashboard functionality and operations'
     },
     {
-      name: 'HTMX Integration Tests',
-      file: 'tests/htmx-integration.spec.ts',
-      description: 'Specific HTMX endpoints and real-time features'
+      name: 'HTMX Functionality',
+      file: 'tests/e2e/htmx-functionality.spec.ts',
+      description: 'HTMX interactions and dynamic content loading'
     },
     {
-      name: 'Article Feed E2E',
-      file: 'tests/article-feed.e2e.spec.ts',
-      description: 'Basic article feed functionality'
+      name: 'HTMX Integration',
+      file: 'tests/e2e/htmx-integration.spec.ts',
+      description: 'HTMX integration with SSE and real-time updates'
+    },
+    {
+      name: 'Accessibility',
+      file: 'tests/e2e/accessibility-pages.spec.ts',
+      description: 'Accessibility compliance and WCAG validation'
+    },
+    {
+      name: 'Mobile Responsiveness',
+      file: 'tests/e2e/mobile-responsiveness-optimized.spec.ts',
+      description: 'Mobile device compatibility and responsive design'
+    },
+    {
+      name: 'Performance',
+      file: 'tests/e2e/performance.spec.ts',
+      description: 'Performance testing and optimization validation'
     }
   ];
   

@@ -51,3 +51,31 @@ CREATE TABLE labels (
 );
 
 CREATE INDEX idx_llm_scores_article_version ON llm_scores(article_id, version);
+
+CREATE TABLE sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    channel_type TEXT NOT NULL DEFAULT 'rss',
+    feed_url TEXT NOT NULL,
+    category TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT 1,
+    default_weight REAL NOT NULL DEFAULT 1.0,
+    last_fetched_at TIMESTAMP,
+    error_streak INTEGER NOT NULL DEFAULT 0,
+    metadata TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_sources_enabled ON sources(enabled);
+CREATE INDEX idx_sources_channel_type ON sources(channel_type);
+CREATE INDEX idx_sources_category ON sources(category);
+
+CREATE TABLE source_stats (
+    source_id INTEGER PRIMARY KEY,
+    article_count INTEGER NOT NULL DEFAULT 0,
+    avg_score REAL,
+    last_article_at TIMESTAMP,
+    computed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES sources (id)
+);

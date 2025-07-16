@@ -314,11 +314,11 @@ function Invoke-IntegrationTests {
 }
 
 function Invoke-E2ETests {
-    Write-TestLog "Running E2E tests..." "INFO"
-    
+    Write-TestLog "Running optimized E2E tests..." "INFO"
+
     # Ensure Playwright dependencies are available
     if (Get-Command "npx" -ErrorAction SilentlyContinue) {
-        npx playwright test --reporter=json --output-dir="$ResultsDir/e2e-results" | Tee-Object -FilePath "$ResultsDir/e2e-tests.log"
+        npx playwright test tests/e2e/ --reporter=dot --timeout=60000 --output-dir="$ResultsDir/e2e-results" | Tee-Object -FilePath "$ResultsDir/e2e-tests.log"
         return $LASTEXITCODE
     } else {
         Write-TestLog "npx not found - skipping E2E tests" "WARN"

@@ -8,6 +8,11 @@
     <!-- Unified CSS System -->
     <link rel="stylesheet" href="/static/css/app-consolidated.css?v=1" />
 
+    <!-- HTMX for dynamic content loading -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"
+            integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC"
+            crossorigin="anonymous"></script>
+
 </head>
 <body>    <header class="navbar" role="banner">
         <div class="container">
@@ -131,6 +136,16 @@
                     <a href="/api/admin/logs" class="btn btn-info" target="_blank">View Logs</a>
                     <button class="btn btn-success" onclick="runHealthCheck()">Run Health Check</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Source Management -->
+        <div class="source-management-section">
+            <div id="source-list-container"
+                 hx-get="/htmx/sources"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <div class="loading">Loading sources...</div>
             </div>
         </div>
 
@@ -268,6 +283,42 @@
                     alert('Health check failed');
                 });
         }
+
+        // Source Management Functions
+        function clearSourceForm() {
+            document.getElementById('source-form-container').innerHTML = '';
+        }
+
+        function showSourceStatsModal() {
+            document.getElementById('source-stats-modal').style.display = 'block';
+        }
+
+        function hideSourceStatsModal() {
+            document.getElementById('source-stats-modal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('source-stats-modal');
+            if (event.target === modal) {
+                hideSourceStatsModal();
+            }
+        }
+
+        // HTMX event handlers for source management
+        document.body.addEventListener('htmx:afterRequest', function(event) {
+            if (event.detail.xhr.status === 200 || event.detail.xhr.status === 201) {
+                // Refresh source list after successful operations
+                if (event.detail.requestConfig.path.includes('/api/sources')) {
+                    htmx.trigger('#source-list-container', 'refresh');
+                }
+            }
+        });
+
+        document.body.addEventListener('htmx:responseError', function(event) {
+            const response = JSON.parse(event.detail.xhr.responseText);
+            alert('Error: ' + (response.error?.message || 'Unknown error occurred'));
+        });
     </script>
 </body>
 </html>

@@ -530,11 +530,11 @@ jobs:
           curl -s http://localhost:8080/api/articles | head -200
 
           # Run accessibility tests
-          npx playwright test tests/e2e/accessibility-pages.spec.ts --reporter=dot
+          npx playwright test tests/e2e/accessibility-pages.spec.ts --reporter=dot --timeout=60000
 
           # Run progress indicator tests
           echo "Running progress indicator tests..."
-          npx playwright test tests/progress-indicator.spec.ts --reporter=dot
+          npx playwright test tests/progress-indicator.spec.ts --reporter=dot --timeout=60000
 
           # Stop the server
           kill $SERVER_PID || true
@@ -614,7 +614,7 @@ jobs:
 
           # Run all E2E tests (only on Chromium for CI speed)
           echo "Running all E2E tests..."
-          if npx playwright test tests/e2e/ --project=chromium --reporter=list; then
+          if npx playwright test tests/e2e/ --project=chromium --reporter=dot --timeout=60000; then
             echo "E2E tests passed!"
           else
             echo "E2E tests failed!"

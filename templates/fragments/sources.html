@@ -1,0 +1,289 @@
+{{define "source-list-fragment"}}
+<div class="source-management-container" data-testid="source-management-container">
+    <div class="source-header">
+        <h4>Source Management</h4>
+        <button class="btn btn-primary" 
+                hx-get="/htmx/sources/new" 
+                hx-target="#source-form-container"
+                hx-swap="innerHTML">
+            Add New Source
+        </button>
+    </div>
+
+    <div id="source-form-container" class="source-form-container">
+        <!-- Form will be loaded here via HTMX -->
+    </div>
+
+    <ul class="source-list" aria-label="News sources">
+        {{if .Sources}}
+        {{range .Sources}}
+        <li class="source-item"
+            data-source-id="{{.ID}}"
+            data-testid="source-card-{{.ID}}">
+            <div class="source-info">
+                <div class="source-name">
+                    <strong>{{.Name}}</strong>
+                    <span class="source-type badge badge-{{.ChannelType}}">{{.ChannelType}}</span>
+                    <span class="source-category badge badge-{{.Category}}">{{.Category}}</span>
+                    {{if not .Enabled}}
+                    <span class="source-status badge badge-disabled">Disabled</span>
+                    {{end}}
+                </div>
+                <div class="source-url">
+                    <a href="{{.FeedURL}}" target="_blank" rel="noopener">{{.FeedURL}}</a>
+                </div>
+                <div class="source-meta">
+                    <span>Weight: {{.DefaultWeight}}</span>
+                    {{if .LastFetchedAt}}
+                    <span>Last Fetched: {{.LastFetchedAt.Format "2006-01-02 15:04"}}</span>
+                    {{end}}
+                    {{if gt .ErrorStreak 0}}
+                    <span class="error-streak">Errors: {{.ErrorStreak}}</span>
+                    {{end}}
+                    {{if .Stats}}
+                    <span>Articles: {{.Stats.ArticleCount}}</span>
+                    {{if .Stats.AvgScore}}
+                    <span>Avg Score: {{printf "%.3f" .Stats.AvgScore}}</span>
+                    {{end}}
+                    {{end}}
+                </div>
+            </div>
+            <div class="source-actions">
+                <button class="btn btn-sm btn-secondary" 
+                        hx-get="/htmx/sources/{{.ID}}/edit" 
+                        hx-target="#source-form-container"
+                        hx-swap="innerHTML"
+                        data-testid="edit-source-{{.ID}}">
+                    Edit
+                </button>
+                {{if .Enabled}}
+                <button class="btn btn-sm btn-warning"
+                        hx-put="/htmx/sources/{{.ID}}"
+                        hx-vals='{"enabled": false}'
+                        hx-confirm="Disable this source? It will stop fetching new articles."
+                        hx-target="#source-list-container"
+                        hx-swap="innerHTML"
+                        data-testid="disable-source-{{.ID}}">
+                    Disable
+                </button>
+                {{else}}
+                <button class="btn btn-sm btn-success"
+                        hx-put="/htmx/sources/{{.ID}}"
+                        hx-vals='{"enabled": true}'
+                        hx-target="#source-list-container"
+                        hx-swap="innerHTML"
+                        data-testid="enable-source-{{.ID}}">
+                    Enable
+                </button>
+                {{end}}
+                <button class="btn btn-sm btn-info"
+                        hx-get="/htmx/sources/{{.ID}}/stats"
+                        hx-target="#source-stats-content"
+                        hx-swap="innerHTML"
+                        onclick="showSourceStatsModal()"
+                        data-testid="stats-source-{{.ID}}">
+                    Stats
+                </button>
+            </div>
+        </li>
+        {{end}}
+        {{else}}
+        <li class="no-sources">
+            <p>No sources configured. Add your first source to get started.</p>
+        </li>
+        {{end}}
+    </ul>
+</div>
+
+<!-- Source Stats Modal -->
+<div id="source-stats-modal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <button type="button"
+                class="close"
+                onclick="hideSourceStatsModal()"
+                onkeydown="if(event.key==='Enter'||event.key===' ') hideSourceStatsModal()"
+                aria-label="Close modal"
+                tabindex="0">
+            &times;
+        </button>
+        <div id="source-stats-content">
+            <!-- Stats content will be loaded here via HTMX -->
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "source-form-fragment"}}
+<div class="source-form">
+    <h5>{{if .Source}}Edit Source{{else}}Add New Source{{end}}</h5>
+    <form {{if .Source}}
+          hx-put="/htmx/sources/{{.Source.ID}}"
+          {{else}}
+          hx-post="/htmx/sources"
+          {{end}}
+          hx-target="#source-list-container"
+          hx-swap="innerHTML"
+          hx-on::after-request="clearSourceForm()">
+        
+        <div class="form-group">
+            <label for="source-name">Source Name *</label>
+            <input type="text" 
+                   id="source-name" 
+                   name="name" 
+                   value="{{if .Source}}{{.Source.Name}}{{end}}"
+                   required 
+                   placeholder="e.g., BBC News"
+                   data-testid="source-name-input">
+        </div>
+
+        <div class="form-group">
+            <label for="source-channel-type">Channel Type *</label>
+            <select id="source-channel-type" 
+                    name="channel_type" 
+                    required
+                    data-testid="source-channel-type-select">
+                <option value="rss" {{if and .Source (eq .Source.ChannelType "rss")}}selected{{end}}>RSS Feed</option>
+                <option value="telegram" {{if and .Source (eq .Source.ChannelType "telegram")}}selected{{end}}>Telegram Channel</option>
+                <option value="twitter" {{if and .Source (eq .Source.ChannelType "twitter")}}selected{{end}}>Twitter/X Feed</option>
+                <option value="reddit" {{if and .Source (eq .Source.ChannelType "reddit")}}selected{{end}}>Reddit Subreddit</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="source-feed-url">Feed URL *</label>
+            <input type="url" 
+                   id="source-feed-url" 
+                   name="feed_url" 
+                   value="{{if .Source}}{{.Source.FeedURL}}{{end}}"
+                   required 
+                   placeholder="https://example.com/feed.xml"
+                   data-testid="source-feed-url-input">
+            <small class="form-help">For RSS: feed URL. For Telegram: @channel. For Twitter: username or list URL.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="source-category">Political Category *</label>
+            <select id="source-category" 
+                    name="category" 
+                    required
+                    data-testid="source-category-select">
+                <option value="left" {{if and .Source (eq .Source.Category "left")}}selected{{end}}>Left Leaning</option>
+                <option value="center" {{if and .Source (eq .Source.Category "center")}}selected{{end}}>Center/Neutral</option>
+                <option value="right" {{if and .Source (eq .Source.Category "right")}}selected{{end}}>Right Leaning</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="source-weight">Default Weight</label>
+            <input type="number" 
+                   id="source-weight" 
+                   name="default_weight" 
+                   value="{{if .Source}}{{.Source.DefaultWeight}}{{else}}1.0{{end}}"
+                   step="0.1" 
+                   min="0.1" 
+                   max="5.0"
+                   placeholder="1.0"
+                   data-testid="source-weight-input">
+            <small class="form-help">Scoring weight multiplier (0.1 - 5.0). Default: 1.0</small>
+        </div>
+
+        {{if .Source}}
+        <div class="form-group">
+            <label>
+                <input type="checkbox" 
+                       name="enabled" 
+                       value="true"
+                       {{if .Source.Enabled}}checked{{end}}
+                       data-testid="source-enabled-checkbox">
+                Source Enabled
+            </label>
+            <small class="form-help">Disabled sources will not fetch new articles.</small>
+        </div>
+        {{end}}
+
+        <div class="form-actions">
+            <button type="submit" 
+                    class="btn btn-primary"
+                    data-testid="save-source-btn">
+                {{if .Source}}Update Source{{else}}Add Source{{end}}
+            </button>
+            <button type="button" 
+                    class="btn btn-secondary" 
+                    onclick="clearSourceForm()"
+                    data-testid="cancel-source-btn">
+                Cancel
+            </button>
+        </div>
+    </form>
+</div>
+{{end}}
+
+{{define "source-stats-fragment"}}
+<div class="source-stats">
+    <h5>{{.Source.Name}} - Statistics</h5>
+    
+    <div class="stats-grid">
+        <div class="stat-item">
+            <span class="stat-label">Total Articles:</span>
+            <span class="stat-value">{{.Stats.ArticleCount}}</span>
+        </div>
+        
+        {{if .Stats.AvgScore}}
+        <div class="stat-item">
+            <span class="stat-label">Average Score:</span>
+            <span class="stat-value">{{printf "%.3f" .Stats.AvgScore}}</span>
+        </div>
+        {{end}}
+        
+        {{if .Stats.LastArticleAt}}
+        <div class="stat-item">
+            <span class="stat-label">Last Article:</span>
+            <span class="stat-value">{{.Stats.LastArticleAt.Format "2006-01-02 15:04"}}</span>
+        </div>
+        {{end}}
+        
+        <div class="stat-item">
+            <span class="stat-label">Source Status:</span>
+            <span class="stat-value {{if .Source.Enabled}}status-enabled{{else}}status-disabled{{end}}">
+                {{if .Source.Enabled}}Enabled{{else}}Disabled{{end}}
+            </span>
+        </div>
+        
+        <div class="stat-item">
+            <span class="stat-label">Error Streak:</span>
+            <span class="stat-value {{if gt .Source.ErrorStreak 0}}error-count{{end}}">{{.Source.ErrorStreak}}</span>
+        </div>
+        
+        {{if .Source.LastFetchedAt}}
+        <div class="stat-item">
+            <span class="stat-label">Last Fetched:</span>
+            <span class="stat-value">{{.Source.LastFetchedAt.Format "2006-01-02 15:04"}}</span>
+        </div>
+        {{end}}
+        
+        <div class="stat-item">
+            <span class="stat-label">Channel Type:</span>
+            <span class="stat-value">{{.Source.ChannelType}}</span>
+        </div>
+        
+        <div class="stat-item">
+            <span class="stat-label">Category:</span>
+            <span class="stat-value">{{.Source.Category}}</span>
+        </div>
+        
+        <div class="stat-item">
+            <span class="stat-label">Default Weight:</span>
+            <span class="stat-value">{{.Source.DefaultWeight}}</span>
+        </div>
+    </div>
+    
+    <div class="stats-actions">
+        <button class="btn btn-primary" 
+                hx-post="/api/refresh"
+                hx-confirm="Refresh this source? This will fetch new articles."
+                onclick="hideSourceStatsModal()">
+            Refresh Source
+        </button>
+    </div>
+</div>
+{{end}}

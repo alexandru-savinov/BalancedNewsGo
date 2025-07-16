@@ -40,6 +40,12 @@ func NewCollector(dbConn *sqlx.DB, urls []string, llmClient *llm.LLMClient) *Col
 func (c *Collector) StartScheduler() {
 	_, err := c.Cron.AddFunc("@every 30m", func() {
 		log.Println("[RSS] Scheduled fetch started")
+
+		// Reload sources from database before fetching
+		if err := c.LoadSourcesFromDB(); err != nil {
+			log.Printf("[RSS] Warning: Failed to reload sources from database, using existing URLs: %v", err)
+		}
+
 		c.FetchAndStore()
 	})
 	if err != nil {
@@ -52,9 +58,39 @@ func (c *Collector) StartScheduler() {
 	log.Println("[RSS] Scheduler started, fetching every 30 minutes")
 }
 
+// LoadSourcesFromDB loads enabled sources from database and updates FeedURLs
+func (c *Collector) LoadSourcesFromDB() error {
+	log.Println("[RSS] Loading sources from database")
+
+	sources, err := db.FetchEnabledSources(c.DB)
+	if err != nil {
+		log.Printf("[RSS] Failed to load sources from database: %v", err)
+		return err
+	}
+
+	// Convert sources to URL slice for backward compatibility
+	urls := make([]string, 0, len(sources))
+	for _, source := range sources {
+		if source.ChannelType == "rss" && source.FeedURL != "" {
+			urls = append(urls, source.FeedURL)
+			log.Printf("[RSS] Loaded source: %s (%s)", source.Name, source.FeedURL)
+		}
+	}
+
+	c.FeedURLs = urls
+	log.Printf("[RSS] Loaded %d RSS sources from database", len(urls))
+	return nil
+}
+
 // ManualRefresh triggers an immediate fetch.
 func (c *Collector) ManualRefresh() {
 	log.Println("[RSS] Manual refresh triggered")
+
+	// Reload sources from database before fetching
+	if err := c.LoadSourcesFromDB(); err != nil {
+		log.Printf("[RSS] Warning: Failed to reload sources from database, using existing URLs: %v", err)
+	}
+
 	c.FetchAndStore()
 }
 
