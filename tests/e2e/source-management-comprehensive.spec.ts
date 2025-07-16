@@ -197,39 +197,59 @@ test.describe('Source Management - Comprehensive E2E Tests', () => {
     test('should enable a disabled source', async () => {
       // Look for a disabled source (should have Enable button)
       const enableButton = page.locator('[data-testid^="enable-source-"]').first();
-      
+
       if (await enableButton.isVisible()) {
+        // Extract the source ID from the test ID
+        const testId = await enableButton.getAttribute('data-testid');
+        const sourceId = testId?.replace('enable-source-', '');
+
+        console.log(`Found disabled source with ID: ${sourceId}`);
+
         // Click enable button
         await enableButton.click();
-        
+
         // Wait for HTMX update
         await page.waitForTimeout(2000);
-        
-        // Verify source is now enabled (should show Disable button)
-        const sourceCard = enableButton.locator('xpath=ancestor::div[@data-testid]');
-        await expect(sourceCard.locator('button:has-text("Disable")')).toBeVisible();
+
+        // Verify source is now enabled by looking for the specific disable button
+        const disableButton = page.locator(`[data-testid="disable-source-${sourceId}"]`);
+        await expect(disableButton).toBeVisible();
+
+        console.log(`✓ Source ${sourceId} successfully enabled (disable button visible)`);
       }
     });
 
     test('should disable an enabled source', async () => {
       // Look for an enabled source (should have Disable button)
       const disableButton = page.locator('[data-testid^="disable-source-"]').first();
-      
+
       if (await disableButton.isVisible()) {
+        // Extract the source ID from the test ID
+        const testId = await disableButton.getAttribute('data-testid');
+        const sourceId = testId?.replace('disable-source-', '');
+
+        console.log(`Found enabled source with ID: ${sourceId}`);
+
         // Click disable button and handle confirmation
         page.on('dialog', async dialog => {
+          console.log(`Dialog message: ${dialog.message()}`);
           expect(dialog.message()).toContain('Disable this source');
           await dialog.accept();
         });
-        
+
         await disableButton.click();
-        
+
         // Wait for HTMX update
         await page.waitForTimeout(2000);
-        
-        // Verify source is now disabled (should show Enable button)
-        const sourceCard = disableButton.locator('xpath=ancestor::div[@data-testid]');
-        await expect(sourceCard.locator('button:has-text("Enable")')).toBeVisible();
+
+        // Verify source is now disabled by looking for the specific enable button and disabled badge
+        const enableButton = page.locator(`[data-testid="enable-source-${sourceId}"]`);
+        await expect(enableButton).toBeVisible();
+
+        const sourceCard = page.locator(`[data-testid="source-card-${sourceId}"]`);
+        await expect(sourceCard.locator('.badge-disabled')).toBeVisible();
+
+        console.log(`✓ Source ${sourceId} successfully disabled (enable button and disabled badge visible)`);
       }
     });
   });
@@ -267,26 +287,39 @@ test.describe('Source Management - Comprehensive E2E Tests', () => {
     test('should update source list without page refresh', async () => {
       // Get initial source count
       const initialSources = await page.locator('[data-testid^="source-card-"]').count();
-      
-      // Add a new source
+      console.log(`Initial source count: ${initialSources}`);
+
+      // Add a new source with unique URL
+      const timestamp = Date.now();
+      const sourceName = `HTMX Test Source ${timestamp}`;
+      const sourceUrl = `https://example.com/htmx-test-${timestamp}.xml`;
+
       await page.click('button:has-text("Add New Source")');
       await page.waitForSelector('#source-form-container form');
-      
-      await page.fill('input[name="name"]', 'HTMX Test Source');
-      await page.fill('input[name="feed_url"]', 'https://example.com/htmx-test.xml');
+
+      await page.fill('input[name="name"]', sourceName);
+      await page.fill('input[name="feed_url"]', sourceUrl);
       await page.selectOption('select[name="category"]', 'left');
-      
+
       await page.click('button:has-text("Add Source")');
-      
-      // Wait for HTMX update
+
+      // Wait for HTMX update and check for any error messages
       await page.waitForTimeout(3000);
-      
+
+      // Check if there are any error messages
+      const errorMessage = page.locator('.alert-danger, .error-message');
+      if (await errorMessage.isVisible()) {
+        const errorText = await errorMessage.textContent();
+        console.log(`Error adding source: ${errorText}`);
+      }
+
       // Verify source count increased without page reload
       const newSources = await page.locator('[data-testid^="source-card-"]').count();
+      console.log(`New source count: ${newSources}`);
       expect(newSources).toBeGreaterThan(initialSources);
-      
+
       // Verify new source is visible
-      await expect(page.locator('text=HTMX Test Source')).toBeVisible();
+      await expect(page.locator(`text=${sourceName}`)).toBeVisible();
     });
 
     test('should handle HTMX errors gracefully', async () => {
